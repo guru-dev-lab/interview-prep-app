@@ -51,9 +51,10 @@ button,input,select{-webkit-app-region:no-drag}
 .filter-btn.active{background:rgba(124,58,237,.15);color:var(--accent2);border-color:var(--accent)}
 .sc-q-text{font:600 12px/1.4 Inter,sans-serif}
 .sc-card-a{padding:12px 14px;font:400 12px/1.8 Inter,sans-serif;color:#cbd5e1}
-.sc-card-a pre{background:#1e1e1e;border:1px solid #3c3c3c;border-radius:8px;padding:12px 14px;margin:8px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 12px/1.7 'Fira Code',Consolas,'Courier New',monospace;color:#d4d4d4}
+.sc-card-a pre{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px 14px;margin:8px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 12px/1.7 'Fira Code',Consolas,'Courier New',monospace;color:#c9d1d9}
 .sc-card-a pre code{background:none !important;padding:0;font-size:12px;color:inherit;border:none !important}
-.sc-card-a code{background:rgba(124,58,237,.18);padding:2px 6px;border-radius:4px;font:500 11.5px 'Fira Code',Consolas,'Courier New',monospace;color:#c4b5fd}
+.sc-card-a code{background:rgba(110,118,129,.25);padding:2px 6px;border-radius:4px;font:500 11.5px 'Fira Code',Consolas,'Courier New',monospace;color:#e6edf3}
+.sh-kw{color:#ff7b72}.sh-str{color:#a5d6ff}.sh-cmt{color:#8b949e;font-style:italic}.sh-num{color:#79c0ff}.sh-fn{color:#d2a8ff}.sh-dec{color:#ffa657}
 .sc-line{margin-bottom:1px;padding:4px 10px;border-radius:5px}
 .sc-line:nth-child(odd){background:rgba(255,255,255,.03)}
 .sc-blank{height:8px}
@@ -63,9 +64,9 @@ body.light-mode,html.light-mode{--bg:#f0f0f3;--surface:#e2e3e8;--text:#111827;--
 body.light-mode .sc-card{background:#fff;border-color:rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.08)}
 body.light-mode .sc-card-q{background:rgba(109,40,217,.08)}
 body.light-mode .sc-card-a{color:#1f2937}
-body.light-mode .sc-card-a pre{background:#1e1e1e;color:#d4d4d4;border-color:#3c3c3c}
-body.light-mode .sc-card-a pre code{color:#d4d4d4;background:none !important}
-body.light-mode .sc-card-a code{background:#f3f0ff;color:#5b21b6}
+body.light-mode .sc-card-a pre{background:#0d1117;color:#c9d1d9;border-color:#30363d}
+body.light-mode .sc-card-a pre code{color:#c9d1d9;background:none !important}
+body.light-mode .sc-card-a code{background:rgba(110,118,129,.25);color:#24292f}
 body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.05)}
 body.light-mode .sc-line:nth-child(even){background:rgba(109,40,217,.03)}
 body.light-mode .titlebar{background:#e2e3e8;border-color:rgba(0,0,0,.12)}
@@ -182,6 +183,19 @@ SESSION_ID = params.get('session');
 // ===== HELPERS =====
 function $(id) { return document.getElementById(id); }
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function syntaxHL(code){
+  var e=esc(code);
+  e=e.replace(/(^|\n)([ \t]*(?:#|\/\/).*)/g,'$1<span class="sh-cmt">$2</span>');
+  e=e.replace(/(&quot;&quot;&quot;[\s\S]*?&quot;&quot;&quot;|&#x27;&#x27;&#x27;[\s\S]*?&#x27;&#x27;&#x27;)/g,'<span class="sh-str">$1</span>');
+  e=e.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g,'<span class="sh-str">$1</span>');
+  e=e.replace(/(&#x27;(?:[^&]|&(?!#x27;))*?&#x27;)/g,'<span class="sh-str">$1</span>');
+  e=e.replace(/('(?:[^'\\]|\\.)*?')/g,'<span class="sh-str">$1</span>');
+  e=e.replace(/\b(import|from|def|class|return|if|elif|else|for|while|try|except|finally|raise|with|as|in|not|and|or|is|None|True|False|self|yield|async|await|lambda|pass|break|continue|del|global|nonlocal|assert|function|const|let|var|new|this|typeof|instanceof|throw|catch|switch|case|default|export|extends|super|static|void|SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|INDEX|AND|OR|NOT|NULL|AS|DISTINCT|UNION|LIMIT|OFFSET|BETWEEN|LIKE|IN|EXISTS|CASE|WHEN|THEN|ELSE|END|COUNT|SUM|AVG|MAX|MIN|func|package|fmt|go|defer|chan|map|range|struct|interface|type|println|printf|print|public|private|protected|abstract|final|implements|throws|enum|synchronized)\b/g,'<span class="sh-kw">$1</span>');
+  e=e.replace(/\b(print|len|range|str|int|float|list|dict|set|tuple|bool|type|input|open|map|filter|zip|enumerate|sorted|reversed|sum|min|max|abs|round|format|isinstance|hasattr|getattr|setattr|super|console|document|window|Math|Array|Object|String|Number|JSON|Promise|setTimeout|setInterval|require|module|exports|pd|np|plt|DataFrame|Series|read_csv|to_csv|groupby|merge|concat|apply|describe)\b/g,'<span class="sh-fn">$1</span>');
+  e=e.replace(/(^|\n)([ \t]*@\w+)/g,'$1<span class="sh-dec">$2</span>');
+  e=e.replace(/\b(\d+\.?\d*(?:e[+-]?\d+)?)\b/g,'<span class="sh-num">$1</span>');
+  return e;
+}
 
 function setStatus(text, state) {
   var el = $('ws-status');
@@ -281,7 +295,7 @@ function formatAnswer(text) {
     var line = lines[i];
     if (/^```/.test(line.trim())) {
       if (!inCode) { inCode = true; codeLines = []; }
-      else { html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; }
+      else { html += '<pre><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; }
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
@@ -289,7 +303,7 @@ function formatAnswer(text) {
     if (line.trim() === '') { html += '<div class="sc-blank"></div>'; }
     else { html += '<div class="sc-line">' + processed + '</div>'; }
   }
-  if (inCode && codeLines.length) { html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>'; }
+  if (inCode && codeLines.length) { html += '<pre><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>'; }
   return html;
 }
 
