@@ -2226,7 +2226,7 @@ async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 25
 }
 
 // Match + verify + respond — async with Haiku AI verification
-async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter) {
+async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter, forceNavigate) {
   const startMs = Date.now();
   const q = cleanQuestionText(utterance.trim());
   if (!q || q.length < 5) return lastMatchedQId;
@@ -2250,7 +2250,8 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
         questionText: verified.question.text,
         answer: verified.question.answer || '',
         similarity: Math.round(verified.similarity * 100),
-        hasAnswer: !!verified.question.answer
+        hasAnswer: !!verified.question.answer,
+        navigate: !!forceNavigate
       };
       ws.send(JSON.stringify(matchMsg));
       broadcastToSession(sessionId, matchMsg, ws);
@@ -2278,7 +2279,8 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       questionText: q,
       questionType: classifyQuestion(q),
       source: 'live',
-      generated: true  // Flag for frontend: this is an AI-generated answer, not from bank
+      generated: true,  // Flag for frontend: this is an AI-generated answer, not from bank
+      navigate: !!forceNavigate
     };
     ws.send(JSON.stringify(newQMsg));
     broadcastToSession(sessionId, newQMsg, ws);
@@ -2587,7 +2589,7 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify(qdMsg2));
           broadcastToSession(sessionId, qdMsg2, ws);
           const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-          fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx).then(newLastId => {
+          fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true).then(newLastId => {
             if (newLastId) lastMatchedQId = newLastId;
           });
         }
@@ -2604,7 +2606,7 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify(qdMsg3));
         broadcastToSession(sessionId, qdMsg3, ws);
         const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-        fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, true).then(newLastId => {
+        fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, true, true).then(newLastId => {
           if (newLastId) lastMatchedQId = newLastId;
         });
       }
@@ -2635,7 +2637,7 @@ wss.on('connection', (ws) => {
         // Full mode: extract the MOST RECENT question from transcript
         // Priority: current buffer > last 3 lines (newest first)
         const currentBuf = interviewerBuffer.trim();
-        const recentLines = transcript.slice(-8); // last 8 for more context
+        const recentLines = transcript.slice(-10); // last 10 for deep context
 
         // Build transcript with recency markers — newest at bottom, labeled
         let rawTranscript = '';
@@ -2690,8 +2692,10 @@ wss.on('connection', (ws) => {
         broadcastToSession(sessionId, qdMsg4, ws);
 
         // Step 2: Match the extracted question against the bank (with AI verification)
+        // forceNavigate=true — user deliberately clicked "What should I say", so navigate immediately
         const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-        fastMatchAndRespond(questionText, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx).then(newLastId => {
+        lastAutoMatchTime = Date.now(); // Reset cooldown — user chose this action
+        fastMatchAndRespond(questionText, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true).then(newLastId => {
           lastWsayMatchId = newLastId || null;
           if (newLastId) lastMatchedQId = newLastId;
         });

@@ -2237,7 +2237,8 @@ function handleLiveMessage(msg) {
     }
     renderLiveQueue(msg.questionId);
 
-    // Do NOT auto-navigate — let user stay on current answer and click when ready
+    // Only navigate if explicitly requested (manual click, "What should I say", canvas input)
+    if (msg.navigate) navigateToQuestion(msg.questionId);
 
     // Smart Canvas: show matched answer instantly — prefer server answer, fall back to local cache
     var matchedQ = S.questions.find(function(q) { return q.id === msg.questionId || String(q.id) === String(msg.questionId); });
@@ -2261,9 +2262,14 @@ function handleLiveMessage(msg) {
     // New question created — add to sidebar quietly, DON'T steal focus/navigate
     S.questions.push({ id: msg.questionId, text: msg.questionText, type: msg.questionType||'Strategic', answer: '', starred: false, source: msg.source||'live' });
     renderQL();
-    // Do NOT call navigateToQuestion — let user read the current answer in peace
+    // Only navigate if explicitly requested (manual click, "What should I say", canvas input)
+    if (msg.navigate) {
+      navigateToQuestion(msg.questionId);
+      var ansEl = $('ans');
+      if (ansEl) ansEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--accent2);padding:20px"><span class="spinner" style="width:14px;height:14px;border-width:2px"></span> Generating answer...</div>';
+    }
 
-    // Show in transcript (subtle notification, no focus steal)
+    // Show in transcript (subtle notification)
     var genDiv = document.createElement('div');
     genDiv.className = 'live-gen';
     genDiv.id = 'live-gen-'+msg.questionId;
