@@ -1995,10 +1995,12 @@ function isQuestion(text) {
   // Minimum: 3 words, 15 chars
   if (words < 3 || t.length < 15) return false;
   // === REJECTION FILTERS ===
-  // Reject self-referencing (interviewee talking about themselves)
-  if (/^(i |i'm |i've |i was |i did |i think |i would |i used |i built |i have |so i |yeah i |and i |we |we're |we've |my |at my |in my |let me |if i |when i |that's |that is |it's |it is |this is |there |the |a |an |at |for |from |like |actually |basically |just )/.test(t)) return false;
+  // Reject self-referencing (interviewee/candidate talking about themselves)
+  if (/^(i |i'm |i've |i'd |i'll |i was |i did |i do |i think |i would |i could |i should |i used |i built |i have |i had |i made |i learned |i managed |i led |i created |i developed |i worked |i helped |i started |i ran |i set up |i implemented |i designed |i analyzed |i handled |i owned |i drove |so i |yeah i |and i |we |we're |we've |we had |we did |we used |we built |we were |my |at my |in my |on my |with my |during my |let me |if i |when i |that's |that is |it's |it is |this is |this was |there |the |a |an |at |for |from |like |actually |basically |just |one thing |one of |another thing |specifically )/.test(t)) return false;
   // Reject filler/agreement/casual speech
-  if (/^(yeah|yes|no|okay|sure|right|exactly|absolutely|definitely|great|good|thanks|thank you|sorry|so basically|um |uh |well |hmm|oh |and |but |or |also |then |so |awesome|perfect|wonderful|fantastic|sounds good|makes sense|got it|fair enough|interesting|nice|cool|alright|let's |now |moving on|next |going to )/.test(t)) return false;
+  if (/^(yeah|yes|no|okay|sure|right|exactly|absolutely|definitely|great|good|thanks|thank you|sorry|so basically|um |uh |well |hmm|oh |and |but |or |also |then |so |awesome|perfect|wonderful|fantastic|sounds good|makes sense|got it|fair enough|interesting|nice|cool|alright|let's |now |moving on|next |going to |to answer |to give |to be |in terms of |because |since |as a |as an |which |that |the way |the reason |what happened |what we )/.test(t)) return false;
+  // Reject mid-answer continuation patterns (candidate elaborating)
+  if (/^(and then |so then |after that |from there |eventually |ultimately |overall |in the end |long story short |to summarize |the result |the outcome |the impact |the challenge |the problem |the solution |the key |the main |the biggest |the first |the second |the third )/.test(t)) return false;
   // Reject casual small-talk / pleasantries
   if (/^(how are you|how's it going|how have you been|nice to meet|good to meet|good morning|good afternoon|good evening|hey |hi |hello |what time|what's your time|where are you (based|located|calling|joining)|are you (doing well|ready)|can you hear me|is (my|the) (audio|video|screen)|one (moment|second|sec)|bear with me|sorry about|apologies for)/.test(t)) return false;
   // Reject scheduling/logistics
@@ -2435,7 +2437,7 @@ wss.on('connection', (ws) => {
         transcript = [];
         lastMatchedQId = null;
         let lastAutoMatchTime = 0; // Timestamp of last auto-detected match
-        const AUTO_MATCH_COOLDOWN = 15000; // 15s cooldown on auto-detect; manual "What should I say?" bypasses this
+        const AUTO_MATCH_COOLDOWN = 45000; // 45s cooldown — let the current answer breathe before switching
 
         // Single Deepgram stream — two detection layers:
         // 1. Fast: isQuestion() pattern match fires instantly on obvious questions
@@ -2444,12 +2446,25 @@ wss.on('connection', (ws) => {
         let questionFiredForBuffer = false;
         let lastAiExtractedQ = ''; // prevent re-firing same extracted question
         let recentDetectedQs = []; // last 5 detected questions for fuzzy de-dup
+        let aiExtractTimer = null; // debounce timer — wait for speech to settle before extracting
+        const AI_EXTRACT_DELAY = 2000; // 2s after last speechFinal before AI fires
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
           if (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN) return;
           const recent = transcript.slice(-4);
           if (recent.length < 1) return;
+
+          // PRE-FILTER: Check if the most recent utterance could even be a question.
+          // If the last utterance is clearly the candidate speaking (starts with "I", "We", "My", etc.),
+          // skip AI extraction entirely — saves tokens and prevents false positives.
+          const lastUtterance = recent[recent.length - 1].text;
+          const lastLow = lastUtterance.trim().toLowerCase();
+          // Reject if it starts with obvious candidate self-reference
+          if (/^(i |i'm |i've |i'd |i'll |i was |i did |i do |i think |i would |i could |i used |i built |i have |i had |i made |i worked |i helped |i started |i led |i created |i developed |i analyzed |i handled |we |we're |we've |we had |we did |we used |we built |my |at my |in my |so i |yeah i |and i |yeah |yes |no |okay |sure |right |exactly |absolutely |definitely |great |good |thanks |sorry |so basically |um |uh |well |hmm|actually |basically |just |and then |so then |after that |from there |the way i |the reason |what happened was |what we did )/.test(lastLow)) {
+            console.log('[AI Auto-Detect] Pre-filter: candidate speech, skipping');
+            return;
+          }
 
           const recentText = recent.slice(-2).map(t => t.text).join('\n');
           const wsCtx = ws._sessionContext || {};
@@ -2458,7 +2473,7 @@ wss.on('connection', (ws) => {
           try {
             const extracted = await Promise.race([
               callClaude(
-                'You detect interview questions from an interviewer in live speech transcripts. Be VERY strict — only return a question if the interviewer is clearly asking the candidate a substantive interview question (behavioral, technical, situational, or about their experience). Output NONE for: statements, the candidate\'s own speech, small talk, pleasantries ("how are you", "nice to meet you"), transitions ("let me move on", "let\'s talk about"), filler, partial/incomplete sentences, or anything that isn\'t a direct question to the candidate. If YES, output ONLY the clean question text — nothing else, no quotes, no explanation. If NO, output exactly: NONE',
+                'You detect interview questions from an interviewer in live speech transcripts.\n\nCRITICAL RULES:\n1. ONLY return a question if the INTERVIEWER is clearly asking the candidate a substantive interview question (behavioral, technical, situational, or about their experience).\n2. The CANDIDATE\'s own speech is NEVER a question — if the speaker is answering, explaining their experience, talking about what they did/built/managed, this is the CANDIDATE speaking. Output NONE.\n3. Output NONE for: statements, agreements, filler, partial sentences, transitions, pleasantries, small talk, scheduling, the candidate\'s own words/answers.\n4. Signs of CANDIDATE speech (always NONE): starts with "I", "We", "My", talks about their past experience, describes what they did, explains a project.\n5. Signs of INTERVIEWER question: asks "Can you tell me about...", "How would you...", "What is your experience with...", "Describe a time when...".\n\nIf an interviewer question is present, output ONLY the clean question text. Otherwise output exactly: NONE',
                 ctxLine + 'Recent speech:\n' + recentText + '\n\nOutput the interview question or NONE:',
                 80, MODEL_HAIKU
               ),
@@ -2472,6 +2487,12 @@ wss.on('connection', (ws) => {
             const firstLine = raw.split(/\n/)[0].trim();
             if (!firstLine || firstLine.length < 10) return;
             const q = cleanQuestionText(firstLine);
+
+            // Post-filter: even after AI extraction, run isQuestion() to catch false positives
+            if (!isQuestion(q)) {
+              console.log('[AI Auto-Detect] Post-filter rejected:', q.substring(0, 60));
+              return;
+            }
 
             // Don't re-fire if this is the same or a subset of a recently detected question
             const qLow = q.toLowerCase();
@@ -2513,24 +2534,8 @@ wss.on('connection', (ws) => {
               interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
               ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
 
-              // Fast path: obvious question patterns fire — require 12+ words to avoid partial captures
-              const bufWordCount = interviewerBuffer.trim().split(/\s+/).length;
-              if (!questionFiredForBuffer && bufWordCount >= 12 && isQuestion(interviewerBuffer) && (Date.now() - lastAutoMatchTime >= AUTO_MATCH_COOLDOWN)) {
-                questionFiredForBuffer = true;
-                const bufferSnapshot = cleanQuestionText(interviewerBuffer.trim());
-                console.log('[Question FAST]', bufferSnapshot.substring(0, 60));
-                lastAiExtractedQ = bufferSnapshot; // prevent AI from re-firing same
-                recentDetectedQs.push(bufferSnapshot);
-                if (recentDetectedQs.length > 5) recentDetectedQs.shift();
-                lastWsayMatchId = null;
-                var qdMsg1 = { type: 'question_detected', text: bufferSnapshot, source: 'auto' };
-                ws.send(JSON.stringify(qdMsg1));
-                broadcastToSession(sessionId, qdMsg1, ws);
-                const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-                fastMatchAndRespond(bufferSnapshot, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, rebuildIdx).then(newLastId => {
-                  if (newLastId) { lastMatchedQId = newLastId; lastAutoMatchTime = Date.now(); }
-                });
-              }
+              // Fast path DISABLED — wait for speechFinal to get the complete utterance
+              // This prevents firing on partial segments and creating duplicate answers
             } else {
               const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
               ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
@@ -2547,9 +2552,12 @@ wss.on('connection', (ws) => {
               transcript.push({ text: fullUtterance, ts: Date.now() });
               ws._recentTranscript = transcript.slice(-6).map(t => t.text);
 
-              // If fast path didn't fire, let AI try to extract a question
+              // If fast path didn't fire, debounce AI extraction.
+              // Wait 2s after the last speechFinal — this lets the speaker finish
+              // multi-sentence utterances before we extract, preventing partial/duplicate fires.
               if (!wasFired) {
-                aiAutoExtract();
+                if (aiExtractTimer) clearTimeout(aiExtractTimer);
+                aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY);
               }
               setTimeout(() => recentMatchedIds.clear(), 5000);
             }
