@@ -2439,7 +2439,7 @@ wss.on('connection', (ws) => {
         transcript = [];
         lastMatchedQId = null;
         let lastAutoMatchTime = 0; // Timestamp of last auto-detected match
-        const AUTO_MATCH_COOLDOWN = 45000; // 45s cooldown — let the current answer breathe before switching
+        const AUTO_MATCH_COOLDOWN = 60000; // 60s cooldown — let the current answer breathe before switching
 
         // Single Deepgram stream — two detection layers:
         // 1. Fast: isQuestion() pattern match fires instantly on obvious questions
@@ -2578,9 +2578,11 @@ wss.on('connection', (ws) => {
 
       else if (msg.type === 'manual_match') {
         // User clicked a transcript line to manually match — deliberate action, clear dedup
+        // Also reset the auto-match cooldown so auto-detect won't switch away for 60s
         const text = msg.text;
         if (text && sessionQuestions.length) {
           recentMatchedIds.clear();
+          lastAutoMatchTime = Date.now(); // Reset cooldown — user chose this, don't switch away
           var qdMsg2 = { type: 'question_detected', text: text, source: 'manual' };
           ws.send(JSON.stringify(qdMsg2));
           broadcastToSession(sessionId, qdMsg2, ws);
@@ -2597,6 +2599,7 @@ wss.on('connection', (ws) => {
         if (!text || text.length < 5) return;
         console.log('[Canvas] Manual question:', text.substring(0, 60));
         recentMatchedIds.clear();
+        lastAutoMatchTime = Date.now(); // Reset cooldown — user chose this, don't switch away
         var qdMsg3 = { type: 'question_detected', text: text, source: 'manual' };
         ws.send(JSON.stringify(qdMsg3));
         broadcastToSession(sessionId, qdMsg3, ws);

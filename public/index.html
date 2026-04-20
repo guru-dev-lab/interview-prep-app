@@ -2219,7 +2219,8 @@ function handleLiveMessage(msg) {
   }
 
   else if (msg.type === 'match') {
-    // Matched an existing question — auto-navigate
+    // Matched an existing question — show in transcript but DON'T auto-navigate
+    // User can click to navigate when ready
     var matchDiv = document.createElement('div');
     matchDiv.className = 'live-match';
     var partLabel = msg.partIndex ? ' (Q' + msg.partIndex + '/' + msg.partTotal + ')' : '';
@@ -2236,8 +2237,7 @@ function handleLiveMessage(msg) {
     }
     renderLiveQueue(msg.questionId);
 
-    // Auto-navigate to matched question
-    navigateToQuestion(msg.questionId);
+    // Do NOT auto-navigate — let user stay on current answer and click when ready
 
     // Smart Canvas: show matched answer instantly — prefer server answer, fall back to local cache
     var matchedQ = S.questions.find(function(q) { return q.id === msg.questionId || String(q.id) === String(msg.questionId); });
@@ -2258,16 +2258,12 @@ function handleLiveMessage(msg) {
   }
 
   else if (msg.type === 'new_question') {
-    // New question created instantly — add to sidebar, navigate, show generating state
+    // New question created — add to sidebar quietly, DON'T steal focus/navigate
     S.questions.push({ id: msg.questionId, text: msg.questionText, type: msg.questionType||'Strategic', answer: '', starred: false, source: msg.source||'live' });
     renderQL();
-    navigateToQuestion(msg.questionId);
+    // Do NOT call navigateToQuestion — let user read the current answer in peace
 
-    // Show generating indicator in answer area
-    var ansEl = $('ans');
-    if (ansEl) ansEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--accent2);padding:20px"><span class="spinner" style="width:14px;height:14px;border-width:2px"></span> Generating answer...</div>';
-
-    // Show in transcript
+    // Show in transcript (subtle notification, no focus steal)
     var genDiv = document.createElement('div');
     genDiv.className = 'live-gen';
     genDiv.id = 'live-gen-'+msg.questionId;
