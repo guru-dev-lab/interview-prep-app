@@ -840,23 +840,17 @@ const $=id=>document.getElementById(id);
 const esc=s=>s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):'';
 function syntaxHL(code){
   var e=esc(code);
-  // Comments (# and //)
-  e=e.replace(/(^|\n)([ \t]*(?:#|\/\/).*)/g,'$1<span class="sh-cmt">$2</span>');
-  // Multi-line strings / docstrings (triple quotes)
-  e=e.replace(/(&quot;&quot;&quot;[\s\S]*?&quot;&quot;&quot;|&#x27;&#x27;&#x27;[\s\S]*?&#x27;&#x27;&#x27;)/g,'<span class="sh-str">$1</span>');
-  // Strings (double and single quoted)
-  e=e.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;)/g,'<span class="sh-str">$1</span>');
-  e=e.replace(/(&#x27;(?:[^&]|&(?!#x27;))*?&#x27;)/g,'<span class="sh-str">$1</span>');
-  e=e.replace(/('(?:[^'\\]|\\.)*?')/g,'<span class="sh-str">$1</span>');
-  // Keywords (Python, JS, SQL, Java, Go, etc.)
-  e=e.replace(/\b(import|from|def|class|return|if|elif|else|for|while|try|except|finally|raise|with|as|in|not|and|or|is|None|True|False|self|yield|async|await|lambda|pass|break|continue|del|global|nonlocal|assert|function|const|let|var|new|this|typeof|instanceof|throw|catch|switch|case|default|export|extends|super|static|void|SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|INDEX|AND|OR|NOT|NULL|AS|DISTINCT|UNION|LIMIT|OFFSET|BETWEEN|LIKE|IN|EXISTS|CASE|WHEN|THEN|ELSE|END|COUNT|SUM|AVG|MAX|MIN|func|package|fmt|go|defer|chan|map|range|struct|interface|type|println|printf|print|public|private|protected|abstract|final|implements|throws|enum|synchronized)\b/g,'<span class="sh-kw">$1</span>');
-  // Built-in functions
-  e=e.replace(/\b(print|len|range|str|int|float|list|dict|set|tuple|bool|type|input|open|map|filter|zip|enumerate|sorted|reversed|sum|min|max|abs|round|format|isinstance|hasattr|getattr|setattr|super|console|document|window|Math|Array|Object|String|Number|JSON|Promise|setTimeout|setInterval|require|module|exports|pd|np|plt|DataFrame|Series|read_csv|to_csv|groupby|merge|concat|apply|describe)\b/g,'<span class="sh-fn">$1</span>');
-  // Decorators (@something)
-  e=e.replace(/(^|\n)([ \t]*@\w+)/g,'$1<span class="sh-dec">$2</span>');
-  // Numbers
-  e=e.replace(/\b(\d+\.?\d*(?:e[+-]?\d+)?)\b/g,'<span class="sh-num">$1</span>');
-  return e;
+  var KW=/^(import|from|def|class|return|if|elif|else|for|while|try|except|finally|raise|with|as|in|not|and|or|is|None|True|False|self|yield|async|await|lambda|pass|break|continue|del|global|nonlocal|assert|function|const|let|var|new|this|typeof|instanceof|throw|catch|switch|case|default|export|extends|super|static|void|SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|INDEX|AND|OR|NOT|NULL|AS|DISTINCT|UNION|LIMIT|OFFSET|BETWEEN|LIKE|IN|EXISTS|CASE|WHEN|THEN|ELSE|END|COUNT|SUM|AVG|MAX|MIN|func|package|fmt|go|defer|chan|map|range|struct|interface|type|println|printf|print|public|private|protected|abstract|final|implements|throws|enum|synchronized)$/;
+  var FN=/^(print|len|range|str|int|float|list|dict|set|tuple|bool|type|input|open|map|filter|zip|enumerate|sorted|reversed|sum|min|max|abs|round|format|isinstance|hasattr|getattr|setattr|super|console|document|window|Math|Array|Object|String|Number|JSON|Promise|setTimeout|setInterval|require|module|exports|pd|np|plt|DataFrame|Series|read_csv|to_csv|groupby|merge|concat|apply|describe)$/;
+  // Single-pass tokenizer: comments | strings | decorators | words | numbers | rest
+  return e.replace(/(#.*|\/\/.*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*?"|'(?:[^'\\]|\\.)*?')|(@\w+)|(\b[a-zA-Z_]\w*\b)|(\b\d+\.?\d*(?:e[+-]?\d+)?\b)/gm,function(m,cmt,str,dec,word,num){
+    if(cmt)return'<span class="sh-cmt">'+cmt+'</span>';
+    if(str)return'<span class="sh-str">'+str+'</span>';
+    if(dec)return'<span class="sh-dec">'+dec+'</span>';
+    if(word){if(KW.test(word))return'<span class="sh-kw">'+word+'</span>';if(FN.test(word))return'<span class="sh-fn">'+word+'</span>';return word;}
+    if(num)return'<span class="sh-num">'+num+'</span>';
+    return m;
+  });
 }
 
 // Auth-aware fetch
