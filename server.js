@@ -2441,7 +2441,7 @@ wss.on('connection', (ws) => {
         transcript = [];
         lastMatchedQId = null;
         let lastAutoMatchTime = 0; // Timestamp of last auto-detected match
-        const AUTO_MATCH_COOLDOWN = 60000; // 60s cooldown — let the current answer breathe before switching
+        const AUTO_MATCH_COOLDOWN = 90000; // 90s (1:30) cooldown — let the current answer breathe before switching
 
         // Single Deepgram stream — two detection layers:
         // 1. Fast: isQuestion() pattern match fires instantly on obvious questions
