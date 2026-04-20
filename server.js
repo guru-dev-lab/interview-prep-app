@@ -2008,10 +2008,12 @@ function isQuestion(text) {
   // === PASS FILTERS — must match a specific question pattern ===
   // Question mark with at least 5 words — real questions
   if (/\?/.test(t) && words >= 5) return true;
-  // Direct interview commands with subject: "Explain X", "Define X" etc. (need 3+ words)
-  if (words >= 3 && /^(explain |define |describe |compare |walk me through |tell me about |give me an example )/.test(t)) return true;
-  // Interview question openers with enough substance (8+ words)
-  if (words >= 8 && /^(what is your |what are your |what was your |what were your |what do you |what did you |what would you |how do you |how would you |how did you |how can you |why do you |why did you |why are you |why is |can you (explain|describe|walk|tell)|could you (explain|describe|walk|tell))/.test(t)) return true;
+  // Direct interview commands (3+ words): "Explain X", "Tell me about X", "Describe X"
+  if (words >= 3 && /^(explain |define |describe |compare |walk me through |tell me |give me an example |give me a scenario )/.test(t)) return true;
+  // Common interviewer question starters (4+ words) — speech-to-text rarely adds "?"
+  if (words >= 4 && /^(can you |could you |have you |had you |do you |did you |would you |are you |were you |is there |was there |have there been )/.test(t)) return true;
+  // Wh- question openers (5+ words)
+  if (words >= 5 && /^(what |how |why |when |where |who |which )/.test(t)) return true;
   // Nothing matched — NOT a question
   return false;
 }
