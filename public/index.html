@@ -1942,19 +1942,20 @@ async function toggleLiveMode() {
     toast('Select your Google Meet tab to capture interviewer audio...');
     try {
       liveSystemStream = await navigator.mediaDevices.getDisplayMedia({
-        video: false,  // We don't need video
+        video: true,   // Chrome requires video — we'll drop it immediately
         audio: true    // System/tab audio = interviewer
       });
-      // If getDisplayMedia forces video, just ignore the video track
+      // Drop video track immediately — we only need the audio
       liveSystemStream.getVideoTracks().forEach(function(t) { t.stop(); });
       // Check we actually got audio
       if (liveSystemStream.getAudioTracks().length === 0) {
-        toast('No audio track captured — make sure you share the tab with audio', 1);
+        toast('No audio — make sure "Share tab audio" is checked in the picker', 1);
         liveSystemStream = null;
         return;
       }
     } catch (e) {
-      toast('Tab audio sharing cancelled — needed to hear the interviewer', 1);
+      console.error('[Live] getDisplayMedia error:', e);
+      toast('Tab sharing cancelled — select your Google Meet tab to capture interviewer audio', 1);
       return;
     }
 
@@ -2090,7 +2091,7 @@ async function switchLiveTab() {
   if (!liveActive || !liveWS || liveWS.readyState !== WebSocket.OPEN) { toast('Go Live first', 1); return; }
   try {
     toast('Select the correct tab...');
-    var newStream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true });
+    var newStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     newStream.getVideoTracks().forEach(function(t) { t.stop(); });
     if (newStream.getAudioTracks().length === 0) { toast('No audio track — try again', 1); return; }
 
