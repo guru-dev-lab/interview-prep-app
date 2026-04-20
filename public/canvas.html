@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Xhire Smart Canvas</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#06080f;--surface:#0c1019;--accent:#7c3aed;--accent2:#a78bfa;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--glass-border:rgba(255,255,255,.06)}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;-webkit-app-region:drag;border-radius:12px}
+button,input,select{-webkit-app-region:no-drag}
+
+/* Titlebar — draggable */
+.titlebar{height:36px;background:var(--surface);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
+.titlebar h1{font:700 11px Inter,sans-serif;color:var(--text2);display:flex;align-items:center;gap:6px}
+.titlebar .dot{width:7px;height:7px;border-radius:50%;background:#F87171;animation:pulse 1.5s ease infinite}
+.titlebar-controls{display:flex;gap:10px;align-items:center;-webkit-app-region:no-drag}
+.titlebar-controls label{font:400 10px Inter,sans-serif;color:var(--text3);display:flex;align-items:center;gap:4px}
+.titlebar-controls input[type=range]{width:55px;height:3px;cursor:pointer;accent-color:var(--accent)}
+.status{font:600 9px Inter,sans-serif;padding:3px 8px;border-radius:10px;letter-spacing:.3px;text-transform:uppercase}
+.status.off{background:rgba(248,113,113,.1);color:#F87171}
+.status.on{background:rgba(52,211,153,.1);color:#34D399}
+.status.wait{background:rgba(251,191,36,.1);color:#FBBF24}
+
+/* Main layout */
+.canvas-wrap{display:flex;flex-direction:column;height:calc(100% - 36px)}
+
+/* Feed — scrollable center */
+.feed-wrap{flex:1;overflow-y:auto;padding:10px 14px;scroll-behavior:smooth}
+.feed-wrap::-webkit-scrollbar{width:4px}
+.feed-wrap::-webkit-scrollbar-thumb{background:rgba(124,58,237,.3);border-radius:2px}
+
+/* Cards */
+.sc-card{margin-bottom:10px;border-radius:12px;border:1px solid var(--glass-border);background:rgba(255,255,255,.02);overflow:hidden;animation:cardIn .3s ease}
+@keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.sc-card-q{padding:10px 14px;background:rgba(124,58,237,.05);border-bottom:1px solid rgba(124,58,237,.08);display:flex;gap:8px;align-items:flex-start}
+.sc-tag{font:700 9px Inter,sans-serif;padding:2px 7px;border-radius:5px;text-transform:uppercase;flex-shrink:0;margin-top:2px;letter-spacing:.3px}
+.sc-tag.matched{background:rgba(52,211,153,.12);color:#34D399}
+.sc-tag.new{background:rgba(251,191,36,.12);color:#FBBF24}
+.sc-tag.manual{background:rgba(96,165,250,.12);color:#60A5FA}
+.sc-tag.generated{background:rgba(251,146,60,.12);color:#FB923C}
+.card-dismiss{position:absolute;top:6px;right:8px;background:none;border:none;color:var(--text3);cursor:pointer;font:400 16px sans-serif;opacity:.4;transition:.15s;padding:2px 6px;z-index:1}
+.card-dismiss:hover{opacity:1;color:#F87171}
+.sc-card{position:relative}
+@keyframes cardOut{from{opacity:1;max-height:500px}to{opacity:0;max-height:0;margin-bottom:0;padding:0;border-width:0}}
+.sc-card.fade-out{animation:cardOut .4s ease forwards;pointer-events:none}
+.filter-bar{display:flex;gap:6px;padding:6px 14px 0;flex-shrink:0}
+.filter-btn{padding:4px 10px;border:1px solid var(--glass-border);border-radius:6px;background:rgba(255,255,255,.03);font:600 10px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;text-transform:uppercase;letter-spacing:.3px}
+.filter-btn:hover{border-color:var(--accent)}
+.filter-btn.active{background:rgba(124,58,237,.15);color:var(--accent2);border-color:var(--accent)}
+.sc-q-text{font:600 12px/1.4 Inter,sans-serif}
+.sc-card-a{padding:12px 14px;font:400 12px/1.8 Inter,sans-serif;color:#cbd5e1}
+.sc-card-a pre{background:rgba(0,0,0,.4);border:1px solid var(--glass-border);border-radius:8px;padding:10px 14px;margin:6px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;font:400 11px/1.6 "Fira Code",Consolas,monospace;color:#e2e8f0}
+.sc-card-a code{background:rgba(124,58,237,.1);padding:1px 5px;border-radius:3px;font:400 11px "Fira Code",Consolas,monospace;color:#a78bfa}
+.sc-line{margin-bottom:1px;padding:4px 10px;border-radius:5px}
+.sc-line:nth-child(odd){background:rgba(255,255,255,.03)}
+.sc-blank{height:8px}
+.sc-card-loading{padding:14px;display:flex;align-items:center;gap:8px;color:var(--accent2);font:500 12px Inter,sans-serif}
+.light-btn{padding:4px 10px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;-webkit-app-region:no-drag}.light-btn:hover{border-color:var(--accent)}
+body.light-mode,html.light-mode{--bg:#f0f0f3;--surface:#e2e3e8;--text:#111827;--text2:#1f2937;--text3:#4b5563;--glass-border:rgba(0,0,0,.12);--accent2:#6d28d9}
+body.light-mode .sc-card{background:#fff;border-color:rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+body.light-mode .sc-card-q{background:rgba(109,40,217,.08)}
+body.light-mode .sc-card-a{color:#1f2937}
+body.light-mode .sc-card-a pre{background:rgba(0,0,0,.06);color:#111827;border-color:rgba(0,0,0,.12)}
+body.light-mode .sc-card-a code{color:#6d28d9;background:rgba(109,40,217,.1)}
+body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.05)}
+body.light-mode .sc-line:nth-child(even){background:rgba(109,40,217,.03)}
+body.light-mode .titlebar{background:#e2e3e8;border-color:rgba(0,0,0,.12)}
+body.light-mode .bottom-bar{background:#e2e3e8;border-color:rgba(0,0,0,.12)}
+body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);color:#111827}
+
+/* Bottom bar — "What should I say?" + input */
+.bottom-bar{flex-shrink:0;background:var(--surface);border-top:1px solid var(--glass-border);padding:10px 14px;-webkit-app-region:no-drag;border-radius:0 0 12px 12px}
+.wsay-btn{width:100%;padding:12px;border:2px solid var(--accent);border-radius:10px;background:rgba(124,58,237,.08);font:700 13px Inter,sans-serif;color:#c4b5fd;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;margin-bottom:8px}
+.wsay-btn:hover{background:rgba(124,58,237,.18);transform:translateY(-1px)}
+.wsay-btn:active{transform:translateY(0)}
+.wsay-btn.loading{opacity:.5;pointer-events:none}
+.assist-row{display:flex;gap:6px;margin-bottom:8px}
+.assist-btn{flex:1;padding:8px;border:1px solid rgba(251,146,60,.3);border-radius:8px;background:rgba(251,146,60,.06);font:600 11px Inter,sans-serif;color:#fdba74;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:.15s}
+.assist-btn:hover{background:rgba(251,146,60,.14)}
+.assist-btn.loading{opacity:.5;pointer-events:none}
+.assist-btn.recording{border-color:#F87171;background:rgba(248,113,113,.1);color:#fca5a5;animation:pulse 1.5s ease infinite}
+.sc-tag.screen{background:rgba(56,189,248,.12);color:#38BDF8}
+.input-row{display:flex;gap:6px}
+.input-row input{flex:1;padding:9px 12px;border:1px solid rgba(255,255,255,.08);border-radius:8px;font:400 12px Inter,sans-serif;color:var(--text);background:rgba(255,255,255,.03);outline:none}
+.input-row input:focus{border-color:var(--accent)}
+.input-row button{padding:9px 14px;border:none;border-radius:8px;font:700 11px Inter,sans-serif;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;cursor:pointer;transition:.15s}
+.input-row button:hover{opacity:.9}
+
+/* Empty state */
+.empty-state{text-align:center;padding:50px 20px;color:var(--text3)}
+.empty-state svg{margin-bottom:14px;opacity:.5}
+.empty-state h3{font:600 15px Inter,sans-serif;color:var(--text2);margin-bottom:8px}
+.empty-state p{font:400 12px/1.6 Inter,sans-serif;max-width:280px;margin:0 auto}
+
+/* Session picker */
+.session-item{padding:12px 14px;margin-bottom:8px;border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,.02);cursor:pointer;transition:border-color .15s}
+.session-item:hover{border-color:var(--accent)}
+.session-item h4{font:600 13px Inter,sans-serif;color:var(--text)}
+.session-item p{font:400 11px Inter,sans-serif;color:var(--text3);margin-top:3px}
+
+/* Spinner */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.spinner{display:inline-block;border:2px solid rgba(124,58,237,.2);border-top-color:var(--accent2);border-radius:50%;animation:spin .6s linear infinite}
+</style>
+</head>
+<body>
+<!-- Draggable titlebar -->
+<div class="titlebar">
+  <h1><span class="dot"></span> Smart Canvas</h1>
+  <div class="titlebar-controls">
+    <span class="status off" id="ws-status">Offline</span>
+    <button class="light-btn" id="light-toggle" onclick="toggleLightMode()">Light</button>
+    <label>
+      <input type="range" id="opacity-slider" min="30" max="100" value="100">
+    </label>
+  </div>
+</div>
+
+<div class="canvas-wrap">
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
+    <button class="filter-btn" id="filter-generated" onclick="setFilter('generated')">AI Generated</button>
+  </div>
+  <!-- Answer feed — scrollable -->
+  <div class="feed-wrap" id="feed">
+    <div class="empty-state" id="empty-state">
+      <svg width="40" height="40" fill="none" stroke="#7c3aed" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      <h3>Smart Canvas Ready</h3>
+      <p>Go Live on xhire.app, then answers stream here automatically.</p>
+    </div>
+  </div>
+
+  <!-- Bottom bar — button + input together -->
+  <div class="bottom-bar">
+    <button class="wsay-btn" id="btn-wsay" onclick="whatShouldISay()">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      What should I say?
+    </button>
+    <div class="assist-row">
+      <button class="assist-btn" id="btn-assist" onclick="screenAssist()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Assist
+      </button>
+      <button class="assist-btn" id="btn-record" onclick="toggleRecording()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+        Record
+      </button>
+      <button class="assist-btn" id="btn-switch" onclick="switchScreen()" style="display:none;flex:0;padding:8px 10px" title="Switch screen">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>
+      </button>
+    </div>
+    <div class="input-row">
+      <input type="text" id="q-input" placeholder="Type a question..." onkeydown="if(event.key==='Enter')sendQuestion()">
+      <button onclick="sendQuestion()">Ask</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== STATE =====
+var TOKEN = null;
+var SESSION_ID = null;
+var ws = null;
+var cards = [];
+var reconnectTimer = null;
+var reconnectAttempts = 0;
+var activeFilter = 'all'; // 'all' or 'generated'
+var CARD_CLEANUP_MS = 180000; // 3 minutes for matched card auto-removal
+var pendingManualScroll = false; // true when user triggered a manual action, consume on next card
+
+// Parse URL params
+var params = new URLSearchParams(location.search);
+TOKEN = params.get('token') || sessionStorage.getItem('token') || localStorage.getItem('token');
+SESSION_ID = params.get('session');
+
+// ===== HELPERS =====
+function $(id) { return document.getElementById(id); }
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function setStatus(text, state) {
+  var el = $('ws-status');
+  el.textContent = text;
+  el.className = 'status ' + (state || 'off');
+}
+
+// ===== OPACITY — sends to Electron main process =====
+$('opacity-slider').oninput = function() {
+  if (window.electronAPI && window.electronAPI.setOpacity) {
+    window.electronAPI.setOpacity(this.value / 100);
+  } else {
+    document.body.style.opacity = this.value / 100;
+  }
+};
+
+// ===== WEBSOCKET =====
+function connect() {
+  if (!TOKEN || !SESSION_ID) {
+    setStatus('No session', 'off');
+    return;
+  }
+
+  setStatus('Connecting...', 'wait');
+
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host);
+
+  ws.onopen = function() {
+    setStatus('Live', 'on');
+    reconnectAttempts = 0;
+    // Send start with mode:'canvas' — server will NOT open Deepgram, just register as listener
+    ws.send(JSON.stringify({
+      type: 'start',
+      token: TOKEN,
+      sessionId: parseInt(SESSION_ID),
+      mode: 'canvas'
+    }));
+  };
+
+  ws.onclose = function() {
+    setStatus('Disconnected', 'off');
+    ws = null;
+    // Auto-reconnect with backoff
+    reconnectAttempts++;
+    var delay = Math.min(3000 * reconnectAttempts, 15000);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, delay);
+  };
+
+  ws.onerror = function() {
+    setStatus('Error', 'off');
+  };
+
+  ws.onmessage = function(evt) {
+    var msg;
+    try { msg = JSON.parse(evt.data); } catch(e) { return; }
+
+    if (msg.type === 'match') {
+      var scroll = pendingManualScroll; pendingManualScroll = false;
+      addCard(msg.questionId, msg.questionText, msg.answer || '', 'matched', msg.similarity, false, scroll);
+    }
+    else if (msg.type === 'new_question') {
+      var scroll = pendingManualScroll; pendingManualScroll = false;
+      addCard(msg.questionId, msg.questionText, '', 'new', 0, !!msg.generated, scroll);
+    }
+    else if (msg.type === 'live_answer') {
+      addCard(msg.questionId, msg.questionText, msg.answer, msg.isNew ? 'new' : 'matched', 0, msg.isNew, false);
+    }
+    else if (msg.type === 'question_detected') {
+      // Flash border on the button
+      var btn = $('btn-wsay');
+      btn.style.borderColor = '#34D399';
+      setTimeout(function() { btn.style.borderColor = ''; }, 1000);
+    }
+    else if (msg.type === 'screen_assist') {
+      addCard(msg.questionId, msg.questionText || 'Screen Assist', msg.answer || '', 'screen', 0, false, true);
+    }
+    else if (msg.type === 'status') {
+      // Server status message (e.g. "Canvas connected")
+      console.log('[Server]', msg.message);
+    }
+    else if (msg.type === 'error') {
+      console.warn('[WS Error]', msg.message);
+    }
+  };
+}
+
+// ===== CARD RENDERING =====
+function formatAnswer(text) {
+  if (!text) return '<div class="sc-card-loading"><span class="spinner" style="width:14px;height:14px"></span> Generating answer...</div>';
+  var html = '';
+  var inCode = false;
+  var codeLines = [];
+  var lines = text.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (/^```/.test(line.trim())) {
+      if (!inCode) { inCode = true; codeLines = []; }
+      else { html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; }
+      continue;
+    }
+    if (inCode) { codeLines.push(line); continue; }
+    var processed = esc(line).replace(/`([^`]+)`/g, '<code>$1</code>');
+    if (line.trim() === '') { html += '<div class="sc-blank"></div>'; }
+    else { html += '<div class="sc-line">' + processed + '</div>'; }
+  }
+  if (inCode && codeLines.length) { html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>'; }
+  return html;
+}
+
+function addCard(id, question, answer, source, similarity, isGenerated, shouldScroll) {
+  // Update existing card if already shown
+  var existing = cards.find(function(c) { return c.id === id; });
+  if (existing) {
+    existing.answer = answer;
+    var el = document.getElementById('card-' + id);
+    if (el) {
+      var aEl = el.querySelector('.sc-card-a');
+      if (aEl) aEl.innerHTML = formatAnswer(answer);
+    }
+    return;
+  }
+
+  cards.push({ id: id, question: question, answer: answer, source: source, similarity: similarity, generated: !!isGenerated, ts: Date.now() });
+
+  var tagClass, tagText;
+  if (source === 'screen') {
+    tagClass = 'screen';
+    tagText = 'Screen';
+  } else if (isGenerated) {
+    tagClass = 'generated';
+    tagText = 'AI Generated';
+  } else if (source === 'matched') {
+    tagClass = 'matched';
+    tagText = 'Prepped ' + (similarity || '') + '%';
+  } else if (source === 'manual') {
+    tagClass = 'manual';
+    tagText = 'Asked';
+  } else {
+    tagClass = 'new';
+    tagText = 'New';
+  }
+
+  var card = document.createElement('div');
+  card.className = 'sc-card';
+  card.id = 'card-' + id;
+  card.dataset.source = isGenerated ? 'generated' : source;
+
+  // Dismiss button for generated cards; matched cards auto-remove
+  var dismissHtml = isGenerated ? '<button class="card-dismiss" onclick="dismissCard(\'' + id + '\')" title="Dismiss">&times;</button>' : '';
+
+  card.innerHTML = dismissHtml + '<div class="sc-card-q"><span class="sc-tag ' + tagClass + '">' + tagText + '</span><div class="sc-q-text">' + esc(question) + '</div></div><div class="sc-card-a">' + formatAnswer(answer) + '</div>';
+
+  // Apply current filter visibility
+  if (activeFilter === 'generated' && !isGenerated) {
+    card.style.display = 'none';
+  }
+
+  var feed = $('feed');
+  var emptyEl = $('empty-state');
+  if (emptyEl) emptyEl.remove();
+  feed.appendChild(card);
+
+  // Only scroll for manual actions (What should I say, typed question), not auto-detected
+  if (shouldScroll) {
+    setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+  }
+
+  // Auto-cleanup matched/bank cards after 3 minutes — generated cards persist
+  if (!isGenerated && source === 'matched') {
+    setTimeout(function() {
+      var el = document.getElementById('card-' + id);
+      if (el) {
+        el.classList.add('fade-out');
+        setTimeout(function() { el.remove(); }, 400);
+      }
+      // Remove from cards array too
+      cards = cards.filter(function(c) { return c.id !== id; });
+    }, CARD_CLEANUP_MS);
+  }
+}
+
+function dismissCard(id) {
+  var el = document.getElementById('card-' + id);
+  if (el) {
+    el.classList.add('fade-out');
+    setTimeout(function() { el.remove(); }, 400);
+  }
+  cards = cards.filter(function(c) { return c.id !== id; });
+}
+
+function setFilter(filter) {
+  activeFilter = filter;
+  $('filter-all').className = 'filter-btn' + (filter === 'all' ? ' active' : '');
+  $('filter-generated').className = 'filter-btn' + (filter === 'generated' ? ' active' : '');
+  // Show/hide cards based on filter
+  cards.forEach(function(c) {
+    var el = document.getElementById('card-' + c.id);
+    if (!el) return;
+    if (filter === 'generated' && !c.generated) {
+      el.style.display = 'none';
+    } else {
+      el.style.display = '';
+    }
+  });
+}
+
+// ===== ACTIONS =====
+var wsayDefaultHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> What should I say?';
+
+function whatShouldISay() {
+  var btn = $('btn-wsay');
+  if (!btn || btn.classList.contains('loading')) return;
+  btn.classList.add('loading');
+  btn.innerHTML = '<span class="spinner" style="width:16px;height:16px"></span> Analyzing...';
+  setTimeout(function() {
+    btn.classList.remove('loading');
+    btn.innerHTML = wsayDefaultHTML;
+  }, 3000);
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    pendingManualScroll = true; // Manual action — scroll to result
+    ws.send(JSON.stringify({ type: 'what_should_i_say' }));
+  } else {
+    btn.classList.remove('loading');
+    btn.innerHTML = wsayDefaultHTML;
+    setStatus('Not live', 'off');
+  }
+}
+
+function sendQuestion() {
+  var input = $('q-input');
+  var text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    pendingManualScroll = true; // Manual action — scroll to result
+    ws.send(JSON.stringify({ type: 'canvas_question', text: text }));
+  } else {
+    addCard('manual-' + Date.now(), text, '', 'manual', 0, false, true);
+  }
+}
+
+// ===== SCREEN ASSIST =====
+var screenStream = null;
+var recordingInterval = null;
+var isRecording = false;
+var RECORD_INTERVAL_MS = 8000;
+
+var assistDefaultHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Assist';
+var recordDefaultHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg> Record';
+
+async function getScreenStream() {
+  // Reuse existing stream if still active with a live video track
+  if (screenStream && screenStream.active) {
+    var tracks = screenStream.getVideoTracks();
+    if (tracks.length && tracks[0].readyState === 'live') return screenStream;
+  }
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    screenStream.getVideoTracks()[0].addEventListener('ended', function() {
+      stopRecording();
+      screenStream = null;
+      $('btn-switch').style.display = 'none';
+    });
+    // Show switch button now that we have a stream
+    $('btn-switch').style.display = '';
+    return screenStream;
+  } catch(e) {
+    console.warn('Screen capture denied:', e);
+    return null;
+  }
+}
+
+async function switchScreen() {
+  // Stop current stream
+  if (screenStream) {
+    screenStream.getTracks().forEach(function(t) { t.stop(); });
+    screenStream = null;
+  }
+  // Stop recording if active
+  if (isRecording) stopRecording();
+  // Prompt for new screen
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    screenStream.getVideoTracks()[0].addEventListener('ended', function() {
+      stopRecording();
+      screenStream = null;
+      $('btn-switch').style.display = 'none';
+    });
+    $('btn-switch').style.display = '';
+  } catch(e) {
+    console.warn('Switch screen denied:', e);
+    $('btn-switch').style.display = 'none';
+  }
+}
+
+function captureFrame(stream) {
+  return new Promise(function(resolve, reject) {
+    var track = stream.getVideoTracks()[0];
+    if (!track || track.readyState !== 'live') { reject(new Error('Track not live')); return; }
+    var video = document.createElement('video');
+    video.srcObject = stream;
+    video.onloadedmetadata = function() {
+      video.play().then(function() {
+        // Resize to max 1280px wide for speed — full res is unnecessary
+        var MAX_W = 1280;
+        var w = video.videoWidth;
+        var h = video.videoHeight;
+        if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+        video.pause();
+        video.srcObject = null;
+        // JPEG at 70% quality — much smaller than PNG
+        var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        var base64 = dataUrl.split(',')[1];
+        resolve(base64);
+      }).catch(reject);
+    };
+    video.onerror = reject;
+  });
+}
+
+async function sendScreenCapture(base64) {
+  if (!TOKEN || !SESSION_ID) return;
+  var cardId = 'screen-' + Date.now();
+  addCard(cardId, 'Analyzing screen...', '', 'screen', 0, false, true);
+  try {
+    var r = await fetch('/api/sessions/' + SESSION_ID + '/screen-assist', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64 })
+    });
+    if (!r.ok) throw new Error('Server error ' + r.status);
+    var data = await r.json();
+    // Update the placeholder card with real answer
+    var el = document.getElementById('card-' + cardId);
+    if (el) {
+      var qEl = el.querySelector('.sc-q-text');
+      if (qEl && data.questionText) qEl.textContent = data.questionText;
+      var aEl = el.querySelector('.sc-card-a');
+      if (aEl) aEl.innerHTML = formatAnswer(data.answer || 'No answer generated');
+    }
+    // Update cards array
+    var c = cards.find(function(x) { return x.id === cardId; });
+    if (c) { c.answer = data.answer; if (data.questionText) c.question = data.questionText; }
+  } catch(e) {
+    var el = document.getElementById('card-' + cardId);
+    if (el) {
+      var aEl = el.querySelector('.sc-card-a');
+      if (aEl) aEl.innerHTML = '<div class="sc-line" style="color:#F87171">Error: ' + esc(e.message) + '</div>';
+    }
+  }
+}
+
+async function screenAssist() {
+  var btn = $('btn-assist');
+  if (btn.classList.contains('loading')) return;
+  btn.classList.add('loading');
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Capturing...';
+  try {
+    var stream = await getScreenStream();
+    if (!stream) { btn.classList.remove('loading'); btn.innerHTML = assistDefaultHTML; return; }
+    var base64 = await captureFrame(stream);
+    // Don't stop stream — user might want to record next
+    await sendScreenCapture(base64);
+  } catch(e) {
+    console.warn('Screen assist error:', e);
+  }
+  btn.classList.remove('loading');
+  btn.innerHTML = assistDefaultHTML;
+}
+
+function toggleRecording() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+}
+
+async function startRecording() {
+  var btn = $('btn-record');
+  var stream = await getScreenStream();
+  if (!stream) return;
+  isRecording = true;
+  btn.classList.add('recording');
+  btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor"/></svg> Stop';
+  // Capture immediately, then every 8s
+  try {
+    var base64 = await captureFrame(stream);
+    await sendScreenCapture(base64);
+  } catch(e) { console.warn('Initial capture failed:', e); }
+  recordingInterval = setInterval(async function() {
+    if (!screenStream || !screenStream.active) { stopRecording(); return; }
+    try {
+      var base64 = await captureFrame(screenStream);
+      await sendScreenCapture(base64);
+    } catch(e) { console.warn('Recording capture failed:', e); stopRecording(); }
+  }, RECORD_INTERVAL_MS);
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recordingInterval) { clearInterval(recordingInterval); recordingInterval = null; }
+  var btn = $('btn-record');
+  if (btn) { btn.classList.remove('recording'); btn.innerHTML = recordDefaultHTML; }
+  // Keep stream alive for quick re-use — it dies when user stops sharing
+}
+
+// ===== LIGHT MODE =====
+var isLightMode = false;
+function toggleLightMode() {
+  isLightMode = !isLightMode;
+  document.body.classList.toggle('light-mode', isLightMode);
+  document.documentElement.classList.toggle('light-mode', isLightMode);
+  var btn = $('light-toggle');
+  if (btn) {
+    btn.textContent = isLightMode ? 'Dark' : 'Light';
+    if (isLightMode) { btn.style.background = 'rgba(0,0,0,.06)'; btn.style.color = '#334155'; btn.style.borderColor = 'rgba(0,0,0,.15)'; }
+    else { btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+  }
+}
+
+// ===== SESSION PICKER =====
+async function loadSessions() {
+  if (!TOKEN) {
+    $('feed').innerHTML = '<div class="empty-state"><h3>Not logged in</h3><p>Open xhire.app, log in, go live, then click "Desktop" in the Smart Canvas header.</p></div>';
+    return;
+  }
+  if (SESSION_ID) { connect(); return; }
+
+  // Fetch sessions
+  $('feed').innerHTML = '<div class="empty-state"><span class="spinner" style="width:20px;height:20px"></span><h3 style="margin-top:12px">Loading sessions...</h3></div>';
+  try {
+    var r = await fetch('/api/sessions', { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+    if (!r.ok) throw new Error('Auth failed');
+    var sessions = await r.json();
+    if (!sessions.length) {
+      $('feed').innerHTML = '<div class="empty-state"><h3>No sessions</h3><p>Create a session on xhire.app first.</p></div>';
+      return;
+    }
+    var html = '<div style="padding:4px"><div style="font:700 12px Inter,sans-serif;color:#a78bfa;margin-bottom:10px;padding:0 2px">Select a session:</div>';
+    sessions.forEach(function(s) {
+      html += '<div class="session-item" onclick="pickSession(' + s.id + ')">'
+        + '<h4>' + esc(s.company || 'Untitled') + ' — ' + esc(s.role || '') + '</h4>'
+        + '<p>' + (s.question_count || 0) + ' questions</p>'
+        + '</div>';
+    });
+    html += '</div>';
+    $('feed').innerHTML = html;
+  } catch(e) {
+    $('feed').innerHTML = '<div class="empty-state"><h3>Connection error</h3><p>' + esc(e.message || 'Make sure xhire.app is running.') + '</p></div>';
+  }
+}
+
+function pickSession(id) {
+  SESSION_ID = id;
+  var url = new URL(location.href);
+  url.searchParams.set('session', id);
+  history.replaceState(null, '', url.toString());
+  $('feed').innerHTML = '<div class="empty-state" id="empty-state"><h3>Smart Canvas Ready</h3><p>Go Live on xhire.app, then answers stream here automatically.</p></div>';
+  connect();
+}
+
+// ===== INIT =====
+loadSessions();
+</script>
+</body>
+</html>
