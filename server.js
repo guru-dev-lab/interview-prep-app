@@ -2112,11 +2112,11 @@ async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 25
 }
 
 // Match + verify + respond — async with Haiku AI verification
-async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild) {
+async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter) {
   const startMs = Date.now();
   const q = cleanQuestionText(utterance.trim());
-  if (!q || q.length < 10) return lastMatchedQId;
-  if (!isQuestion(q)) return lastMatchedQId;
+  if (!q || q.length < 5) return lastMatchedQId;
+  if (!skipFilter && !isQuestion(q)) return lastMatchedQId;
 
   // Get top 3 keyword candidates, excluding already-matched questions
   const topMatches = findTopMatches(q, sessionQuestions, questionIndex, 3)
@@ -2481,7 +2481,7 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify(qdMsg3));
         broadcastToSession(sessionId, qdMsg3, ws);
         const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-        fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx).then(newLastId => {
+        fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, true).then(newLastId => {
           if (newLastId) lastMatchedQId = newLastId;
         });
       }
