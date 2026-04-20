@@ -2377,6 +2377,13 @@ wss.on('connection', (ws) => {
     try {
       const msg = JSON.parse(rawData.toString());
 
+      // Volume-based self-voice detection: frontend reports when user is speaking
+      if (msg.type === 'user_speaking') {
+        userIsSpeaking = msg.speaking;
+        if (!msg.speaking) userStoppedSpeakingAt = Date.now();
+        return;
+      }
+
       if (msg.type === 'start') {
         isCanvasMode = msg.mode === 'canvas';
         console.log('[WS] Start request received for session:', msg.sessionId, isCanvasMode ? '(CANVAS MODE)' : '');
@@ -2452,10 +2459,25 @@ wss.on('connection', (ws) => {
         let recentDetectedQs = []; // last 5 detected questions for fuzzy de-dup
         let aiExtractTimer = null; // debounce timer — wait for speech to settle before extracting
         const AI_EXTRACT_DELAY = 2000; // 2s after last speechFinal before AI fires
+        let userIsSpeaking = false; // Volume-based: true when user is talking into mic
+        let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
+        const USER_SPEECH_GUARD = 4000; // 4s after user stops speaking before allowing detection
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
           if (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN) return;
+
+          // VOLUME GUARD: If user is currently speaking or JUST stopped speaking,
+          // skip extraction — this is the user's answer, not the interviewer's question.
+          if (userIsSpeaking) {
+            console.log('[AI Auto-Detect] Skipping — user is speaking (volume high)');
+            return;
+          }
+          if (Date.now() - userStoppedSpeakingAt < USER_SPEECH_GUARD) {
+            console.log('[AI Auto-Detect] Skipping — user just stopped speaking (' + Math.round((Date.now() - userStoppedSpeakingAt)/1000) + 's ago)');
+            return;
+          }
+
           const recent = transcript.slice(-4);
           if (recent.length < 1) return;
 
@@ -2463,6 +2485,14 @@ wss.on('connection', (ws) => {
           // If the last utterance is clearly the candidate speaking (starts with "I", "We", "My", etc.),
           // skip AI extraction entirely — saves tokens and prevents false positives.
           const lastUtterance = recent[recent.length - 1].text;
+
+          // LENGTH GUARD: Very long utterances (50+ words) are almost certainly the candidate
+          // giving an extended answer, not the interviewer asking a question.
+          const wordCount = lastUtterance.trim().split(/\s+/).length;
+          if (wordCount > 50) {
+            console.log('[AI Auto-Detect] Pre-filter: too long (' + wordCount + ' words), likely candidate answer');
+            return;
+          }
           const lastLow = lastUtterance.trim().toLowerCase();
           // Reject if it starts with obvious candidate self-reference
           if (/^(i |i'm |i've |i'd |i'll |i was |i did |i do |i think |i would |i could |i used |i built |i have |i had |i made |i worked |i helped |i started |i led |i created |i developed |i analyzed |i handled |we |we're |we've |we had |we did |we used |we built |my |at my |in my |so i |yeah i |and i |yeah |yes |no |okay |sure |right |exactly |absolutely |definitely |great |good |thanks |sorry |so basically |um |uh |well |hmm|actually |basically |just |and then |so then |after that |from there |the way i |the reason |what happened was |what we did )/.test(lastLow)) {

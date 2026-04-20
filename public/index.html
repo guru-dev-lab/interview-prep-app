@@ -2002,14 +2002,43 @@ async function toggleLiveMode() {
   }
 }
 
+var userSpeakingNow = false;
+var volumeReportTimer = null;
+
 function startAudioProcessing(stream, channel) {
   var audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   var source = audioCtx.createMediaStreamSource(stream);
   var processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
+  // Volume threshold: user speaking into mic is LOUD (typically RMS > 0.02-0.04).
+  // Interviewer voice from speakers is much quieter (RMS < 0.01).
+  var LOUD_THRESHOLD = 0.015;
+  var loudFrames = 0;
+  var quietFrames = 0;
+
   processor.onaudioprocess = function(e) {
     if (!liveActive || !liveWS || liveWS.readyState !== WebSocket.OPEN) return;
     var inputData = e.inputBuffer.getChannelData(0);
+
+    // Compute RMS volume
+    var sum = 0;
+    for (var i = 0; i < inputData.length; i++) { sum += inputData[i] * inputData[i]; }
+    var rms = Math.sqrt(sum / inputData.length);
+
+    // Track consecutive loud/quiet frames
+    if (rms > LOUD_THRESHOLD) { loudFrames++; quietFrames = 0; }
+    else { quietFrames++; loudFrames = 0; }
+
+    // User is speaking if 3+ consecutive loud frames (~0.75s of loud audio)
+    var wasSpeaking = userSpeakingNow;
+    if (loudFrames >= 3) userSpeakingNow = true;
+    if (quietFrames >= 6) userSpeakingNow = false; // ~1.5s of quiet = stopped talking
+
+    // Notify server on state changes (throttled)
+    if (userSpeakingNow !== wasSpeaking) {
+      liveWS.send(JSON.stringify({ type: 'user_speaking', speaking: userSpeakingNow }));
+    }
+
     // Convert float32 to int16
     var pcm16 = new Int16Array(inputData.length);
     for (var i = 0; i < inputData.length; i++) {
