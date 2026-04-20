@@ -2529,13 +2529,15 @@ wss.on('connection', (ws) => {
         // Full mode: extract the MOST RECENT question from transcript
         // Priority: current buffer > last 3 lines (newest first)
         const currentBuf = interviewerBuffer.trim();
-        const recentLines = transcript.slice(-5); // last 5 for context
+        const recentLines = transcript.slice(-8); // last 8 for more context
 
         // Build transcript with recency markers — newest at bottom, labeled
         let rawTranscript = '';
-        if (recentLines.length > 0) {
-          rawTranscript = 'OLDER CONTEXT:\n' + recentLines.slice(0, -2).map(t => t.text).join('\n');
-          rawTranscript += '\n\nMOST RECENT:\n' + recentLines.slice(-2).map(t => t.text).join('\n');
+        if (recentLines.length > 3) {
+          rawTranscript = 'OLDER CONTEXT:\n' + recentLines.slice(0, -3).map(t => t.text).join('\n');
+          rawTranscript += '\n\nMOST RECENT:\n' + recentLines.slice(-3).map(t => t.text).join('\n');
+        } else if (recentLines.length > 0) {
+          rawTranscript = 'MOST RECENT:\n' + recentLines.map(t => t.text).join('\n');
         }
         if (currentBuf) {
           rawTranscript += '\n\nRIGHT NOW (currently being spoken):\n' + currentBuf;
@@ -2550,8 +2552,8 @@ wss.on('connection', (ws) => {
         // Step 1: Ask Haiku to extract the LATEST question
         const wsCtx = ws._sessionContext || {};
         const ctxLine = (wsCtx.company || wsCtx.role) ? `\nContext: Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
-        const extractSystem = 'You extract interview questions from conversation transcripts. The transcript has recency markers — ALWAYS pick the question from "RIGHT NOW" or "MOST RECENT" sections. NEVER pick from "OLDER CONTEXT" unless there is no question in the recent sections. Output ONLY the question itself — nothing else. If the speech is a statement, rephrase as the implied question.';
-        const extractUser = ctxLine + rawTranscript + '\n\nWhat is the interviewer CURRENTLY asking? Pick from the most recent speech. Output the question only.';
+        const extractSystem = 'You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler. Output ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
+        const extractUser = ctxLine + rawTranscript + '\n\nFind the LAST question the interviewer asked. Search from the most recent speech backwards. Output the question only.';
 
         let questionText;
         try {
