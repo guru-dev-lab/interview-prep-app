@@ -1813,7 +1813,8 @@ function renderQL(){if(!S)return;
   else if(FI==='Starred')FQ=S.questions.filter(function(q){return q.starred});
   else if(FI==='New')FQ=S.questions.filter(function(q){return q.source==='live'});
   else FQ=S.questions.filter(function(q){return q.type===FI});
-  FQ.sort(function(a,b){return(b.starred?1:0)-(a.starred?1:0)});
+  if(FI==='New'){FQ.sort(function(a,b){return(b.id||0)-(a.id||0)})}
+  else{FQ.sort(function(a,b){return(b.starred?1:0)-(a.starred?1:0)})}
   $('qlist').innerHTML=FQ.map(function(q,i){
     var icons='';if(q.starred)icons+='<span class="qi-star">&#9733;</span>';if(q.answer)icons+='<span class="qi-ck">&#10003;</span>';if(q.source==='live')icons+='<span style="color:#34D399;font:600 9px Inter,sans-serif;margin-left:4px">NEW</span>';
     return'<div class="qi '+(i===CI?'sel':'')+'" onclick="selQ('+i+')"><div class="qi-top"><span class="tag '+q.type+'">'+q.type+'</span>'+icons+'</div><div class="qi-txt">'+esc(q.text)+'</div></div>';
