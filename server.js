@@ -2761,6 +2761,41 @@ wss.on('connection', (ws) => {
         });
       }
 
+      else if (msg.type === 'switch_tab') {
+        // User picked a different tab — reset interviewer Deepgram stream
+        console.log('[Live] Switching tab — resetting interviewer Deepgram stream');
+        if (interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
+          try { interviewerDG.send(JSON.stringify({ type: 'CloseStream' })); interviewerDG.close(); } catch(e) {}
+        }
+        interviewerBuffer = '';
+        // Re-open a fresh Deepgram stream for the new tab audio
+        interviewerDG = openDeepgramStream(
+          (text, isFinal, speechFinal) => {
+            if (!text.trim()) return;
+            if (isFinal) {
+              resetIdleTimer();
+              interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
+              ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
+            } else {
+              const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
+              ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
+            }
+            if (speechFinal && interviewerBuffer.trim()) {
+              const fullUtterance = interviewerBuffer.trim();
+              interviewerBuffer = '';
+              ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true }));
+              transcript.push({ text: fullUtterance, ts: Date.now() });
+              ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+              if (aiExtractTimer) clearTimeout(aiExtractTimer);
+              aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY);
+              setTimeout(() => recentMatchedIds.clear(), 5000);
+            }
+          },
+          (err) => { console.error('[Deepgram Error]', err.message); }
+        );
+        ws.send(JSON.stringify({ type: 'status', message: 'Tab switched — listening on new tab' }));
+      }
+
       else if (msg.type === 'stop') {
         clearTimeout(idleTimer);
         // Close Deepgram streams

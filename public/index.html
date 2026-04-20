@@ -486,6 +486,7 @@ body.canvas-open .prep-content{margin-right:480px}
     <h3><span class="live-dot"></span>LIVE</h3>
     <div class="live-controls">
       <span id="live-status" style="font:400 10px Inter,sans-serif;color:var(--text3)"></span>
+      <button onclick="switchLiveTab()" title="Pick a different tab for interviewer audio">Switch Tab</button>
       <button id="btn-mic-mute" onclick="toggleMicMute()"><span id="mic-mute-text">Mic</span></button>
       <button onclick="stopLiveMode()">End</button>
     </div>
@@ -2083,6 +2084,33 @@ function startAudioProcessing(stream, channel) {
 
   if (channel === 1) liveSystemProcessor = { ctx: audioCtx, proc: processor, src: source };
   else liveMicProcessor = { ctx: audioCtx, proc: processor, src: source };
+}
+
+async function switchLiveTab() {
+  if (!liveActive || !liveWS || liveWS.readyState !== WebSocket.OPEN) { toast('Go Live first', 1); return; }
+  try {
+    toast('Select the correct tab...');
+    var newStream = await navigator.mediaDevices.getDisplayMedia({ video: false, audio: true });
+    newStream.getVideoTracks().forEach(function(t) { t.stop(); });
+    if (newStream.getAudioTracks().length === 0) { toast('No audio track — try again', 1); return; }
+
+    // Stop old system audio processor
+    if (liveSystemProcessor) {
+      try { liveSystemProcessor.proc.disconnect(); liveSystemProcessor.src.disconnect(); liveSystemProcessor.ctx.close(); } catch(e) {}
+      liveSystemProcessor = null;
+    }
+    if (liveSystemStream) { liveSystemStream.getTracks().forEach(function(t) { t.stop(); }); }
+
+    // Tell server to reset the interviewer Deepgram stream
+    liveWS.send(JSON.stringify({ type: 'switch_tab' }));
+
+    // Start new audio processing on channel 1
+    liveSystemStream = newStream;
+    startAudioProcessing(liveSystemStream, 1);
+    toast('Switched to new tab — interviewer audio updated');
+  } catch(e) {
+    toast('Tab switch cancelled', 1);
+  }
 }
 
 function stopLiveMode() {
