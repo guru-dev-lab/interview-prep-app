@@ -1888,7 +1888,7 @@ function isQuestion(text) {
   // Reject self-referencing (interviewee talking about themselves)
   if (/^(i |i'm |i've |i was |i did |i think |i would |i used |i built |i have |so i |yeah i |and i |we |we're |we've |my |at my |in my |let me |if i |when i |that's |that is |it's |it is |this is |there |the |a |an |at |for |from |like |actually |basically |just )/.test(t)) return false;
   // Reject filler/agreement/casual speech
-  if (/^(yeah|yes|no|okay|sure|right|exactly|absolutely|definitely|great|good|thanks|thank you|sorry|so basically|um |uh |well |hmm|oh |and |but |or |also |then |so )/.test(t)) return false;
+  if (/^(yeah|yes|no|okay|sure|right|exactly|absolutely|definitely|great|good|thanks|thank you|sorry|so basically|um |uh |well |hmm|oh |and |but |or |also |then |so |awesome|perfect|wonderful|fantastic|sounds good|makes sense|got it|fair enough|interesting|nice|cool|alright|let's |now |moving on|next |going to )/.test(t)) return false;
   // Reject casual small-talk / pleasantries
   if (/^(how are you|how's it going|how have you been|nice to meet|good to meet|good morning|good afternoon|good evening|hey |hi |hello |what time|what's your time|where are you (based|located|calling|joining)|are you (doing well|ready)|can you hear me|is (my|the) (audio|video|screen)|one (moment|second|sec)|bear with me|sorry about|apologies for)/.test(t)) return false;
   // Reject scheduling/logistics
@@ -2348,7 +2348,7 @@ wss.on('connection', (ws) => {
           try {
             const extracted = await Promise.race([
               callClaude(
-                'You detect interview questions in conversation speech. Given recent transcript lines, determine if the speaker is asking the candidate an interview question. If YES, output ONLY the question text — nothing else, no quotes, no explanation. If NO question is being asked (statements, answers, small talk, filler, incomplete speech, or the candidate talking), output exactly one word: NONE. Never explain your reasoning. Never add commentary. One line only.',
+                'You detect interview questions from an interviewer in live speech transcripts. Be VERY strict — only return a question if the interviewer is clearly asking the candidate a substantive interview question (behavioral, technical, situational, or about their experience). Output NONE for: statements, the candidate\'s own speech, small talk, pleasantries ("how are you", "nice to meet you"), transitions ("let me move on", "let\'s talk about"), filler, partial/incomplete sentences, or anything that isn\'t a direct question to the candidate. If YES, output ONLY the clean question text — nothing else, no quotes, no explanation. If NO, output exactly: NONE',
                 ctxLine + 'Recent speech:\n' + recentText + '\n\nOutput the interview question or NONE:',
                 80, MODEL_HAIKU
               ),
@@ -2362,6 +2362,10 @@ wss.on('connection', (ws) => {
             const firstLine = raw.split(/\n/)[0].trim();
             if (!firstLine || firstLine.length < 10) return;
             const q = cleanQuestionText(firstLine);
+            // Extra guard: must have at least 5 words and pass isQuestion or contain a ?
+            const qWords = q.trim().split(/\s+/).length;
+            if (qWords < 5) return;
+            if (!/\?/.test(q) && !isQuestion(q)) return;
 
             // Don't re-fire if this is the same or a subset of a recently detected question
             const qLow = q.toLowerCase();
