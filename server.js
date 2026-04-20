@@ -1876,7 +1876,24 @@ const MATCH_THRESHOLD = 0.45; // Raised from 0.30 — prevents weak keyword over
 
 // Strip interviewer preambles from question text: "The next question is, explain X" → "explain X"
 function cleanQuestionText(text) {
-  return text.replace(/^(the next question is[,:]?\s*|okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|let's move on[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*|next up[,:]?\s*|let me ask you[,:]?\s*|i('d| would) like to ask[,:]?\s*|here's (a|another) question[,:]?\s*)/i, '').trim();
+  var t = text.trim();
+  // If the buffer has a sentence before the question, extract just the question part.
+  // Look for question openers after a period, comma, or transition phrase.
+  var qOpener = /(?:^|[.!]\s+|[,;]\s*(?:the next question is[,:]?\s*|okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|let's move on[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*|next up[,:]?\s*|let me ask you[,:]?\s*|i(?:'d| would) like to ask[,:]?\s*|here's (?:a|another) question[,:]?\s*|and\s+|but\s+))(what|how|why|when|where|who|which|can you|could you|would you|do you|did you|have you|are you|were you|is there|tell me|describe|explain|walk me through|give me)/gi;
+  var lastMatch = null;
+  var m;
+  while ((m = qOpener.exec(t)) !== null) {
+    lastMatch = m;
+  }
+  if (lastMatch) {
+    // Extract from the question word onward
+    var idx = lastMatch.index + lastMatch[1].length;
+    t = t.substring(idx).trim();
+  } else {
+    // Fallback: strip leading transition phrases only
+    t = t.replace(/^(the next question is[,:]?\s*|okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|let's move on[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*|next up[,:]?\s*|let me ask you[,:]?\s*|i(?:'d| would) like to ask[,:]?\s*|here's (?:a|another) question[,:]?\s*)/i, '').trim();
+  }
+  return t;
 }
 
 function isQuestion(text) {
@@ -2362,10 +2379,6 @@ wss.on('connection', (ws) => {
             const firstLine = raw.split(/\n/)[0].trim();
             if (!firstLine || firstLine.length < 10) return;
             const q = cleanQuestionText(firstLine);
-            // Extra guard: must have at least 5 words and pass isQuestion or contain a ?
-            const qWords = q.trim().split(/\s+/).length;
-            if (qWords < 5) return;
-            if (!/\?/.test(q) && !isQuestion(q)) return;
 
             // Don't re-fire if this is the same or a subset of a recently detected question
             const qLow = q.toLowerCase();
