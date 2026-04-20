@@ -1932,16 +1932,40 @@ async function toggleLiveMode() {
   if (!S) { toast('Open a session first', 1); return; }
 
   try {
-    // Mic only — no screen sharing. Captures everything through your mic:
-    // interviewer voice from speakers + your voice.
-    // echoCancellation OFF so interviewer audio from speakers comes through clearly.
-    toast('Requesting microphone access...');
+    // === TWO SEPARATE AUDIO STREAMS ===
+    // 1. System/tab audio (getDisplayMedia) = INTERVIEWER ONLY → question detection
+    // 2. Mic audio (getUserMedia) = YOUR VOICE ONLY → transcript display, NO question detection
+    // This is the Cluely approach — clean separation at the source.
+
+    // Step 1: Get system/tab audio — this captures the interviewer's voice
+    toast('Select your Google Meet tab to capture interviewer audio...');
+    try {
+      liveSystemStream = await navigator.mediaDevices.getDisplayMedia({
+        video: false,  // We don't need video
+        audio: true    // System/tab audio = interviewer
+      });
+      // If getDisplayMedia forces video, just ignore the video track
+      liveSystemStream.getVideoTracks().forEach(function(t) { t.stop(); });
+      // Check we actually got audio
+      if (liveSystemStream.getAudioTracks().length === 0) {
+        toast('No audio track captured — make sure you share the tab with audio', 1);
+        liveSystemStream = null;
+        return;
+      }
+    } catch (e) {
+      toast('Tab audio sharing cancelled — needed to hear the interviewer', 1);
+      return;
+    }
+
+    // Step 2: Get mic audio — this is YOUR voice for transcript
+    toast('Getting microphone...');
     try {
       liveMicStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true }
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
     } catch (e) {
       toast('Microphone permission denied', 1);
+      if (liveSystemStream) { liveSystemStream.getTracks().forEach(function(t) { t.stop(); }); liveSystemStream = null; }
       return;
     }
 
@@ -1950,7 +1974,7 @@ async function toggleLiveMode() {
     liveWS = new WebSocket(wsProto + '//' + location.host);
 
     liveWS.onopen = function() {
-      liveWS.send(JSON.stringify({ type: 'start', token: TOKEN, sessionId: S.id }));
+      liveWS.send(JSON.stringify({ type: 'start', token: TOKEN, sessionId: S.id, dualStream: true }));
     };
 
     liveWS.onmessage = function(e) {
@@ -1974,11 +1998,13 @@ async function toggleLiveMode() {
       stopLiveMode();
     };
 
-    // Single mic stream. Server uses AI pre-filter (Haiku) to determine if
-    // utterance is an interviewer question before triggering auto-detect.
+    // Start both streams when connected
     liveWS.addEventListener('open', function() {
-      console.log('[Live WS] connected, mic → AI-filtered stream');
-      startAudioProcessing(liveMicStream, 1);
+      console.log('[Live WS] connected — dual stream mode');
+      console.log('[Live] Channel 1: system/tab audio (interviewer) → question detection');
+      console.log('[Live] Channel 2: mic audio (you) → transcript only');
+      startAudioProcessing(liveSystemStream, 1);  // Interviewer → question detection
+      startAudioProcessing(liveMicStream, 2);      // Your voice → transcript only
     });
 
     liveActive = true;
@@ -1991,7 +2017,7 @@ async function toggleLiveMode() {
     $('btn-live-dot').style.background = '#fff';
     $('btn-live-dot').style.animation = 'livePulse 1.5s ease infinite';
     $('live-panel').classList.add('active');
-    $('live-transcript').innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font:400 13px Inter,sans-serif">Connecting — listening for interview questions...</div>';
+    $('live-transcript').innerHTML = '<div style="text-align:center;color:var(--text3);padding:20px;font:400 13px Inter,sans-serif">Listening — interviewer audio captured from tab, your mic for transcript...</div>';
     $('live-status').textContent = 'Starting...';
     // Show Smart Canvas
     showSmartCanvas();
@@ -2201,7 +2227,7 @@ function handleLiveMessage(msg) {
       if (msg.text.trim().split(/\s+/).length < 3) { box.scrollTop = box.scrollHeight; return; }
       var line = document.createElement('div');
       line.className = 'lt-line lt-clickable';
-      line.innerHTML = '<span class="lt-speaker interviewer">Live</span><span class="lt-text">' + esc(msg.text) + '</span>';
+      line.innerHTML = '<span class="lt-speaker interviewer">Interviewer</span><span class="lt-text">' + esc(msg.text) + '</span>';
       line.title = 'Click to find matching answer';
       line.onclick = function() { manualMatchQuestion(msg.text); };
       box.appendChild(line);
@@ -2210,7 +2236,7 @@ function handleLiveMessage(msg) {
       if (!existing) {
         existing = document.createElement('div');
         existing.className = 'lt-line lt-interim';
-        existing.innerHTML = '<span class="lt-speaker interviewer">Live</span><span class="lt-text" style="opacity:.5"></span>';
+        existing.innerHTML = '<span class="lt-speaker interviewer">Interviewer</span><span class="lt-text" style="opacity:.5"></span>';
         box.appendChild(existing);
       }
       existing.querySelector('.lt-text').textContent = msg.text;
@@ -2222,10 +2248,32 @@ function handleLiveMessage(msg) {
       if (scTx) {
         var txLine = document.createElement('div');
         txLine.style.cssText = 'margin-bottom:3px;color:var(--text3)';
-        txLine.innerHTML = '<span style="font-weight:700;color:#60A5FA;margin-right:4px">Live:</span>' + esc(msg.text);
+        txLine.innerHTML = '<span style="font-weight:700;color:#60A5FA;margin-right:4px">Interviewer:</span>' + esc(msg.text);
         scTx.appendChild(txLine);
         while (scTx.children.length > 50) scTx.removeChild(scTx.firstChild);
         scTx.scrollTop = scTx.scrollHeight;
+      }
+    }
+  }
+
+  else if (msg.type === 'user_transcript') {
+    // User's own voice — display in transcript but NOT clickable (no question detection)
+    if (msg.isFinal && msg.text.trim().split(/\s+/).length >= 3) {
+      var uLine = document.createElement('div');
+      uLine.className = 'lt-line';
+      uLine.innerHTML = '<span class="lt-speaker" style="color:#34D399">You</span><span class="lt-text" style="opacity:.6">' + esc(msg.text) + '</span>';
+      box.appendChild(uLine);
+      while (box.children.length > 80) box.removeChild(box.firstChild);
+      box.scrollTop = box.scrollHeight;
+      // Mirror to canvas transcript
+      var scTx2 = $('sc-transcript-feed');
+      if (scTx2) {
+        var txLine2 = document.createElement('div');
+        txLine2.style.cssText = 'margin-bottom:3px;color:var(--text4);opacity:.6';
+        txLine2.innerHTML = '<span style="font-weight:700;color:#34D399;margin-right:4px">You:</span>' + esc(msg.text);
+        scTx2.appendChild(txLine2);
+        while (scTx2.children.length > 50) scTx2.removeChild(scTx2.firstChild);
+        scTx2.scrollTop = scTx2.scrollHeight;
       }
     }
   }

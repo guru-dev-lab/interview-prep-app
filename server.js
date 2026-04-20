@@ -2602,9 +2602,39 @@ wss.on('connection', (ws) => {
           }
         );
 
-        userDG = null;
+        // Channel 2: User's mic → transcript display only, NO question detection
+        // This stream lets us show what the user is saying in the transcript
+        // but NEVER triggers question matching or AI extraction.
+        if (msg.dualStream) {
+          let userBuffer = '';
+          userDG = openDeepgramStream(
+            (text, isFinal, speechFinal) => {
+              if (!text.trim()) return;
+              if (isFinal) {
+                userBuffer += (userBuffer ? ' ' : '') + text.trim();
+              }
+              if (speechFinal && userBuffer.trim()) {
+                const fullUtterance = userBuffer.trim();
+                userBuffer = '';
+                // Send as user_transcript — distinct type so frontend can style differently
+                ws.send(JSON.stringify({ type: 'user_transcript', text: fullUtterance, isFinal: true }));
+                broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true }, ws);
+                // Also add to main transcript for "What should I say" context, tagged as user
+                transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
+                ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+              }
+            },
+            (err) => {
+              console.error('[Deepgram User Error]', err.message);
+            }
+          );
+          console.log('[Live] Dual stream: interviewer (Ch1) + user mic (Ch2)');
+        } else {
+          userDG = null;
+          console.log('[Live] Single stream: mixed audio (Ch1)');
+        }
 
-        ws.send(JSON.stringify({ type: 'status', message: 'Live mode started', questionsLoaded: sessionQuestions.length }));
+        ws.send(JSON.stringify({ type: 'status', message: 'Live mode started', questionsLoaded: sessionQuestions.length, dualStream: !!msg.dualStream }));
         resetIdleTimer();
       }
 
