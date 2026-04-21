@@ -115,6 +115,8 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
   <h1><span class="dot"></span> Smart Canvas</h1>
   <div class="titlebar-controls">
     <span class="status off" id="ws-status">Offline</span>
+    <!-- Go Live toggle — Electron only, sits in titlebar -->
+    <button class="light-btn" id="btn-live-tb" style="display:none;background:rgba(5,150,105,.15);color:#34D399;border-color:rgba(52,211,153,.3);font-weight:700" onclick="toggleElectronLive()">Go Live</button>
     <button class="light-btn" id="light-toggle" onclick="toggleLightMode()">Light</button>
     <label>
       <input type="range" id="opacity-slider" min="30" max="100" value="100">
@@ -142,28 +144,23 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
     </div>
   </div>
 
-  <!-- Bottom bar — button + input together -->
+  <!-- Bottom bar — compact buttons + input -->
   <div class="bottom-bar">
-    <!-- Electron: Go Live / Stop Live toggle -->
-    <button class="wsay-btn" id="btn-live-toggle" style="display:none;background:linear-gradient(135deg,#059669,#047857);border-color:#059669" onclick="toggleElectronLive()">
-      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
-      Go Live
-    </button>
-    <button class="wsay-btn" id="btn-wsay" onclick="whatShouldISay()">
-      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <button class="wsay-btn" id="btn-wsay" onclick="whatShouldISay()" style="padding:9px;font-size:12px;margin-bottom:6px">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       What should I say?
     </button>
-    <div class="assist-row">
-      <button class="assist-btn" id="btn-assist" onclick="screenAssist()">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    <div class="assist-row" style="margin-bottom:6px">
+      <button class="assist-btn" id="btn-assist" onclick="screenAssist()" style="padding:6px;font-size:10px">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         Assist
       </button>
-      <button class="assist-btn" id="btn-record" onclick="toggleRecording()">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+      <button class="assist-btn" id="btn-record" onclick="toggleRecording()" style="padding:6px;font-size:10px">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
         Record
       </button>
-      <button class="assist-btn" id="btn-switch" onclick="switchScreen()" style="display:none;flex:0;padding:8px 10px" title="Switch screen">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>
+      <button class="assist-btn" id="btn-switch" onclick="switchScreen()" style="display:none;flex:0;padding:6px 8px" title="Switch screen">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>
       </button>
     </div>
     <div class="input-row">
@@ -197,11 +194,13 @@ TOKEN = params.get('token') || sessionStorage.getItem('token') || localStorage.g
 SESSION_ID = params.get('session');
 isElectronMode = params.get('electron') === '1' || !!(window.electronAPI && window.electronAPI.isElectron);
 
-// Show quit button in Electron mode
+// Show Electron-only buttons (quit + go live in titlebar)
 if (isElectronMode) {
   setTimeout(function() {
     var qBtn = document.getElementById('btn-quit');
     if (qBtn) qBtn.style.display = 'inline-block';
+    var liveBtn = document.getElementById('btn-live-tb');
+    if (liveBtn) liveBtn.style.display = 'inline-block';
   }, 100);
 }
 
@@ -781,37 +780,45 @@ function stopElectronAudio() {
 }
 
 async function startElectronAudio() {
-  // Show the Go Live button in the empty state AND in the bottom bar
+  // Show the Go Live button in empty state
   var btn = $('btn-go-live');
   if (btn) btn.style.display = 'flex';
-  var liveToggle = $('btn-live-toggle');
-  if (liveToggle) liveToggle.style.display = 'flex';
   // Update empty state message
   var msg = $('empty-msg');
-  if (msg) msg.textContent = 'Click Go Live to capture system audio and start detecting questions.';
+  if (msg) msg.textContent = 'Click Go Live in the titlebar to start capturing audio.';
+}
+
+function updateLiveUI(isLive) {
+  var tb = $('btn-live-tb');
+  if (tb) {
+    if (isLive) {
+      tb.textContent = '■ Stop';
+      tb.style.background = 'rgba(239,68,68,.15)';
+      tb.style.color = '#F87171';
+      tb.style.borderColor = 'rgba(248,113,113,.3)';
+    } else {
+      tb.textContent = 'Go Live';
+      tb.style.background = 'rgba(5,150,105,.15)';
+      tb.style.color = '#34D399';
+      tb.style.borderColor = 'rgba(52,211,153,.3)';
+    }
+  }
+  // Also update the dot in the titlebar
+  var dot = document.querySelector('.titlebar .dot');
+  if (dot) {
+    dot.style.background = isLive ? '#34D399' : '#F87171';
+  }
 }
 
 async function toggleElectronLive() {
   if (electronLive) {
-    // Stop
     stopElectronAudio();
-    var btn = $('btn-live-toggle');
-    if (btn) {
-      btn.style.background = 'linear-gradient(135deg,#059669,#047857)';
-      btn.style.borderColor = '#059669';
-      btn.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg> Go Live';
-    }
+    updateLiveUI(false);
     setStatus('Live', 'on');
   } else {
-    // Start
     await goLiveElectron();
     if (electronLive) {
-      var btn = $('btn-live-toggle');
-      if (btn) {
-        btn.style.background = '#EF4444';
-        btn.style.borderColor = '#EF4444';
-        btn.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor"/></svg> Stop Live';
-      }
+      updateLiveUI(true);
     }
   }
 }
@@ -851,7 +858,8 @@ async function goLiveElectron() {
     processAudioStream(micStream, 2);           // Channel 2 = user mic
 
     // Update UI
-    if (btn) { btn.textContent = 'Live — Capturing Audio'; btn.style.background = '#EF4444'; btn.style.borderColor = '#EF4444'; }
+    if (btn) { btn.style.display = 'none'; }
+    updateLiveUI(true);
     setStatus('Live — Audio', 'on');
     // Hide empty state
     var empty = $('empty-state');
