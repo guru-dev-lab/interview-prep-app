@@ -147,6 +147,7 @@ function createOverlay() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,             // Needed for audio capture APIs
+      webSecurity: false,         // Allow fetch from file:// to https://
     }
   });
 
@@ -158,9 +159,12 @@ function createOverlay() {
   // Hide overlay from screen sharing — interviewer won't see it
   mainWindow.setContentProtection(true);
 
-  // Load the canvas page from the server
-  // Token and session will be set via the renderer after user logs in
-  mainWindow.loadFile(path.join(__dirname, 'launcher.html'));
+  // Load launcher from the server (same-origin for API calls)
+  // Falls back to local file if server is unreachable
+  mainWindow.loadURL(SERVER_URL + '/launcher').catch(() => {
+    console.log('[Xhire] Server unreachable, loading local launcher');
+    mainWindow.loadFile(path.join(__dirname, 'launcher.html'));
+  });
 
   // Handle close — hide instead of quit (tray keeps app alive)
   mainWindow.on('close', (e) => {

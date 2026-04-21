@@ -1929,6 +1929,9 @@ app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => 
 // Standalone Smart Canvas page
 app.get('/canvas', (req, res) => res.sendFile(path.join(__dirname, 'public', 'canvas.html')));
 
+// Electron launcher page (served from server so API calls are same-origin)
+app.get('/launcher', (req, res) => res.sendFile(path.join(__dirname, 'public', 'launcher.html')));
+
 // Download page for Electron overlay app
 app.get('/download', (req, res) => res.sendFile(path.join(__dirname, 'public', 'download.html')));
 
