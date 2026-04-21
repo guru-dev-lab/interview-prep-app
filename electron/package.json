@@ -1,6 +1,6 @@
 {
   "name": "xhire-overlay",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Xhire Interview Prep Overlay — floats on top of Zoom, Teams, or any app",
   "main": "main.js",
   "author": "Xhire",
