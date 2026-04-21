@@ -273,7 +273,7 @@ function connect() {
     var startMsg = {
       type: 'start',
       token: TOKEN,
-      sessionId: parseInt(SESSION_ID),
+      sessionId: SESSION_ID,
       mode: connectMode
     };
     if (isElectronMode) startMsg.dualStream = true;
