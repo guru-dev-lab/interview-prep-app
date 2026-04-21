@@ -2520,7 +2520,7 @@ wss.on('connection', (ws) => {
             return;
           }
 
-          const recentText = recent.slice(-2).map(t => t.text).join('\n');
+          const recentText = recent.slice(-3).map(t => t.text).join('\n');
           const wsCtx = ws._sessionContext || {};
           const ctxLine = (wsCtx.company || wsCtx.role) ? `Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
 
@@ -2528,8 +2528,8 @@ wss.on('connection', (ws) => {
             const t0 = Date.now();
             const extracted = await Promise.race([
               callClaude(
-                'You detect interview questions from an interviewer in live speech transcripts. Extract the CLEAN question directly — no filler, no preamble. Keep the full question word intact.\n\nCRITICAL RULES:\n1. ONLY return a question if the INTERVIEWER is clearly asking the candidate a substantive interview question.\n2. The CANDIDATE\'s own speech is NEVER a question. Output NONE.\n3. Output NONE for: statements, agreements, filler, partial sentences, transitions, pleasantries, small talk.\n4. Signs of CANDIDATE speech (always NONE): starts with "I", "We", "My", talks about their experience.\n5. Signs of INTERVIEWER question: asks "Can you tell me about...", "How would you...", "What is your experience with...".\n\nIf a question is present, output ONLY the clean question text — already cleaned, no quotes, no explanation. Otherwise output exactly: NONE',
-                ctxLine + 'Recent speech:\n' + recentText + '\n\nOutput the clean interview question or NONE:',
+                'You detect interview questions from an interviewer in live speech transcripts. Extract the CLEAN question directly — no filler, no preamble. Keep the full question word intact.\n\nCRITICAL RULES:\n1. ONLY return a question if the INTERVIEWER is clearly asking the candidate a substantive interview question.\n2. The CANDIDATE\'s own speech is NEVER a question. Output NONE.\n3. Output NONE for: statements, agreements, filler, partial sentences, transitions, pleasantries, small talk.\n4. Signs of CANDIDATE speech (always NONE): starts with "I", "We", "My", talks about their experience.\n5. Signs of INTERVIEWER question: asks "Can you tell me about...", "How would you...", "What is your experience with...".\n6. MULTI-PART QUESTIONS: If the interviewer asks a main question then adds a follow-up like "how would you approach this?" or "can you walk me through that?" or "what would you do?", combine them into ONE question. The follow-up is part of the same question, NOT a separate question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → output the FULL combined question.\n\nIf a question is present, output ONLY the clean question text — already cleaned, no quotes, no explanation. Otherwise output exactly: NONE',
+                ctxLine + 'Recent speech:\n' + recentText + '\n\nOutput the clean interview question (combine multi-part questions into one) or NONE:',
                 80, MODEL_HAIKU
               ),
               new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500))
@@ -2744,8 +2744,8 @@ wss.on('connection', (ws) => {
         // Step 1: Ask Haiku to extract the LATEST question
         const wsCtx = ws._sessionContext || {};
         const ctxLine = (wsCtx.company || wsCtx.role) ? `\nContext: Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
-        const extractSystem = 'You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler. Output ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
-        const extractUser = ctxLine + rawTranscript + '\n\nFind the LAST question the interviewer asked. Search from the most recent speech backwards. Output the question only.';
+        const extractSystem = 'You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler.\n\nIMPORTANT — MULTI-PART QUESTIONS: Interviewers often ask a main question then add a follow-up like "how would you approach this?" or "walk me through your process" or "what would you do differently?". These are ONE question, not two. Combine the main question and its follow-up into a single complete question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → return the full combined question.\n\nOutput ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
+        const extractUser = ctxLine + rawTranscript + '\n\nFind the LAST question the interviewer asked (combine multi-part questions into one). Search from the most recent speech backwards. Output the question only.';
 
         let questionText;
         try {
