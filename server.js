@@ -2469,6 +2469,13 @@ wss.on('connection', (ws) => {
     if (rawData instanceof Buffer && rawData.length > 1 && rawData[0] !== 0x7b) {
       const channel = rawData[0];
       const audio = rawData.slice(1);
+      // Log first few audio packets per channel for debugging
+      if (!ws._audioLogCount) ws._audioLogCount = { 1: 0, 2: 0 };
+      if (ws._audioLogCount[channel] < 3) {
+        ws._audioLogCount[channel]++;
+        const dgState = channel === 1 ? (interviewerDG ? interviewerDG.readyState : 'null') : (userDG ? userDG.readyState : 'null');
+        console.log(`[Audio] Ch${channel}: ${audio.length} bytes, DG state: ${dgState}`);
+      }
       if (channel === 1 && interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
         interviewerDG.send(audio);
       } else if (channel === 2 && userDG && userDG.readyState === WebSocket.OPEN) {
