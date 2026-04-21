@@ -1942,17 +1942,23 @@ async function toggleLiveMode() {
     toast('Select your Google Meet tab to capture interviewer audio...');
     try {
       liveSystemStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,   // Chrome requires video — we'll drop it immediately
+        video: true,   // Chrome requires video to show picker
         audio: true    // System/tab audio = interviewer
       });
-      // Drop video track immediately — we only need the audio
-      liveSystemStream.getVideoTracks().forEach(function(t) { t.stop(); });
+      // DO NOT stop the video track — Chrome kills the entire stream if you do.
+      // Just leave it running; the overhead is minimal and it keeps audio alive.
       // Check we actually got audio
       if (liveSystemStream.getAudioTracks().length === 0) {
         toast('No audio — make sure "Share tab audio" is checked in the picker', 1);
+        liveSystemStream.getTracks().forEach(function(t) { t.stop(); });
         liveSystemStream = null;
         return;
       }
+      // If user clicks "Stop sharing" in Chrome's bar, gracefully handle it
+      liveSystemStream.getAudioTracks()[0].onended = function() {
+        console.log('[Live] Tab audio track ended — user stopped sharing');
+        toast('Tab audio stopped — click Switch Tab to re-select', 1);
+      };
     } catch (e) {
       console.error('[Live] getDisplayMedia error:', e);
       toast('Tab sharing cancelled — select your Google Meet tab to capture interviewer audio', 1);
@@ -2034,8 +2040,10 @@ var userSpeakingNow = false;
 var volumeReportTimer = null;
 
 function startAudioProcessing(stream, channel) {
+  // Create audio-only stream (getDisplayMedia may include video track — ignore it)
+  var audioOnly = new MediaStream(stream.getAudioTracks());
   var audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-  var source = audioCtx.createMediaStreamSource(stream);
+  var source = audioCtx.createMediaStreamSource(audioOnly);
   var processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
   // Volume threshold: user speaking into mic is LOUD (typically RMS > 0.02-0.04).
@@ -2092,8 +2100,9 @@ async function switchLiveTab() {
   try {
     toast('Select the correct tab...');
     var newStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-    newStream.getVideoTracks().forEach(function(t) { t.stop(); });
-    if (newStream.getAudioTracks().length === 0) { toast('No audio track — try again', 1); return; }
+    // DO NOT stop video track — it kills the whole stream in Chrome
+    if (newStream.getAudioTracks().length === 0) { toast('No audio — check "Share tab audio"', 1); newStream.getTracks().forEach(function(t) { t.stop(); }); return; }
+    newStream.getAudioTracks()[0].onended = function() { toast('Tab audio stopped — click Switch Tab to re-select', 1); };
 
     // Stop old system audio processor
     if (liveSystemProcessor) {
