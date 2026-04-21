@@ -745,8 +745,18 @@ var electronSrc1 = null, electronSrc2 = null;
 var electronLive = false;
 var electronUserSpeaking = false;
 
+var audioDebugCounter = 0;
+var ch1HasAudio = false, ch2HasAudio = false;
+
 function processAudioStream(stream, channel) {
-  var audioOnly = new MediaStream(stream.getAudioTracks());
+  var tracks = stream.getAudioTracks();
+  console.log('[Audio] Ch' + channel + ': ' + tracks.length + ' audio tracks', tracks.map(function(t) { return t.label + ' (' + t.readyState + ')'; }));
+  if (tracks.length === 0) {
+    console.error('[Audio] Ch' + channel + ': NO AUDIO TRACKS');
+    setStatus('No audio Ch' + channel, 'off');
+    return;
+  }
+  var audioOnly = new MediaStream(tracks);
   var audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   var source = audioCtx.createMediaStreamSource(audioOnly);
   var processor = audioCtx.createScriptProcessor(4096, 1, 1);
@@ -762,6 +772,16 @@ function processAudioStream(stream, channel) {
     var sum = 0;
     for (var i = 0; i < inputData.length; i++) { sum += inputData[i] * inputData[i]; }
     var rms = Math.sqrt(sum / inputData.length);
+
+    // Debug: show audio levels periodically
+    audioDebugCounter++;
+    if (audioDebugCounter % 50 === 0) {
+      if (channel === 1 && rms > 0.001) ch1HasAudio = true;
+      if (channel === 2 && rms > 0.001) ch2HasAudio = true;
+      var statusText = 'Live';
+      if (ch1HasAudio || ch2HasAudio) statusText += ' — ' + (ch1HasAudio ? 'Sys✓' : 'Sys✗') + ' ' + (ch2HasAudio ? 'Mic✓' : 'Mic✗');
+      setStatus(statusText, 'on');
+    }
 
     // Track speaking state on mic channel
     if (channel === 2) {
