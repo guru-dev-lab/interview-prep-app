@@ -223,6 +223,14 @@ ipcMain.handle('quit-app', () => {
   app.quit();
 });
 
+// Stealth mode — toggle content protection (hide from screen sharing)
+ipcMain.handle('set-stealth', (_, on) => {
+  if (mainWindow) {
+    mainWindow.setContentProtection(!!on);
+    console.log('[Xhire] Content protection:', on ? 'ON' : 'OFF');
+  }
+});
+
 // Window dragging support (fallback if -webkit-app-region doesn't work)
 ipcMain.handle('start-drag', () => {
   // No-op — handled by CSS -webkit-app-region:drag

@@ -13,19 +13,26 @@ button,input,select{-webkit-app-region:no-drag;cursor:pointer}
 input[type=text],input[type=email],input[type=password]{cursor:text}
 
 /* Titlebar — draggable */
-.titlebar{height:36px;background:var(--surface);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
-.titlebar h1{font:700 11px Inter,sans-serif;color:var(--text2);display:flex;align-items:center;gap:6px}
-.titlebar .dot{width:7px;height:7px;border-radius:50%;background:#F87171;animation:pulse 1.5s ease infinite}
-.titlebar-controls{display:flex;gap:10px;align-items:center;-webkit-app-region:no-drag}
-.titlebar-controls label{font:400 10px Inter,sans-serif;color:var(--text3);display:flex;align-items:center;gap:4px}
-.titlebar-controls input[type=range]{width:55px;height:3px;cursor:pointer;accent-color:var(--accent)}
+.titlebar{height:28px;background:var(--surface);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;padding:0 10px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
+.titlebar h1{font:700 10px Inter,sans-serif;color:var(--text2);display:flex;align-items:center;gap:5px}
+.titlebar .dot{width:6px;height:6px;border-radius:50%;background:#F87171;animation:pulse 1.5s ease infinite}
+.titlebar-right{display:flex;gap:6px;align-items:center;-webkit-app-region:no-drag}
+
+/* Control bar — all buttons visible */
+.control-bar{display:flex;align-items:center;gap:6px;padding:5px 10px;background:var(--surface);border-bottom:1px solid var(--glass-border);flex-shrink:0;flex-wrap:wrap;-webkit-app-region:no-drag}
+.ctrl-btn{padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;white-space:nowrap}
+.ctrl-btn:hover{border-color:var(--accent);color:var(--text2)}
+.ctrl-btn.active-green{background:rgba(5,150,105,.15);color:#34D399;border-color:rgba(52,211,153,.3)}
+.ctrl-btn.active-red{background:rgba(239,68,68,.12);color:#F87171;border-color:rgba(248,113,113,.3)}
+.control-bar label{font:400 9px Inter,sans-serif;color:var(--text3);display:flex;align-items:center;gap:3px}
+.control-bar input[type=range]{width:45px;height:3px;cursor:pointer;accent-color:var(--accent)}
 .status{font:600 9px Inter,sans-serif;padding:3px 8px;border-radius:10px;letter-spacing:.3px;text-transform:uppercase}
 .status.off{background:rgba(248,113,113,.1);color:#F87171}
 .status.on{background:rgba(52,211,153,.1);color:#34D399}
 .status.wait{background:rgba(251,191,36,.1);color:#FBBF24}
 
 /* Main layout */
-.canvas-wrap{display:flex;flex-direction:column;height:calc(100% - 36px)}
+.canvas-wrap{display:flex;flex-direction:column;height:calc(100% - 56px)}
 
 /* Feed — scrollable center */
 .feed-wrap{flex:1;overflow-y:auto;padding:10px 14px;scroll-behavior:smooth}
@@ -60,7 +67,7 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .sc-line:nth-child(odd){background:rgba(255,255,255,.03)}
 .sc-blank{height:8px}
 .sc-card-loading{padding:14px;display:flex;align-items:center;gap:8px;color:var(--accent2);font:500 12px Inter,sans-serif}
-.light-btn{padding:4px 10px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;-webkit-app-region:no-drag}.light-btn:hover{border-color:var(--accent)}
+.light-btn{padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;-webkit-app-region:no-drag}.light-btn:hover{border-color:var(--accent)}
 body.light-mode,html.light-mode{--bg:#f0f0f3;--surface:#e2e3e8;--text:#111827;--text2:#1f2937;--text3:#4b5563;--glass-border:rgba(0,0,0,.12);--accent2:#6d28d9}
 body.light-mode .sc-card{background:#fff;border-color:rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.08)}
 body.light-mode .sc-card-q{background:rgba(109,40,217,.08)}
@@ -71,20 +78,21 @@ body.light-mode .sc-card-a code{background:rgba(110,118,129,.25);color:#24292f}
 body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.05)}
 body.light-mode .sc-line:nth-child(even){background:rgba(109,40,217,.03)}
 body.light-mode .titlebar{background:#e2e3e8;border-color:rgba(0,0,0,.12)}
+body.light-mode .control-bar{background:#e2e3e8;border-color:rgba(0,0,0,.12)}
+body.light-mode .ctrl-btn{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.12);color:#4b5563}
+body.light-mode .action-btn{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.12);color:#4b5563}
 body.light-mode .bottom-bar{background:#e2e3e8;border-color:rgba(0,0,0,.12)}
 body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);color:#111827}
 
 /* Bottom bar — "What should I say?" + input */
-.bottom-bar{flex-shrink:0;background:var(--surface);border-top:1px solid var(--glass-border);padding:10px 14px;-webkit-app-region:no-drag;border-radius:0 0 12px 12px}
-.wsay-btn{width:100%;padding:12px;border:2px solid var(--accent);border-radius:10px;background:rgba(124,58,237,.08);font:700 13px Inter,sans-serif;color:#c4b5fd;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;margin-bottom:8px}
-.wsay-btn:hover{background:rgba(124,58,237,.18);transform:translateY(-1px)}
-.wsay-btn:active{transform:translateY(0)}
-.wsay-btn.loading{opacity:.5;pointer-events:none}
-.assist-row{display:flex;gap:6px;margin-bottom:8px}
-.assist-btn{flex:1;padding:8px;border:1px solid rgba(251,146,60,.3);border-radius:8px;background:rgba(251,146,60,.06);font:600 11px Inter,sans-serif;color:#fdba74;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:.15s}
-.assist-btn:hover{background:rgba(251,146,60,.14)}
-.assist-btn.loading{opacity:.5;pointer-events:none}
-.assist-btn.recording{border-color:#F87171;background:rgba(248,113,113,.1);color:#fca5a5;animation:pulse 1.5s ease infinite}
+.bottom-bar{flex-shrink:0;background:var(--surface);border-top:1px solid var(--glass-border);padding:8px 10px;-webkit-app-region:no-drag;border-radius:0 0 12px 12px}
+.action-row{display:flex;gap:5px;margin-bottom:6px}
+.action-btn{flex:1;padding:7px 4px;border:1px solid rgba(255,255,255,.1);border-radius:7px;background:rgba(255,255,255,.04);font:600 10px Inter,sans-serif;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:.15s;white-space:nowrap}
+.action-btn:hover{border-color:var(--accent);color:var(--text2);background:rgba(124,58,237,.08)}
+.action-btn.primary{border-color:var(--accent);color:#c4b5fd;background:rgba(124,58,237,.08)}
+.action-btn.primary:hover{background:rgba(124,58,237,.18)}
+.action-btn.loading{opacity:.5;pointer-events:none}
+.action-btn.recording{border-color:#F87171;background:rgba(248,113,113,.1);color:#fca5a5;animation:pulse 1.5s ease infinite}
 .sc-tag.screen{background:rgba(56,189,248,.12);color:#38BDF8}
 .input-row{display:flex;gap:6px}
 .input-row input{flex:1;padding:9px 12px;border:1px solid rgba(255,255,255,.08);border-radius:8px;font:400 12px Inter,sans-serif;color:var(--text);background:rgba(255,255,255,.03);outline:none}
@@ -111,19 +119,20 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
 </style>
 </head>
 <body>
-<!-- Draggable titlebar -->
+<!-- Draggable titlebar — minimal -->
 <div class="titlebar">
   <h1><span class="dot"></span> Smart Canvas</h1>
-  <div class="titlebar-controls">
+  <div class="titlebar-right">
     <span class="status off" id="ws-status">Offline</span>
-    <!-- Go Live toggle — Electron only, sits in titlebar -->
-    <button class="light-btn" id="btn-live-tb" style="display:none;background:rgba(5,150,105,.15);color:#34D399;border-color:rgba(52,211,153,.3);font-weight:700" onclick="toggleElectronLive()">Go Live</button>
-    <button class="light-btn" id="light-toggle" onclick="toggleLightMode()">Light</button>
-    <label>
-      <input type="range" id="opacity-slider" min="30" max="100" value="100">
-    </label>
     <button class="light-btn" id="btn-quit" style="display:none;color:#F87171;border-color:rgba(248,113,113,.3)" onclick="quitApp()" title="Quit Xhire">✕</button>
   </div>
+</div>
+<!-- Control bar — all buttons visible, Electron-only buttons hidden by default -->
+<div class="control-bar" id="control-bar">
+  <button class="ctrl-btn" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">Go Live</button>
+  <button class="ctrl-btn" id="light-toggle" onclick="toggleLightMode()">Light</button>
+  <button class="ctrl-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">Stealth: On</button>
+  <label><input type="range" id="opacity-slider" min="30" max="100" value="100"></label>
 </div>
 
 <div class="canvas-wrap">
@@ -145,22 +154,22 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
     </div>
   </div>
 
-  <!-- Bottom bar — compact buttons + input -->
+  <!-- Bottom bar — all action buttons in one row + input -->
   <div class="bottom-bar">
-    <button class="wsay-btn" id="btn-wsay" onclick="whatShouldISay()" style="padding:9px;font-size:12px;margin-bottom:6px">
-      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      What should I say?
-    </button>
-    <div class="assist-row" style="margin-bottom:6px">
-      <button class="assist-btn" id="btn-assist" onclick="screenAssist()" style="padding:6px;font-size:10px">
+    <div class="action-row">
+      <button class="action-btn primary" id="btn-wsay" onclick="whatShouldISay()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        Say?
+      </button>
+      <button class="action-btn" id="btn-assist" onclick="screenAssist()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         Assist
       </button>
-      <button class="assist-btn" id="btn-record" onclick="toggleRecording()" style="padding:6px;font-size:10px">
+      <button class="action-btn" id="btn-record" onclick="toggleRecording()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
         Record
       </button>
-      <button class="assist-btn" id="btn-switch" onclick="switchScreen()" style="display:none;flex:0;padding:6px 8px" title="Switch screen">
+      <button class="action-btn" id="btn-switch" onclick="switchScreen()" style="display:none" title="Switch screen">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>
       </button>
     </div>
@@ -195,13 +204,15 @@ TOKEN = params.get('token') || sessionStorage.getItem('token') || localStorage.g
 SESSION_ID = params.get('session');
 isElectronMode = params.get('electron') === '1' || !!(window.electronAPI && window.electronAPI.isElectron);
 
-// Show Electron-only buttons (quit + go live in titlebar)
+// Show Electron-only buttons (quit, go live, stealth)
 if (isElectronMode) {
   setTimeout(function() {
     var qBtn = document.getElementById('btn-quit');
     if (qBtn) qBtn.style.display = 'inline-block';
     var liveBtn = document.getElementById('btn-live-tb');
     if (liveBtn) liveBtn.style.display = 'inline-block';
+    var stealthBtn = document.getElementById('btn-stealth');
+    if (stealthBtn) stealthBtn.style.display = 'inline-block';
   }, 100);
 }
 
@@ -445,13 +456,13 @@ function setFilter(filter) {
 }
 
 // ===== ACTIONS =====
-var wsayDefaultHTML = '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> What should I say?';
+var wsayDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Say?';
 
 function whatShouldISay() {
   var btn = $('btn-wsay');
   if (!btn || btn.classList.contains('loading')) return;
   btn.classList.add('loading');
-  btn.innerHTML = '<span class="spinner" style="width:16px;height:16px"></span> Analyzing...';
+  btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>';
   setTimeout(function() {
     btn.classList.remove('loading');
     btn.innerHTML = wsayDefaultHTML;
@@ -487,8 +498,8 @@ var recordingInterval = null;
 var isRecording = false;
 var RECORD_INTERVAL_MS = 8000;
 
-var assistDefaultHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Assist';
-var recordDefaultHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg> Record';
+var assistDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Assist';
+var recordDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg> Record';
 
 async function getScreenStream() {
   // Reuse existing stream if still active with a live video track
@@ -600,7 +611,7 @@ async function screenAssist() {
   var btn = $('btn-assist');
   if (btn.classList.contains('loading')) return;
   btn.classList.add('loading');
-  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Capturing...';
+  btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>';
   try {
     var stream = await getScreenStream();
     if (!stream) { btn.classList.remove('loading'); btn.innerHTML = assistDefaultHTML; return; }
@@ -628,7 +639,7 @@ async function startRecording() {
   if (!stream) return;
   isRecording = true;
   btn.classList.add('recording');
-  btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor"/></svg> Stop';
+  btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor"/></svg> Stop';
   // Capture immediately, then every 8s
   try {
     var base64 = await captureFrame(stream);
@@ -664,6 +675,31 @@ function toggleLightMode() {
     else { btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
   }
 }
+
+// ===== STEALTH MODE (content protection toggle) =====
+var stealthOn = true; // Default: content protection ON
+function toggleStealth() {
+  stealthOn = !stealthOn;
+  var btn = $('btn-stealth');
+  if (btn) {
+    btn.textContent = 'Stealth: ' + (stealthOn ? 'On' : 'Off');
+    if (stealthOn) {
+      btn.classList.add('active-green');
+      btn.classList.remove('active-red');
+    } else {
+      btn.classList.remove('active-green');
+      btn.classList.add('active-red');
+    }
+  }
+  if (window.electronAPI && window.electronAPI.setStealth) {
+    window.electronAPI.setStealth(stealthOn);
+  }
+}
+// Set initial stealth button state
+setTimeout(function() {
+  var btn = $('btn-stealth');
+  if (btn && isElectronMode) btn.classList.add('active-green');
+}, 150);
 
 // ===== SESSION PICKER =====
 async function loadSessions() {
@@ -794,14 +830,10 @@ function updateLiveUI(isLive) {
   if (tb) {
     if (isLive) {
       tb.textContent = '■ Stop';
-      tb.style.background = 'rgba(239,68,68,.15)';
-      tb.style.color = '#F87171';
-      tb.style.borderColor = 'rgba(248,113,113,.3)';
+      tb.className = 'ctrl-btn active-red';
     } else {
       tb.textContent = 'Go Live';
-      tb.style.background = 'rgba(5,150,105,.15)';
-      tb.style.color = '#34D399';
-      tb.style.borderColor = 'rgba(52,211,153,.3)';
+      tb.className = 'ctrl-btn active-green';
     }
   }
   // Also update the dot in the titlebar

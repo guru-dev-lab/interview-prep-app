@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadCanvas: (url) => ipcRenderer.invoke('load-canvas', url),
   getServerUrl: () => ipcRenderer.invoke('get-server-url'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
+  setStealth: (on) => ipcRenderer.invoke('set-stealth', on),
 
   // Platform info
   platform: process.platform,
