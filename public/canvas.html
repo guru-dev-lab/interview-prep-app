@@ -143,6 +143,11 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
 
   <!-- Bottom bar — button + input together -->
   <div class="bottom-bar">
+    <!-- Electron: Go Live / Stop Live toggle -->
+    <button class="wsay-btn" id="btn-live-toggle" style="display:none;background:linear-gradient(135deg,#059669,#047857);border-color:#059669" onclick="toggleElectronLive()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
+      Go Live
+    </button>
     <button class="wsay-btn" id="btn-wsay" onclick="whatShouldISay()">
       <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       What should I say?
@@ -759,12 +764,39 @@ function stopElectronAudio() {
 }
 
 async function startElectronAudio() {
-  // Show the Go Live button in Electron mode
+  // Show the Go Live button in the empty state AND in the bottom bar
   var btn = $('btn-go-live');
   if (btn) btn.style.display = 'flex';
+  var liveToggle = $('btn-live-toggle');
+  if (liveToggle) liveToggle.style.display = 'flex';
   // Update empty state message
   var msg = $('empty-msg');
   if (msg) msg.textContent = 'Click Go Live to capture system audio and start detecting questions.';
+}
+
+async function toggleElectronLive() {
+  if (electronLive) {
+    // Stop
+    stopElectronAudio();
+    var btn = $('btn-live-toggle');
+    if (btn) {
+      btn.style.background = 'linear-gradient(135deg,#059669,#047857)';
+      btn.style.borderColor = '#059669';
+      btn.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg> Go Live';
+    }
+    setStatus('Live', 'on');
+  } else {
+    // Start
+    await goLiveElectron();
+    if (electronLive) {
+      var btn = $('btn-live-toggle');
+      if (btn) {
+        btn.style.background = '#EF4444';
+        btn.style.borderColor = '#EF4444';
+        btn.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor"/></svg> Stop Live';
+      }
+    }
+  }
 }
 
 async function goLiveElectron() {
