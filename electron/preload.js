@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleOverlay: () => ipcRenderer.invoke('toggle-overlay'),
   loadCanvas: (url) => ipcRenderer.invoke('load-canvas', url),
   getServerUrl: () => ipcRenderer.invoke('get-server-url'),
+  quitApp: () => ipcRenderer.invoke('quit-app'),
 
   // Platform info
   platform: process.platform,

@@ -213,6 +213,12 @@ ipcMain.handle('get-server-url', () => {
   return SERVER_URL;
 });
 
+// Quit the app
+ipcMain.handle('quit-app', () => {
+  app.isQuitting = true;
+  app.quit();
+});
+
 // Window dragging support (fallback if -webkit-app-region doesn't work)
 ipcMain.handle('start-drag', () => {
   // No-op — handled by CSS -webkit-app-region:drag

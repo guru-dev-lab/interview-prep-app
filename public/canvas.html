@@ -119,6 +119,7 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
     <label>
       <input type="range" id="opacity-slider" min="30" max="100" value="100">
     </label>
+    <button class="light-btn" id="btn-quit" style="display:none;color:#F87171;border-color:rgba(248,113,113,.3)" onclick="quitApp()" title="Quit Xhire">✕</button>
   </div>
 </div>
 
@@ -195,6 +196,22 @@ var params = new URLSearchParams(location.search);
 TOKEN = params.get('token') || sessionStorage.getItem('token') || localStorage.getItem('token');
 SESSION_ID = params.get('session');
 isElectronMode = params.get('electron') === '1' || !!(window.electronAPI && window.electronAPI.isElectron);
+
+// Show quit button in Electron mode
+if (isElectronMode) {
+  setTimeout(function() {
+    var qBtn = document.getElementById('btn-quit');
+    if (qBtn) qBtn.style.display = 'inline-block';
+  }, 100);
+}
+
+function quitApp() {
+  if (window.electronAPI && window.electronAPI.quitApp) {
+    window.electronAPI.quitApp();
+  } else {
+    window.close();
+  }
+}
 
 // ===== HELPERS =====
 function $(id) { return document.getElementById(id); }
