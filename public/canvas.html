@@ -17,7 +17,8 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .titlebar{height:28px;background:linear-gradient(180deg,var(--surface),rgba(12,16,25,.95));border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;padding:0 12px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
 .titlebar h1{font:700 10px Inter,sans-serif;color:var(--text2);display:flex;align-items:center;gap:5px}
 .titlebar .dot{width:6px;height:6px;border-radius:50%;background:#F87171;animation:pulse 1.5s ease infinite;box-shadow:0 0 6px rgba(248,113,113,.4)}
-.titlebar-right{display:flex;gap:6px;align-items:center;-webkit-app-region:no-drag}
+.titlebar-right{display:flex;gap:5px;align-items:center;-webkit-app-region:no-drag}
+.tb-select{font-size:8px;padding:1px 3px;border-radius:4px}
 
 /* Control bar — single row */
 .control-bar{display:flex;align-items:center;gap:5px;padding:4px 10px;background:var(--surface);border-bottom:1px solid var(--glass-border);flex-shrink:0;-webkit-app-region:no-drag;overflow-x:auto}
@@ -176,18 +177,21 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
 <div class="titlebar">
   <h1><span class="dot"></span> Xhire Pilot</h1>
   <div class="titlebar-right">
-    <span class="status off" id="ws-status">Offline</span>
-    <button class="light-btn" id="light-toggle" onclick="toggleLightMode()" title="Toggle light/dark mode">Light</button>
+    <button class="light-btn" onclick="changeFontSize(-1)" title="Smaller">A-</button>
+    <button class="light-btn" onclick="changeFontSize(1)" title="Bigger">A+</button>
+    <select class="style-select tb-select" id="look-picker" onchange="setTheme(this.value)" title="Card look">
+      <option value="glass">Glass</option><option value="minimal">Minimal</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
+    </select>
+    <button class="light-btn" id="light-toggle" onclick="toggleLightMode()" title="Toggle light/dark">Light</button>
     <button class="light-btn" onclick="doLogout()" style="color:#F87171;border-color:rgba(248,113,113,.3)" title="Logout">Out</button>
+    <span class="status off" id="ws-status">Offline</span>
     <button class="light-btn" id="btn-quit" style="display:none;color:#F87171;border-color:rgba(248,113,113,.3)" onclick="quitApp()" title="Quit Xhire">✕</button>
   </div>
 </div>
-<!-- Control bar — all buttons visible, Electron-only buttons hidden by default -->
+<!-- Control bar — live essentials only -->
 <div class="control-bar" id="control-bar">
   <button class="ctrl-btn" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">Go Live</button>
   <button class="ctrl-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">Stealth: On</button>
-  <button class="ctrl-btn" onclick="changeFontSize(-1)" title="Decrease font size">A-</button>
-  <button class="ctrl-btn" onclick="changeFontSize(1)" title="Increase font size">A+</button>
   <select class="style-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)" title="Answer style">
     <option value="conversational">💬 Conversational</option>
     <option value="direct">🎯 Direct</option>
@@ -196,9 +200,6 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
     <option value="star">⭐ STAR</option>
     <option value="storytelling">📖 Storytelling</option>
     <option value="datadriven">📈 Data-Driven</option>
-  </select>
-  <select class="style-select" id="look-picker" onchange="setTheme(this.value)" title="Card look">
-    <option value="glass">Glass</option><option value="minimal">Minimal</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
   </select>
 </div>
 
