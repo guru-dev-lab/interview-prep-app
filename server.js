@@ -2469,13 +2469,31 @@ wss.on('connection', (ws) => {
     if (rawData instanceof Buffer && rawData.length > 1 && rawData[0] !== 0x7b) {
       const channel = rawData[0];
       const audio = rawData.slice(1);
-      // Log first few audio packets per channel for debugging
-      if (!ws._audioLogCount) ws._audioLogCount = { 1: 0, 2: 0 };
-      if (ws._audioLogCount[channel] < 3) {
-        ws._audioLogCount[channel]++;
-        const dgState = channel === 1 ? (interviewerDG ? interviewerDG.readyState : 'null') : (userDG ? userDG.readyState : 'null');
-        console.log(`[Audio] Ch${channel}: ${audio.length} bytes, DG state: ${dgState}`);
+
+      // Lazy Deepgram init: open streams on first audio packet, not on 'start' message.
+      // This prevents Deepgram from timing out idle connections while the user
+      // hasn't clicked Go Live yet.
+      if (channel === 1 && !interviewerDG && ws._setupInterviewerDG) {
+        console.log('[Audio] First Ch1 packet — opening Deepgram interviewer stream');
+        ws._setupInterviewerDG();
       }
+      if (channel === 2 && !userDG && ws._setupUserDG) {
+        console.log('[Audio] First Ch2 packet — opening Deepgram user stream');
+        ws._setupUserDG();
+      }
+
+      // Also re-open if Deepgram closed (idle timeout, error, etc)
+      if (channel === 1 && interviewerDG && interviewerDG.readyState > WebSocket.OPEN && ws._setupInterviewerDG) {
+        console.log('[Audio] Ch1 Deepgram closed, reopening');
+        interviewerDG = null;
+        ws._setupInterviewerDG();
+      }
+      if (channel === 2 && userDG && userDG.readyState > WebSocket.OPEN && ws._setupUserDG) {
+        console.log('[Audio] Ch2 Deepgram closed, reopening');
+        userDG = null;
+        ws._setupUserDG();
+      }
+
       if (channel === 1 && interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
         interviewerDG.send(audio);
       } else if (channel === 2 && userDG && userDG.readyState === WebSocket.OPEN) {
@@ -2674,80 +2692,82 @@ wss.on('connection', (ws) => {
           }
         }
 
-        interviewerDG = openDeepgramStream(
-          (text, isFinal, speechFinal) => {
-            if (!text.trim()) return;
-
-            if (isFinal) {
-              resetIdleTimer();
-              interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
-              ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
-
-              // Fast path DISABLED — wait for speechFinal to get the complete utterance
-              // This prevents firing on partial segments and creating duplicate answers
-            } else {
-              const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
-              ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
-            }
-
-            // On speechFinal — speaker paused. Commit line + run AI extraction
-            if (speechFinal && interviewerBuffer.trim()) {
-              const fullUtterance = interviewerBuffer.trim();
-              interviewerBuffer = '';
-              const wasFired = questionFiredForBuffer;
-              questionFiredForBuffer = false;
-
-              ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true }));
-              transcript.push({ text: fullUtterance, ts: Date.now() });
-              ws._recentTranscript = transcript.slice(-6).map(t => t.text);
-
-              // If fast path didn't fire, debounce AI extraction.
-              // Wait 2s after the last speechFinal — this lets the speaker finish
-              // multi-sentence utterances before we extract, preventing partial/duplicate fires.
-              if (!wasFired) {
-                if (aiExtractTimer) clearTimeout(aiExtractTimer);
-                aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY);
-              }
-              setTimeout(() => recentMatchedIds.clear(), 5000);
-            }
-          },
-          (err) => {
-            console.error('[Deepgram Error]', err.message);
-            ws.send(JSON.stringify({ type: 'error', message: 'Transcription error: ' + err.message }));
-          }
-        );
-
-        // Channel 2: User's mic → transcript display only, NO question detection
-        // This stream lets us show what the user is saying in the transcript
-        // but NEVER triggers question matching or AI extraction.
-        if (msg.dualStream) {
-          let userBuffer = '';
-          userDG = openDeepgramStream(
+        // Deferred Deepgram setup — opened lazily when first audio packet arrives.
+        // This prevents Deepgram idle timeout (10s) killing the connection before
+        // the user clicks Go Live (which could be minutes after WS connects).
+        ws._setupInterviewerDG = function() {
+          if (interviewerDG && interviewerDG.readyState <= WebSocket.OPEN) return;
+          console.log('[Deepgram] Opening interviewer stream (lazy)');
+          interviewerDG = openDeepgramStream(
             (text, isFinal, speechFinal) => {
               if (!text.trim()) return;
+
               if (isFinal) {
-                userBuffer += (userBuffer ? ' ' : '') + text.trim();
+                resetIdleTimer();
+                interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
+                ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
+              } else {
+                const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
+                ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
               }
-              if (speechFinal && userBuffer.trim()) {
-                const fullUtterance = userBuffer.trim();
-                userBuffer = '';
-                resetIdleTimer(); // User speaking keeps the session alive
-                // Send as user_transcript — distinct type so frontend can style differently
-                ws.send(JSON.stringify({ type: 'user_transcript', text: fullUtterance, isFinal: true }));
-                broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true }, ws);
-                // Also add to main transcript for "What should I say" context, tagged as user
-                transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
+
+              if (speechFinal && interviewerBuffer.trim()) {
+                const fullUtterance = interviewerBuffer.trim();
+                interviewerBuffer = '';
+                const wasFired = questionFiredForBuffer;
+                questionFiredForBuffer = false;
+
+                ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true }));
+                transcript.push({ text: fullUtterance, ts: Date.now() });
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+
+                if (!wasFired) {
+                  if (aiExtractTimer) clearTimeout(aiExtractTimer);
+                  aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY);
+                }
+                setTimeout(() => recentMatchedIds.clear(), 5000);
               }
             },
             (err) => {
-              console.error('[Deepgram User Error]', err.message);
+              console.error('[Deepgram Error]', err.message);
+              interviewerDG = null; // Allow re-open on next audio packet
+              ws.send(JSON.stringify({ type: 'error', message: 'Transcription error: ' + err.message }));
             }
           );
-          console.log('[Live] Dual stream: interviewer (Ch1) + user mic (Ch2)');
+        };
+
+        // Channel 2 setup (deferred)
+        if (msg.dualStream) {
+          let userBuffer = '';
+          ws._setupUserDG = function() {
+            if (userDG && userDG.readyState <= WebSocket.OPEN) return;
+            console.log('[Deepgram] Opening user mic stream (lazy)');
+            userDG = openDeepgramStream(
+              (text, isFinal, speechFinal) => {
+                if (!text.trim()) return;
+                if (isFinal) {
+                  userBuffer += (userBuffer ? ' ' : '') + text.trim();
+                }
+                if (speechFinal && userBuffer.trim()) {
+                  const fullUtterance = userBuffer.trim();
+                  userBuffer = '';
+                  resetIdleTimer();
+                  ws.send(JSON.stringify({ type: 'user_transcript', text: fullUtterance, isFinal: true }));
+                  broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true }, ws);
+                  transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
+                  ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+                }
+              },
+              (err) => {
+                console.error('[Deepgram User Error]', err.message);
+                userDG = null; // Allow re-open
+              }
+            );
+          };
+          console.log('[Live] Dual stream ready (Deepgram deferred until audio flows)');
         } else {
           userDG = null;
-          console.log('[Live] Single stream: mixed audio (Ch1)');
+          console.log('[Live] Single stream ready (Deepgram deferred until audio flows)');
         }
 
         ws.send(JSON.stringify({ type: 'status', message: 'Live mode started', questionsLoaded: sessionQuestions.length, dualStream: !!msg.dualStream }));
