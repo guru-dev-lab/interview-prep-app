@@ -2449,8 +2449,8 @@ function handleLiveMessage(msg) {
     }
     renderQL();
 
-    // Only navigate if explicitly requested (manual click, "What should I say", canvas input)
-    if (msg.navigate) navigateToQuestion(msg.questionId);
+    // Answer is ready — always switch to it so the user sees it immediately
+    navigateToQuestion(msg.questionId);
     playDoneSound();
 
     // Smart Canvas: update the card with the real answer
