@@ -2033,6 +2033,7 @@ const wss = new WebSocket.Server({ server });
 
 // Session-level client tracking — broadcast to all clients (main app + canvas windows) for same session
 const sessionClients = new Map(); // sessionId -> Set of ws connections
+const activeLiveByUser = new Map(); // userId -> { ws, sessionId, platform } — only ONE live session per user
 
 function broadcastToSession(sessionId, data, excludeWs) {
   const clients = sessionClients.get(sessionId);
@@ -2599,6 +2600,22 @@ wss.on('connection', (ws) => {
         // Register this client for session broadcasting
         addSessionClient(sessionId, ws);
 
+        // ===== SINGLE-DEVICE LIVE ENFORCEMENT =====
+        // Only one full-live (non-canvas) connection per user at a time.
+        // If user goes live on Electron, kick the web one (and vice versa).
+        if (!isCanvasMode) {
+          const platform = msg.platform || 'web'; // canvas.html sends 'electron' or 'web'
+          const existing = activeLiveByUser.get(userId);
+          if (existing && existing.ws !== ws && existing.ws.readyState === WebSocket.OPEN) {
+            console.log(`[Live] Kicking previous live session for user ${userId} (was ${existing.platform}, now ${platform})`);
+            try {
+              existing.ws.send(JSON.stringify({ type: 'kicked', message: 'Live session started on another device' }));
+              existing.ws.close(4001, 'Replaced by new live session');
+            } catch(e) {}
+          }
+          activeLiveByUser.set(userId, { ws, sessionId, platform });
+        }
+
         // Canvas mode: passive listener only — receives broadcasts from main connection
         if (isCanvasMode) {
           // Load questions so canvas can handle what_should_i_say and canvas_question
@@ -3056,6 +3073,11 @@ wss.on('connection', (ws) => {
     clearTimeout(idleTimer);
     // Remove from session clients map
     if (sessionId) removeSessionClient(sessionId, ws);
+    // Remove from active live map if this is the current live connection for the user
+    if (userId && !isCanvasMode) {
+      const entry = activeLiveByUser.get(userId);
+      if (entry && entry.ws === ws) activeLiveByUser.delete(userId);
+    }
     // Canvas clients don't have Deepgram or transcripts to clean up
     if (isCanvasMode) return;
     // Cleanup Deepgram streams

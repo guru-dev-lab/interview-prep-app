@@ -276,7 +276,8 @@ function connect() {
       type: 'start',
       token: TOKEN,
       sessionId: SESSION_ID,
-      mode: connectMode
+      mode: connectMode,
+      platform: isElectronMode ? 'electron' : 'web'
     };
     if (isElectronMode) startMsg.dualStream = true;
     ws.send(JSON.stringify(startMsg));
@@ -285,9 +286,15 @@ function connect() {
     }
   };
 
-  ws.onclose = function() {
-    setStatus('Disconnected', 'off');
+  ws.onclose = function(evt) {
     ws = null;
+    // If kicked by server (another device went live), stop — don't reconnect
+    if (evt.code === 4001) {
+      setStatus('Kicked — live on another device', 'off');
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      return;
+    }
+    setStatus('Disconnected', 'off');
     // Auto-reconnect with backoff
     reconnectAttempts++;
     var delay = Math.min(3000 * reconnectAttempts, 15000);
@@ -329,6 +336,11 @@ function connect() {
     }
     else if (msg.type === 'error') {
       console.warn('[WS Error]', msg.message);
+    }
+    else if (msg.type === 'kicked') {
+      // Another device went live — show alert and stop
+      addCard('⚠️ Live session ended', msg.message || 'Live started on another device. Only one live session allowed at a time.', 'system');
+      setStatus('Kicked — live on another device', 'off');
     }
   };
 }
@@ -662,14 +674,15 @@ function stopRecording() {
 
 // ===== LIGHT MODE =====
 var isLightMode = false;
-var canvasFontSize = 14; // default font size in px
+var canvasFontSize = 12; // default font size in px (matches CSS)
 function changeFontSize(delta) {
   canvasFontSize = Math.max(10, Math.min(24, canvasFontSize + delta));
-  var wrap = document.querySelector('.canvas-wrap');
-  if (wrap) wrap.style.fontSize = canvasFontSize + 'px';
-  // Also adjust answer cards specifically
-  var cards = document.querySelectorAll('.card, .answer-text, .q-text');
-  cards.forEach(function(c) { c.style.fontSize = canvasFontSize + 'px'; });
+  // Apply to all answer and question elements — use !important to override font shorthand
+  var els = document.querySelectorAll('.sc-card-a, .sc-card-q, .sc-card-loading, .feed-wrap');
+  els.forEach(function(c) { c.style.setProperty('font-size', canvasFontSize + 'px', 'important'); });
+  // Also adjust any pre/code blocks proportionally
+  var codeEls = document.querySelectorAll('.sc-card-a pre, .sc-card-a code, .sc-card-a pre code');
+  codeEls.forEach(function(c) { c.style.setProperty('font-size', Math.max(10, canvasFontSize - 1) + 'px', 'important'); });
 }
 
 function toggleLightMode() {

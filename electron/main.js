@@ -255,10 +255,7 @@ function toggleOverlay() {
     mainWindow.hide();
     isVisible = false;
   } else {
-    // Reload launcher so it's a fresh start (kills stale WebSocket)
-    mainWindow.loadURL(SERVER_URL + '/launcher').catch(() => {
-      mainWindow.loadFile(path.join(__dirname, 'launcher.html'));
-    });
+    // Just show — don't reload. User's session and canvas stay intact.
     mainWindow.show();
     isVisible = true;
   }

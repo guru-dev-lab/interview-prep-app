@@ -2002,7 +2002,7 @@ async function toggleLiveMode() {
     liveWS = new WebSocket(wsProto + '//' + location.host);
 
     liveWS.onopen = function() {
-      liveWS.send(JSON.stringify({ type: 'start', token: TOKEN, sessionId: S.id, dualStream: true }));
+      liveWS.send(JSON.stringify({ type: 'start', token: TOKEN, sessionId: S.id, dualStream: true, platform: 'web' }));
     };
 
     liveWS.onmessage = function(e) {
@@ -2017,6 +2017,9 @@ async function toggleLiveMode() {
 
     liveWS.onclose = function(ev) {
       console.log('[Live WS] closed', ev.code, ev.reason);
+      if (ev.code === 4001) {
+        toast('Live session started on another device — this one was stopped', 1);
+      }
       if (liveActive) stopLiveMode();
     };
 

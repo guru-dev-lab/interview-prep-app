@@ -108,6 +108,18 @@ var authToken = '';
 var userId = '';
 var GOOGLE_CLIENT_ID = '';
 
+// Persist token so Electron doesn't lose session on hide/show or restart
+function saveToken(token, uid) {
+  authToken = token;
+  userId = uid || '';
+  try { localStorage.setItem('xhire_token', token); localStorage.setItem('xhire_uid', uid || ''); } catch(e) {}
+}
+function clearSavedToken() {
+  authToken = '';
+  userId = '';
+  try { localStorage.removeItem('xhire_token'); localStorage.removeItem('xhire_uid'); } catch(e) {}
+}
+
 // Get server URL and config
 (async function() {
   if (window.electronAPI) {
@@ -124,6 +136,24 @@ var GOOGLE_CLIENT_ID = '';
       initGoogleAuth();
     }
   } catch(e) { console.log('Config fetch failed:', e); }
+
+  // Try to restore saved session (Electron or returning web user)
+  try {
+    var saved = localStorage.getItem('xhire_token');
+    if (saved) {
+      authToken = saved;
+      userId = localStorage.getItem('xhire_uid') || '';
+      var res = await fetch(SERVER + '/api/auth/me', { headers: { 'Authorization': 'Bearer ' + saved } });
+      if (res.ok) {
+        var data = await res.json();
+        if (data.token) saveToken(data.token, data.user ? data.user.id : userId);
+        loadSessions();
+        return;
+      } else {
+        clearSavedToken();
+      }
+    }
+  } catch(e) { clearSavedToken(); }
 })();
 
 var gsiRetries = 0;
@@ -180,8 +210,7 @@ async function handleGoogleResponse(response) {
     });
     var data = await res.json();
     if (!res.ok || !data.token) { showError(data.error || 'Google sign-in failed'); return; }
-    authToken = data.token;
-    userId = data.user ? data.user.id : '';
+    saveToken(data.token, data.user ? data.user.id : '');
     loadSessions();
   } catch(e) {
     showError('Google sign-in failed');
@@ -218,8 +247,7 @@ async function doLogin() {
     var data = await res.json();
     if (!res.ok || !data.token) { showError(data.error || 'Login failed'); btn.disabled = false; btn.textContent = 'Sign In'; return; }
 
-    authToken = data.token;
-    userId = data.userId || data.user_id || '';
+    saveToken(data.token, data.user ? data.user.id : (data.userId || data.user_id || ''));
     loadSessions();
   } catch (e) {
     showError('Cannot reach server');
