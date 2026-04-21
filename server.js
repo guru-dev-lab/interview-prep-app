@@ -2298,7 +2298,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
     if (onIndexRebuild) onIndexRebuild();
 
     // Fire answer generation in background
-    generateLiveAnswer(q, sessionId, userId, ws, qId).then(() => {
+    generateLiveAnswer(q, sessionId, userId, ws, qId, !!forceNavigate).then(() => {
       pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId])
         .then(qResult => {
           sessionQuestions.length = 0;
@@ -2918,7 +2918,7 @@ app.post('/api/sessions/:id/canvas-ask', authMiddleware, async (req, res) => {
 });
 
 // Generate answer for live question — questionId is the EXISTING DB row from fastMatchAndRespond
-async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId) {
+async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId, forceNavigate) {
   try {
     // Use cached session context — no DB lookup needed
     const session = ws._sessionContext || {};
@@ -2974,7 +2974,8 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
       questionId: questionId || ('temp-' + Date.now()),
       questionText,
       answer,
-      isNew: true
+      isNew: true,
+      navigate: !!forceNavigate
     };
     ws.send(JSON.stringify(liveAnswerMsg));
     broadcastToSession(sessionId, liveAnswerMsg, ws); // Broadcast to canvas clients

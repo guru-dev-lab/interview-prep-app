@@ -397,6 +397,22 @@ button{font-family:inherit;cursor:pointer}
 .lq-pill:hover{border-color:var(--accent);color:var(--text)}
 .lq-pill.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .lq-pill .lq-num{font-weight:800;margin-right:3px}
+.lq-pill.lq-c0{border-color:rgba(167,139,250,.5);background:rgba(167,139,250,.1);color:#c4b5fd}
+.lq-pill.lq-c1{border-color:rgba(52,211,153,.5);background:rgba(52,211,153,.1);color:#6ee7b7}
+.lq-pill.lq-c2{border-color:rgba(96,165,250,.5);background:rgba(96,165,250,.1);color:#93c5fd}
+.lq-pill.lq-c3{border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.1);color:#fcd34d}
+.lq-pill.lq-c4{border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.1);color:#fca5a5}
+.lq-pill.lq-c5{border-color:rgba(244,114,182,.5);background:rgba(244,114,182,.1);color:#f9a8d4}
+.lq-pill.lq-c6{border-color:rgba(45,212,191,.5);background:rgba(45,212,191,.1);color:#5eead4}
+.lq-pill.lq-c7{border-color:rgba(192,132,252,.5);background:rgba(192,132,252,.1);color:#d8b4fe}
+.lq-pill.active.lq-c0{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.lq-pill.active.lq-c1{background:#059669;color:#fff;border-color:#059669}
+.lq-pill.active.lq-c2{background:#2563eb;color:#fff;border-color:#2563eb}
+.lq-pill.active.lq-c3{background:#d97706;color:#fff;border-color:#d97706}
+.lq-pill.active.lq-c4{background:#dc2626;color:#fff;border-color:#dc2626}
+.lq-pill.active.lq-c5{background:#db2777;color:#fff;border-color:#db2777}
+.lq-pill.active.lq-c6{background:#0d9488;color:#fff;border-color:#0d9488}
+.lq-pill.active.lq-c7{background:#7e22ce;color:#fff;border-color:#7e22ce}
 /* Smart Canvas — right-side panel, 80% height from bottom */
 .smart-canvas{position:fixed;top:20vh;right:0;bottom:0;width:480px;z-index:35;background:var(--bg);display:none;flex-direction:column;border-left:2px solid var(--accent);border-top-left-radius:16px;box-shadow:-8px 0 40px rgba(0,0,0,.3)}
 .smart-canvas.active{display:flex}
@@ -2433,7 +2449,8 @@ function handleLiveMessage(msg) {
     }
     renderQL();
 
-    navigateToQuestion(msg.questionId);
+    // Only navigate if explicitly requested (manual click, "What should I say", canvas input)
+    if (msg.navigate) navigateToQuestion(msg.questionId);
     playDoneSound();
 
     // Smart Canvas: update the card with the real answer
@@ -2480,11 +2497,12 @@ function renderLiveQueue(activeQId) {
     return;
   }
   container.style.display = 'block';
-  items.innerHTML = liveQueue.map(function(q) {
+  items.innerHTML = liveQueue.map(function(q, idx) {
     var isActive = q.questionId === activeQId;
-    var label = q.isNew ? 'New' : 'Q' + q.partIndex;
+    var colorClass = 'lq-c' + (idx % 8);
+    var label = q.isNew ? 'New' : 'Q' + (idx + 1);
     var shortText = q.questionText.length > 40 ? q.questionText.substring(0, 40) + '...' : q.questionText;
-    return '<div class="lq-pill' + (isActive ? ' active' : '') + '" onclick="jumpToQueueItem(\'' + q.questionId + '\')" title="' + esc(q.questionText) + '"><span class="lq-num">' + label + '</span>' + esc(shortText) + '</div>';
+    return '<div class="lq-pill ' + colorClass + (isActive ? ' active' : '') + '" onclick="jumpToQueueItem(\'' + q.questionId + '\')" title="' + esc(q.questionText) + '"><span class="lq-num">' + label + '</span>' + esc(shortText) + '</div>';
   }).join('');
 }
 
