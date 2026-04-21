@@ -1986,6 +1986,12 @@ function cleanQuestionText(text) {
     // Fallback: strip leading transition phrases only
     t = t.replace(/^(the next question is[,:]?\s*|okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|let's move on[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*|next up[,:]?\s*|let me ask you[,:]?\s*|i(?:'d| would) like to ask[,:]?\s*|here's (?:a|another) question[,:]?\s*)/i, '').trim();
   }
+  // Clean trailing filler: "...right?", "...you know?", "...if that makes sense"
+  t = t.replace(/[,.]?\s*(right|you know|if that makes sense|if you will|so to speak|you know what I mean)\s*[?.]*\s*$/i, '').trim();
+  // Clean trailing incomplete fragments after the question: "How do you handle X. And then..."
+  t = t.replace(/\.\s*(and then|so then|and also|but also|and|but|or|so)\s*\.{0,3}\s*$/i, '').trim();
+  // Capitalize first letter
+  if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
   return t;
 }
 
@@ -2341,13 +2347,19 @@ wss.on('connection', (ws) => {
   let recentMatchedIds = new Set(); // prevent duplicate matches within short window
   let questionIndex = null; // TF-IDF + keyword index for smart matching
   let idleTimer = null;
-  const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  let idleWarningTimer = null;
+  const IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes — interviewer may leave and rejoin
+  const IDLE_WARNING = 8 * 60 * 1000; // Warn at 8 minutes
   function resetIdleTimer() {
     if (isCanvasMode) return; // canvas clients don't have idle timeout
     clearTimeout(idleTimer);
+    clearTimeout(idleWarningTimer);
+    idleWarningTimer = setTimeout(() => {
+      try { ws.send(JSON.stringify({ type: 'status', message: 'No audio for 8 min — live will end in 2 min if silence continues' })); } catch(e) {}
+    }, IDLE_WARNING);
     idleTimer = setTimeout(() => {
       console.log('[WS] Idle timeout — closing connection');
-      ws.send(JSON.stringify({ type: 'status', message: 'Live mode ended — idle timeout (5 min no data)' }));
+      try { ws.send(JSON.stringify({ type: 'status', message: 'Live mode ended — idle timeout (10 min no audio)' })); } catch(e) {}
       ws.close();
     }, IDLE_TIMEOUT);
   }
@@ -2381,6 +2393,7 @@ wss.on('connection', (ws) => {
       if (msg.type === 'user_speaking') {
         userIsSpeaking = msg.speaking;
         if (!msg.speaking) userStoppedSpeakingAt = Date.now();
+        if (msg.speaking) resetIdleTimer(); // Your voice keeps the session alive
         return;
       }
 
@@ -2616,6 +2629,7 @@ wss.on('connection', (ws) => {
               if (speechFinal && userBuffer.trim()) {
                 const fullUtterance = userBuffer.trim();
                 userBuffer = '';
+                resetIdleTimer(); // User speaking keeps the session alive
                 // Send as user_transcript — distinct type so frontend can style differently
                 ws.send(JSON.stringify({ type: 'user_transcript', text: fullUtterance, isFinal: true }));
                 broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true }, ws);
