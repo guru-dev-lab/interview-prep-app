@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Xhire Smart Canvas</title>
+<title>Xhire Pilot</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -121,7 +122,7 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
 <body>
 <!-- Draggable titlebar — minimal -->
 <div class="titlebar">
-  <h1><span class="dot"></span> Smart Canvas</h1>
+  <h1><span class="dot"></span> Xhire Pilot</h1>
   <div class="titlebar-right">
     <span class="status off" id="ws-status">Offline</span>
     <button class="light-btn" id="btn-quit" style="display:none;color:#F87171;border-color:rgba(248,113,113,.3)" onclick="quitApp()" title="Quit Xhire">✕</button>
@@ -135,6 +136,7 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
   <button class="ctrl-btn" onclick="changeFontSize(-1)" title="Decrease font size">A-</button>
   <button class="ctrl-btn" onclick="changeFontSize(1)" title="Increase font size">A+</button>
   <label><input type="range" id="opacity-slider" min="30" max="100" value="100"></label>
+  <button class="ctrl-btn" id="btn-logout" onclick="doLogout()" title="Sign out & switch user" style="margin-left:auto;color:#F87171;border-color:rgba(248,113,113,.2)">Logout</button>
 </div>
 
 <div class="canvas-wrap">
@@ -147,7 +149,7 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
   <div class="feed-wrap" id="feed">
     <div class="empty-state" id="empty-state">
       <svg width="40" height="40" fill="none" stroke="#7c3aed" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-      <h3>Smart Canvas Ready</h3>
+      <h3>Xhire Pilot Ready</h3>
       <p id="empty-msg">Click Go Live above to start capturing audio.</p>
     </div>
   </div>
@@ -219,6 +221,20 @@ function quitApp() {
     window.electronAPI.quitApp();
   } else {
     window.close();
+  }
+}
+
+function doLogout() {
+  // Close WebSocket if active
+  if (ws) { try { ws.close(); } catch(e) {} ws = null; }
+  // Clear saved token
+  try { localStorage.removeItem('xhire_token'); localStorage.removeItem('xhire_uid'); } catch(e) {}
+  try { sessionStorage.removeItem('token'); } catch(e) {}
+  // Navigate back to launcher
+  if (window.electronAPI) {
+    window.location.href = '/launcher';
+  } else {
+    window.location.href = '/';
   }
 }
 
@@ -675,14 +691,17 @@ function stopRecording() {
 // ===== LIGHT MODE =====
 var isLightMode = false;
 var canvasFontSize = 12; // default font size in px (matches CSS)
+// Dynamic style element — applies font size to ALL cards, including future ones
+var _fontStyleEl = document.createElement('style');
+_fontStyleEl.id = 'dynamic-font';
+document.head.appendChild(_fontStyleEl);
 function changeFontSize(delta) {
   canvasFontSize = Math.max(10, Math.min(24, canvasFontSize + delta));
-  // Apply to all answer and question elements — use !important to override font shorthand
-  var els = document.querySelectorAll('.sc-card-a, .sc-card-q, .sc-card-loading, .feed-wrap');
-  els.forEach(function(c) { c.style.setProperty('font-size', canvasFontSize + 'px', 'important'); });
-  // Also adjust any pre/code blocks proportionally
-  var codeEls = document.querySelectorAll('.sc-card-a pre, .sc-card-a code, .sc-card-a pre code');
-  codeEls.forEach(function(c) { c.style.setProperty('font-size', Math.max(10, canvasFontSize - 1) + 'px', 'important'); });
+  var codeSz = Math.max(10, canvasFontSize - 1);
+  // Inject CSS rule that applies to existing AND future elements
+  _fontStyleEl.textContent =
+    '.sc-card-a, .sc-card-q, .sc-card-loading, .feed-wrap { font-size: ' + canvasFontSize + 'px !important; }' +
+    '.sc-card-a pre, .sc-card-a code, .sc-card-a pre code { font-size: ' + codeSz + 'px !important; }';
 }
 
 function toggleLightMode() {
@@ -725,7 +744,7 @@ setTimeout(function() {
 // ===== SESSION PICKER =====
 async function loadSessions() {
   if (!TOKEN) {
-    $('feed').innerHTML = '<div class="empty-state"><h3>Not logged in</h3><p>Open xhire.app, log in, go live, then click "Desktop" in the Smart Canvas header.</p></div>';
+    $('feed').innerHTML = '<div class="empty-state"><h3>Not logged in</h3><p>Open xhire.app, log in, go live, then click "Desktop" in Xhire Pilot.</p></div>';
     return;
   }
   if (SESSION_ID) { connect(); return; }
@@ -759,7 +778,7 @@ function pickSession(id) {
   var url = new URL(location.href);
   url.searchParams.set('session', id);
   history.replaceState(null, '', url.toString());
-  $('feed').innerHTML = '<div class="empty-state" id="empty-state"><h3>Smart Canvas Ready</h3><p>Go Live on xhire.app, then answers stream here automatically.</p></div>';
+  $('feed').innerHTML = '<div class="empty-state" id="empty-state"><h3>Xhire Pilot Ready</h3><p>Go Live on xhire.app, then answers stream here automatically.</p></div>';
   connect();
 }
 

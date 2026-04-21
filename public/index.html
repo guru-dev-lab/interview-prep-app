@@ -517,7 +517,7 @@ body.canvas-open .prep-content{margin-right:480px}
 <!-- SMART CANVAS — right-side answer panel -->
 <div class="smart-canvas" id="smart-canvas">
   <div class="sc-header">
-    <h2><span class="live-dot"></span>Smart Canvas</h2>
+    <h2><span class="live-dot"></span>Xhire Pilot</h2>
     <div style="display:flex;align-items:center;gap:6px">
       <button id="sc-mic-btn" onclick="toggleMicMute()" style="display:flex;align-items:center;gap:4px;padding:5px 8px;border:1px solid rgba(52,211,153,.3);border-radius:6px;background:none;font:600 10px Inter,sans-serif;color:#34D399;cursor:pointer">
         <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
@@ -2526,7 +2526,7 @@ function showSmartCanvas() {
   $('smart-canvas').classList.add('active');
   document.body.classList.add('canvas-open');
   canvasCards = [];
-  $('sc-feed').innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)"><svg width="48" height="48" fill="none" stroke="var(--accent)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px;opacity:.5"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg><div style="font:600 16px Inter,sans-serif;color:var(--text2);margin-bottom:8px">Smart Canvas Ready</div><div style="font:400 13px Inter,sans-serif;max-width:400px;margin:0 auto;line-height:1.6">Listening for questions from the interview. You can also type a question below. Answers appear here instantly.</div></div>';
+  $('sc-feed').innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)"><svg width="48" height="48" fill="none" stroke="var(--accent)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px;opacity:.5"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg><div style="font:600 16px Inter,sans-serif;color:var(--text2);margin-bottom:8px">Xhire Pilot Ready</div><div style="font:400 13px Inter,sans-serif;max-width:400px;margin:0 auto;line-height:1.6">Listening for questions from the interview. You can also type a question below. Answers appear here instantly.</div></div>';
   $('sc-input').value = '';
   $('sc-input').focus();
 }
@@ -2962,7 +2962,7 @@ function buildPopOutDOM(doc) {
   // Header
   var header = doc.createElement('div');
   header.className = 'po-header';
-  header.innerHTML = '<h3><span class="po-dot"></span>Smart Canvas</h3><div style="display:flex;align-items:center;gap:8px"><button class="po-light-btn" id="po-light-toggle">Light</button><span style="font:400 10px Inter,sans-serif;color:#64748b">Always on top</span></div>';
+  header.innerHTML = '<h3><span class="po-dot"></span>Xhire Pilot</h3><div style="display:flex;align-items:center;gap:8px"><button class="po-light-btn" id="po-light-toggle">Light</button><span style="font:400 10px Inter,sans-serif;color:#64748b">Always on top</span></div>';
   // Wire up light toggle after DOM is built
   setTimeout(function() {
     var ltBtn = doc.getElementById('po-light-toggle');
@@ -3060,7 +3060,7 @@ async function popOutCanvas() {
   if (!popOutWindow) { toast('Pop-up blocked — allow pop-ups for xhire.app', 1); return; }
   var doc = popOutWindow.document;
   doc.open();
-  doc.write('<!DOCTYPE html><html><head><title>Xhire Smart Canvas</title>');
+  doc.write('<!DOCTYPE html><html><head><title>Xhire Pilot</title>');
   doc.write('<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">');
   doc.write('<style>' + getPopOutCSS() + '</style>');
   doc.write('</head><body></body></html>');
