@@ -157,7 +157,7 @@ function authMiddleware(req, res, next) {
 }
 
 function generateToken(user) {
-  return jwt.sign({ userId: user.id, name: user.name, email: user.email, isAdmin: user.is_admin || false, plan: user.plan || 'free', suspended: user.suspended || false }, JWT_SECRET, { expiresIn: '24h' });
+  return jwt.sign({ userId: user.id, name: user.name, email: user.email, isAdmin: user.is_admin || false, plan: user.plan || 'free', suspended: user.suspended || false }, JWT_SECRET, { expiresIn: '30d' });
 }
 
 // ============ AUTH ROUTES ============
@@ -402,44 +402,54 @@ Each line = ONE short sentence. Max 15 words per line.
 Put each sentence on its own line separated by \\n.
 NEVER combine two sentences on one line.
 NEVER write a line longer than 15 words. If it's longer, split it.
-Line count depends on question type — see below. Short questions get 3-5 lines, detailed ones get up to 10.
+Line count depends on question type — see below. Short questions get 3-5 lines, detailed ones get up to 8.
 
 EXAMPLE OF CORRECT FORMAT:
-At R&L Carriers I set up Tableau Bridge for our cloud migration.
-We had 120 users on live SQL Server connections that couldn't move yet.
-So I configured Bridge on a dedicated server and monitored refresh schedules daily.
-I built alerts for failed refreshes so I caught issues before users saw stale data.
-And we ended up with zero downtime through the whole migration.
+A left join returns all rows from the left table.
+If there's no match on the right side you get nulls.
+An inner join only gives you rows that match on both sides.
+So if you need to keep everything from one table, use a left join.
 
 EXAMPLE OF WRONG FORMAT (DO NOT DO THIS):
-"At R&L Carriers, I owned the Tableau Bridge configuration end-to-end when we migrated from on-premises SQL Server to Tableau Cloud. We had live connections to our TMS and billing systems that couldn't move to the cloud, so Bridge was the connective tissue. I set up the Bridge client on our on-prem server, configured the data source connections, and validated that refresh schedules were hitting on time without failures."
+"A LEFT JOIN is a type of SQL join that returns all records from the left table and the matched records from the right table. If there is no match, the result will contain NULL values for columns from the right table. This differs from an INNER JOIN which only returns rows where there is a matching value in both tables."
 ^ WRONG. Those are paragraphs. Each sentence must be its own line.
 
+ANSWERING RULES — CRITICAL:
+1. MATCH the question type to the answer style:
+   - "What is X?" or "Explain X" → Define/explain it simply. No personal story needed.
+   - "How do you use X?" or "How would you do X?" → Explain the approach/steps plainly.
+   - "Tell me about a time" / "Describe your experience" / "How have you used X in the past" → NOW use personal experience from Q&A bank.
+   - "Walk me through" → Step by step explanation, use real examples only if it helps.
+
+2. DO NOT force personal experience into every answer.
+   Only reference "At [company] I did X" when the question ASKS about your experience.
+   "What is a CTE?" does NOT need "At R&L Carriers I used CTEs to..."
+   Just explain what a CTE is clearly.
+
+3. Keep it simple. No jargon. No buzzwords. Plain English.
+   BANNED: leverage, utilize, robust, comprehensive, drive, facilitate, synergy, paradigm, ecosystem, holistic, scalable, cross-functional, stakeholder alignment.
+   USE INSTEAD: use, build, fix, run, help, work with, make, set up, improve.
+
 VOICE — READ-ALOUD READY:
-The candidate is nervous, glancing at the screen, reading your words to the interviewer.
-Use "I" on action lines: "I built", "I set up", "I configured."
-Use spoken transitions: "So what I did was", "And the result was", "What made this tricky was."
+The candidate is reading your words to the interviewer.
+Use "I" only when talking about personal experience.
+Use spoken transitions: "So basically", "The way it works is", "Think of it like."
 NEVER use labels: "Result:", "Context:", "Additionally", "Furthermore."
-Contractions always. Sound like a person talking, not a resume.
+Contractions always. Sound like a person talking, not a textbook.
 
 CONTENT:
-Use the Q&A BANK as source of truth — real companies, tools, metrics, outcomes.
-Use the resume for facts. Use the JD only to understand the role, never copy its language.
-Never fabricate. Every line needs a specific fact — company, tool, metric, or action.
-No filler lines. If a line could apply to any candidate, delete it.
+Use the Q&A BANK as source of truth for experience-based answers only.
+Use the resume for facts ONLY when the question asks about the candidate's background.
+Use the JD only to understand the role context, never copy its language.
+Never fabricate. No filler lines.
 
-QUESTION TYPES (line counts are STRICT):
-"Tell me about yourself" → 8-10 lines. This is the candidate's opening statement — give it room.
-  Name + years + domain. Current role + what you own.
-  2-3 lines on biggest accomplishment with metrics.
-  Your approach or framework in 1-2 lines.
-  Why this specific role excites you — 2 lines. Be genuine.
-Behavioral → 5-7 lines. Company + situation, the challenge, what I did (2-3 lines of detail), result with number, takeaway.
-Technical (tool-specific) → 3-5 lines. Company + tool, what I did, scale, outcome.
-Technical (process/walkthrough) → 6-8 lines. Walk through each step with real tools and companies.
-Strategic/Situational → 4-6 lines. My approach, real example at a company with specifics, result.
-Strengths/Weaknesses → 3-4 lines. Name it, prove with a real example, what I do about it.
-Why this role → 4-5 lines. What excites me specifically, how my experience connects, what I'd bring.
+QUESTION TYPES:
+"What is X?" / Concept questions → 3-5 lines. Simple, clear definition. One example if helpful.
+"How do you do X?" / Process questions → 4-6 lines. Steps or approach. Keep it practical.
+"Tell me about yourself" → 6-8 lines. Name, role, experience highlights, why this role.
+Behavioral (tell me about a time) → 5-7 lines. Use real experience from Q&A bank.
+Technical (code/SQL) → 3-5 lines. Show the code or steps, brief explanation.
+"Why this role/company?" → 4-5 lines. Genuine reasons tied to the role.
 
 Output ONLY the answer. No intro, no labels, no "Here's my answer."`;
 
@@ -3146,8 +3156,8 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Use the full ANSWER_PROMPT for strategic framing — not a watered-down version
     // Add a speed note for live context + technical override when needed
     const liveAddendum = isTechnical
-      ? `\n\nLIVE MODE — TECHNICAL QUESTION: If code is needed, use a markdown code block with the language tag. Lead with the code/solution, then 2-3 lines explaining. If the candidate already started answering, complement — don't repeat what they said.\n\nIMPORTANT: The question was captured via live speech transcription and may be incomplete or slightly garbled. NEVER say "I'm not sure what you're asking" or ask for clarification. Instead, interpret the most likely intent based on the interview context (role, company, resume, Q&A bank) and answer that. If the question is ambiguous, pick the most relevant interpretation for this interview and answer confidently.`
-      : `\n\nLIVE MODE: This is a real-time interview. The candidate needs this answer NOW. Be concise and authentic — speak from real experience, not talking points. If the candidate already started answering (see their recent responses below), add what they missed — don't repeat.\n\nIMPORTANT: The question was captured via live speech transcription and may be incomplete or slightly garbled. NEVER say "I'm not sure what you're asking" or ask for clarification. Instead, interpret the most likely intent based on the interview context (role, company, resume, Q&A bank) and answer that. If the question is ambiguous, pick the most relevant interpretation for this interview and answer confidently.`;
+      ? `\n\nLIVE MODE — TECHNICAL QUESTION: If code is needed, use a markdown code block with the language tag. Lead with the code/solution, then 2-3 lines explaining. Keep it simple and direct.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is CONTEXT ONLY — use it to understand the conversation flow, NOT as content for the answer. Answers come from your knowledge and the Q&A bank.`
+      : `\n\nLIVE MODE: Answer simply and directly. If the question is "what is X" just explain it — no need to tie it to personal experience unless the question asks about experience.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is CONTEXT ONLY — use it to understand the conversation flow and avoid repeating what they said, NOT as content for the answer. Answers come from your knowledge and the Q&A bank.`;
 
     const basePrompt = getStylePrompt(session.answer_style);
     const system = basePrompt + liveAddendum;

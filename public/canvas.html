@@ -132,6 +132,8 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
   <button class="ctrl-btn" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">Go Live</button>
   <button class="ctrl-btn" id="light-toggle" onclick="toggleLightMode()">Light</button>
   <button class="ctrl-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">Stealth: On</button>
+  <button class="ctrl-btn" onclick="changeFontSize(-1)" title="Decrease font size">A-</button>
+  <button class="ctrl-btn" onclick="changeFontSize(1)" title="Increase font size">A+</button>
   <label><input type="range" id="opacity-slider" min="30" max="100" value="100"></label>
 </div>
 
@@ -660,6 +662,16 @@ function stopRecording() {
 
 // ===== LIGHT MODE =====
 var isLightMode = false;
+var canvasFontSize = 14; // default font size in px
+function changeFontSize(delta) {
+  canvasFontSize = Math.max(10, Math.min(24, canvasFontSize + delta));
+  var wrap = document.querySelector('.canvas-wrap');
+  if (wrap) wrap.style.fontSize = canvasFontSize + 'px';
+  // Also adjust answer cards specifically
+  var cards = document.querySelectorAll('.card, .answer-text, .q-text');
+  cards.forEach(function(c) { c.style.fontSize = canvasFontSize + 'px'; });
+}
+
 function toggleLightMode() {
   isLightMode = !isLightMode;
   document.body.classList.toggle('light-mode', isLightMode);
