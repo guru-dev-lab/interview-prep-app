@@ -1,15 +1,5 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences } = require('electron');
 const path = require('path');
-
-// Enable system audio loopback on macOS 14.2+ (captures all system audio without virtual drivers)
-try {
-  const audioLoopback = require('electron-audio-loopback');
-  audioLoopback.enable();
-  console.log('[Xhire] electron-audio-loopback enabled — system audio capture available');
-} catch (e) {
-  console.log('[Xhire] electron-audio-loopback not available:', e.message);
-  console.log('[Xhire] System audio capture may require a virtual audio driver or macOS 14.2+');
-}
 
 // ===== CONFIG =====
 const SERVER_URL = process.env.XHIRE_SERVER || 'https://xhire.app';
@@ -45,6 +35,27 @@ app.whenReady().then(() => {
 
   createTray();
   createOverlay();
+
+  // Handle getDisplayMedia from renderer — required for audio/screen capture in Electron
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
+      if (sources.length === 0) {
+        callback({});
+        return;
+      }
+      // Grant first screen source + system audio loopback
+      callback({ video: sources[0], audio: 'loopback' });
+    }).catch(() => {
+      callback({});
+    });
+  });
+
+  // Request microphone permission on macOS
+  if (process.platform === 'darwin') {
+    systemPreferences.askForMediaAccess('microphone').then((granted) => {
+      console.log('[Xhire] Microphone access:', granted ? 'granted' : 'denied');
+    });
+  }
 });
 
 app.on('window-all-closed', (e) => {
