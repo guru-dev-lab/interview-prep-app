@@ -2408,21 +2408,26 @@ function openDeepgramStream(onTranscript, onError) {
   const dgWs = new WebSocket('wss://api.deepgram.com/v1/listen?' + params, {
     headers: { 'Authorization': 'Token ' + DEEPGRAM_API_KEY }
   });
+  let _dgMsgCount = 0;
   dgWs.on('open', () => {
-    console.log('[Deepgram] Stream connected');
+    console.log('[Deepgram] Stream connected — ready to receive audio');
     if (dgWs._onOpen) dgWs._onOpen();
   });
   dgWs.on('message', (data) => {
     try {
       const msg = JSON.parse(data);
+      _dgMsgCount++;
+      if (_dgMsgCount <= 3 || _dgMsgCount % 50 === 0) {
+        console.log(`[DIAG-DG] msg#${_dgMsgCount} type=${msg.type} transcript="${(msg.channel?.alternatives?.[0]?.transcript || '').substring(0,40)}"`);
+      }
       if (msg.type === 'Results' && msg.channel?.alternatives?.[0]) {
         const text = msg.channel.alternatives[0].transcript || '';
         if (text.trim()) onTranscript(text, msg.is_final, msg.speech_final);
       }
-    } catch (e) { /* ignore parse errors */ }
+    } catch (e) { console.error('[Deepgram] Parse error:', e.message); }
   });
-  dgWs.on('error', onError);
-  dgWs.on('close', () => console.log('[Deepgram] Stream closed'));
+  dgWs.on('error', (err) => { console.error('[Deepgram] WS error:', err.message); onError(err); });
+  dgWs.on('close', (code, reason) => console.log(`[Deepgram] Stream closed code=${code} reason=${reason}`));
   return dgWs;
 }
 
@@ -2467,11 +2472,24 @@ wss.on('connection', (ws) => {
     if (sessionId) broadcastToSession(sessionId, msg, ws);
   }
 
+  let _audioPktCount = { 1: 0, 2: 0 };
+  let _dgSendCount = { 1: 0, 2: 0 };
+  let _dgBufferCount = { 1: 0, 2: 0 };
+  let _dgDropCount = { 1: 0, 2: 0 };
+
   ws.on('message', async (rawData) => {
     // Binary audio data: first byte = channel (1=interviewer, 2=user)
     if (rawData instanceof Buffer && rawData.length > 1 && rawData[0] !== 0x7b) {
       const channel = rawData[0];
       const audio = rawData.slice(1);
+
+      _audioPktCount[channel] = (_audioPktCount[channel] || 0) + 1;
+      // Log every 100th packet with full state
+      if (_audioPktCount[channel] % 100 === 1) {
+        const dgObj = channel === 1 ? interviewerDG : userDG;
+        const setupFn = channel === 1 ? ws._setupInterviewerDG : ws._setupUserDG;
+        console.log(`[DIAG] Ch${channel} pkt#${_audioPktCount[channel]} | audio=${audio.length}B | DG=${dgObj ? ['CONNECTING','OPEN','CLOSING','CLOSED'][dgObj.readyState] : 'null'} | setupFn=${!!setupFn} | sent=${_dgSendCount[channel]} buf=${_dgBufferCount[channel]} drop=${_dgDropCount[channel]}`);
+      }
 
       // Lazy Deepgram init: open streams on first audio packet, not on 'start' message.
       // This prevents Deepgram from timing out idle connections while the user
@@ -2503,26 +2521,40 @@ wss.on('connection', (ws) => {
           if (ws._audioBuffer1 && ws._audioBuffer1.length) {
             console.log('[Audio] Flushing', ws._audioBuffer1.length, 'buffered Ch1 packets inline');
             ws._audioBuffer1.forEach(buf => interviewerDG.send(buf));
+            _dgSendCount[1] += ws._audioBuffer1.length;
             ws._audioBuffer1 = [];
           }
           interviewerDG.send(audio);
+          _dgSendCount[1]++;
         } else if (interviewerDG.readyState === WebSocket.CONNECTING) {
           if (!ws._audioBuffer1) ws._audioBuffer1 = [];
           ws._audioBuffer1.push(audio);
+          _dgBufferCount[1]++;
+        } else {
+          _dgDropCount[1]++;
         }
+      } else if (channel === 1) {
+        _dgDropCount[1]++;
       }
       if (channel === 2 && userDG) {
         if (userDG.readyState === WebSocket.OPEN) {
           if (ws._audioBuffer2 && ws._audioBuffer2.length) {
             console.log('[Audio] Flushing', ws._audioBuffer2.length, 'buffered Ch2 packets inline');
             ws._audioBuffer2.forEach(buf => userDG.send(buf));
+            _dgSendCount[2] += ws._audioBuffer2.length;
             ws._audioBuffer2 = [];
           }
           userDG.send(audio);
+          _dgSendCount[2]++;
         } else if (userDG.readyState === WebSocket.CONNECTING) {
           if (!ws._audioBuffer2) ws._audioBuffer2 = [];
           ws._audioBuffer2.push(audio);
+          _dgBufferCount[2]++;
+        } else {
+          _dgDropCount[2]++;
         }
+      } else if (channel === 2) {
+        _dgDropCount[2]++;
       }
       return;
     }
@@ -2726,6 +2758,7 @@ wss.on('connection', (ws) => {
           ws._audioBuffer1 = []; // init buffer for packets arriving while CONNECTING
           interviewerDG = openDeepgramStream(
             (text, isFinal, speechFinal) => {
+              console.log(`[DIAG-DG] Ch1 transcript: "${text.substring(0,60)}" isFinal=${isFinal} speechFinal=${speechFinal}`);
               if (!text.trim()) return;
 
               if (isFinal) {
