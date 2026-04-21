@@ -2662,7 +2662,7 @@ wss.on('connection', (ws) => {
         transcript = [];
         lastMatchedQId = null;
         let lastAutoMatchTime = 0; // Timestamp of last auto-detected match
-        const AUTO_MATCH_COOLDOWN = 90000; // 90s (1:30) cooldown — let the current answer breathe before switching
+        const AUTO_MATCH_COOLDOWN = 15000; // 15s cooldown — responsive detection while avoiding rapid switching
 
         // Single Deepgram stream — two detection layers:
         // 1. Fast: isQuestion() pattern match fires instantly on obvious questions
@@ -2672,10 +2672,10 @@ wss.on('connection', (ws) => {
         let lastAiExtractedQ = ''; // prevent re-firing same extracted question
         let recentDetectedQs = []; // last 5 detected questions for fuzzy de-dup
         let aiExtractTimer = null; // debounce timer — wait for speech to settle before extracting
-        const AI_EXTRACT_DELAY = 2000; // 2s after last speechFinal before AI fires
+        const AI_EXTRACT_DELAY = 1200; // 1.2s after last speechFinal before AI fires
         let userIsSpeaking = false; // Volume-based: true when user is talking into mic
         let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
-        const USER_SPEECH_GUARD = 4000; // 4s after user stops speaking before allowing detection
+        const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
