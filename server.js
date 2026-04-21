@@ -2408,7 +2408,10 @@ function openDeepgramStream(onTranscript, onError) {
   const dgWs = new WebSocket('wss://api.deepgram.com/v1/listen?' + params, {
     headers: { 'Authorization': 'Token ' + DEEPGRAM_API_KEY }
   });
-  dgWs.on('open', () => console.log('[Deepgram] Stream connected'));
+  dgWs.on('open', () => {
+    console.log('[Deepgram] Stream connected');
+    if (dgWs._onOpen) dgWs._onOpen();
+  });
   dgWs.on('message', (data) => {
     try {
       const msg = JSON.parse(data);
@@ -2494,10 +2497,32 @@ wss.on('connection', (ws) => {
         ws._setupUserDG();
       }
 
-      if (channel === 1 && interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
-        interviewerDG.send(audio);
-      } else if (channel === 2 && userDG && userDG.readyState === WebSocket.OPEN) {
-        userDG.send(audio);
+      // Route audio to Deepgram — with buffering for CONNECTING state
+      if (channel === 1 && interviewerDG) {
+        if (interviewerDG.readyState === WebSocket.OPEN) {
+          if (ws._audioBuffer1 && ws._audioBuffer1.length) {
+            console.log('[Audio] Flushing', ws._audioBuffer1.length, 'buffered Ch1 packets inline');
+            ws._audioBuffer1.forEach(buf => interviewerDG.send(buf));
+            ws._audioBuffer1 = [];
+          }
+          interviewerDG.send(audio);
+        } else if (interviewerDG.readyState === WebSocket.CONNECTING) {
+          if (!ws._audioBuffer1) ws._audioBuffer1 = [];
+          ws._audioBuffer1.push(audio);
+        }
+      }
+      if (channel === 2 && userDG) {
+        if (userDG.readyState === WebSocket.OPEN) {
+          if (ws._audioBuffer2 && ws._audioBuffer2.length) {
+            console.log('[Audio] Flushing', ws._audioBuffer2.length, 'buffered Ch2 packets inline');
+            ws._audioBuffer2.forEach(buf => userDG.send(buf));
+            ws._audioBuffer2 = [];
+          }
+          userDG.send(audio);
+        } else if (userDG.readyState === WebSocket.CONNECTING) {
+          if (!ws._audioBuffer2) ws._audioBuffer2 = [];
+          ws._audioBuffer2.push(audio);
+        }
       }
       return;
     }
@@ -2698,6 +2723,7 @@ wss.on('connection', (ws) => {
         ws._setupInterviewerDG = function() {
           if (interviewerDG && interviewerDG.readyState <= WebSocket.OPEN) return;
           console.log('[Deepgram] Opening interviewer stream (lazy)');
+          ws._audioBuffer1 = []; // init buffer for packets arriving while CONNECTING
           interviewerDG = openDeepgramStream(
             (text, isFinal, speechFinal) => {
               if (!text.trim()) return;
@@ -2734,6 +2760,16 @@ wss.on('connection', (ws) => {
               ws.send(JSON.stringify({ type: 'error', message: 'Transcription error: ' + err.message }));
             }
           );
+          // Flush buffered audio as soon as Deepgram connects
+          if (interviewerDG) {
+            interviewerDG._onOpen = function() {
+              if (ws._audioBuffer1 && ws._audioBuffer1.length) {
+                console.log('[Deepgram] Flushing', ws._audioBuffer1.length, 'buffered Ch1 packets on open');
+                ws._audioBuffer1.forEach(buf => { try { interviewerDG.send(buf); } catch(e) {} });
+                ws._audioBuffer1 = [];
+              }
+            };
+          }
         };
 
         // Channel 2 setup (deferred)
@@ -2742,6 +2778,7 @@ wss.on('connection', (ws) => {
           ws._setupUserDG = function() {
             if (userDG && userDG.readyState <= WebSocket.OPEN) return;
             console.log('[Deepgram] Opening user mic stream (lazy)');
+            ws._audioBuffer2 = []; // init buffer for packets arriving while CONNECTING
             userDG = openDeepgramStream(
               (text, isFinal, speechFinal) => {
                 if (!text.trim()) return;
@@ -2763,6 +2800,16 @@ wss.on('connection', (ws) => {
                 userDG = null; // Allow re-open
               }
             );
+            // Flush buffered audio as soon as Deepgram connects
+            if (userDG) {
+              userDG._onOpen = function() {
+                if (ws._audioBuffer2 && ws._audioBuffer2.length) {
+                  console.log('[Deepgram] Flushing', ws._audioBuffer2.length, 'buffered Ch2 packets on open');
+                  ws._audioBuffer2.forEach(buf => { try { userDG.send(buf); } catch(e) {} });
+                  ws._audioBuffer2 = [];
+                }
+              };
+            }
           };
           console.log('[Live] Dual stream ready (Deepgram deferred until audio flows)');
         } else {
