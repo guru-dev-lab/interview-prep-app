@@ -77,6 +77,12 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .style-select{padding:2px 4px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;outline:none;-webkit-app-region:no-drag}
 .style-select option{background:#0c1019;color:#e2e8f0}
 
+/* Preferences panel */
+.pref-wrap{-webkit-app-region:no-drag}
+.pref-panel{position:absolute;right:0;top:100%;margin-top:4px;background:var(--surface);border:1px solid var(--glass-border);border-radius:10px;padding:8px;min-width:140px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.4);backdrop-filter:blur(12px)}
+.pref-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0}
+.pref-row span{font:500 9px Inter,sans-serif;color:var(--text3)}
+
 /* ===== THEME: GLASS (default dark) — already defined above ===== */
 
 /* ===== THEME: MINIMAL ===== */
@@ -174,18 +180,33 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.12);co
 <!-- Control bar — all buttons visible, Electron-only buttons hidden by default -->
 <div class="control-bar" id="control-bar">
   <button class="ctrl-btn" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">Go Live</button>
-  <button class="ctrl-btn" id="light-toggle" onclick="toggleLightMode()">Light</button>
   <button class="ctrl-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">Stealth: On</button>
   <button class="ctrl-btn" onclick="changeFontSize(-1)" title="Decrease font size">A-</button>
   <button class="ctrl-btn" onclick="changeFontSize(1)" title="Increase font size">A+</button>
-  <select class="style-select" id="theme-picker" onchange="setTheme(this.value)" title="Card style">
-    <option value="glass">Glass</option>
-    <option value="minimal">Minimal</option>
-    <option value="neon">Neon</option>
-    <option value="ocean">Ocean</option>
+  <select class="style-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)" title="Answer style">
+    <option value="conversational">💬 Conversational</option>
+    <option value="direct">🎯 Direct</option>
+    <option value="technical">⚙️ Technical</option>
+    <option value="executive">📊 Executive</option>
+    <option value="star">⭐ STAR</option>
+    <option value="storytelling">📖 Storytelling</option>
+    <option value="datadriven">📈 Data-Driven</option>
   </select>
   <label><input type="range" id="opacity-slider" min="30" max="100" value="100"></label>
-  <button class="ctrl-btn" id="btn-logout" onclick="doLogout()" title="Sign out & switch user" style="margin-left:auto;color:#F87171;border-color:rgba(248,113,113,.2)">Logout</button>
+  <div class="pref-wrap" style="position:relative;margin-left:auto">
+    <button class="ctrl-btn" id="btn-prefs" onclick="togglePrefs()" title="Preferences">⚙</button>
+    <div class="pref-panel" id="pref-panel" style="display:none">
+      <div class="pref-row"><span>Look</span>
+        <select class="style-select" id="theme-picker" onchange="setTheme(this.value)">
+          <option value="glass">Glass</option><option value="minimal">Minimal</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
+        </select>
+      </div>
+      <div class="pref-row"><span>Mode</span><button class="ctrl-btn" id="light-toggle2" onclick="toggleLightMode()">Light</button></div>
+      <div class="pref-row" style="border-top:1px solid var(--glass-border);padding-top:6px;margin-top:2px">
+        <button class="ctrl-btn" onclick="doLogout()" style="color:#F87171;border-color:rgba(248,113,113,.2);width:100%">Logout</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="canvas-wrap">
@@ -252,6 +273,9 @@ var params = new URLSearchParams(location.search);
 TOKEN = params.get('token') || sessionStorage.getItem('token') || localStorage.getItem('token');
 SESSION_ID = params.get('session');
 isElectronMode = params.get('electron') === '1' || !!(window.electronAPI && window.electronAPI.isElectron);
+
+// Load current answer style for this session
+if (SESSION_ID && TOKEN) loadAnswerStyle();
 
 // Show Electron-only buttons (quit, go live, stealth)
 if (isElectronMode) {
@@ -760,6 +784,61 @@ function setTheme(name) {
   } catch(e) {}
 })();
 
+// ===== PREFERENCES PANEL =====
+var _prefsOpen = false;
+function togglePrefs() {
+  _prefsOpen = !_prefsOpen;
+  var panel = document.getElementById('pref-panel');
+  if (panel) panel.style.display = _prefsOpen ? 'block' : 'none';
+}
+// Close prefs on outside click
+document.addEventListener('click', function(e) {
+  if (_prefsOpen && !document.querySelector('.pref-wrap').contains(e.target)) {
+    _prefsOpen = false;
+    var panel = document.getElementById('pref-panel');
+    if (panel) panel.style.display = 'none';
+  }
+});
+
+// ===== ANSWER STYLE PICKER =====
+var _currentAnswerStyle = 'conversational';
+async function changeAnswerStyle(styleKey) {
+  if (!SESSION_ID || !TOKEN) return;
+  var picker = document.getElementById('answer-style-picker');
+  if (picker) picker.disabled = true;
+  try {
+    var res = await fetch('/api/sessions/' + SESSION_ID + '/answer-style', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify({ style: styleKey })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+    _currentAnswerStyle = styleKey;
+    // Brief visual confirmation
+    if (picker) { picker.style.borderColor = '#34D399'; setTimeout(function() { picker.style.borderColor = ''; }, 1200); }
+  } catch(e) {
+    console.error('[Style]', e);
+    // Revert picker to previous value
+    if (picker) picker.value = _currentAnswerStyle;
+  } finally {
+    if (picker) picker.disabled = false;
+  }
+}
+// Load current answer style when session connects
+async function loadAnswerStyle() {
+  if (!SESSION_ID || !TOKEN) return;
+  try {
+    var res = await fetch('/api/sessions/' + SESSION_ID, { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+    var data = await res.json();
+    if (data.answerStyle) {
+      _currentAnswerStyle = data.answerStyle;
+      var picker = document.getElementById('answer-style-picker');
+      if (picker) picker.value = data.answerStyle;
+    }
+  } catch(e) {}
+}
+
 // ===== LIGHT MODE =====
 var isLightMode = false;
 var canvasFontSize = 12; // default font size in px (matches CSS)
@@ -780,7 +859,7 @@ function toggleLightMode() {
   isLightMode = !isLightMode;
   document.body.classList.toggle('light-mode', isLightMode);
   document.documentElement.classList.toggle('light-mode', isLightMode);
-  var btn = $('light-toggle');
+  var btn = $('light-toggle2');
   if (btn) {
     btn.textContent = isLightMode ? 'Dark' : 'Light';
     if (isLightMode) { btn.style.background = 'rgba(0,0,0,.06)'; btn.style.color = '#334155'; btn.style.borderColor = 'rgba(0,0,0,.15)'; }
