@@ -2753,7 +2753,7 @@ wss.on('connection', (ws) => {
             callClaude(extractSystem, extractUser, 100, MODEL_HAIKU),
             new Promise((_, reject) => setTimeout(() => reject(new Error('extract_timeout')), 2000))
           ]);
-          questionText = await aiCleanQuestion(questionText.trim().replace(/^["']|["']$/g, ''));
+          questionText = cleanQuestionText(questionText.trim().replace(/^["']|["']$/g, ''));
           console.log('[WhatShouldISay] Haiku extracted:', questionText);
         } catch (e) {
           // Fallback: use most recent lines
@@ -2779,7 +2779,7 @@ wss.on('connection', (ws) => {
         // forceNavigate=true — user deliberately clicked "What should I say", so navigate immediately
         const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
         lastAutoMatchTime = Date.now(); // Reset cooldown — user chose this action
-        fastMatchAndRespond(questionText, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true).then(newLastId => {
+        fastMatchAndRespond(questionText, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true, true).then(newLastId => {
           lastWsayMatchId = newLastId || null;
           if (newLastId) lastMatchedQId = newLastId;
         });
