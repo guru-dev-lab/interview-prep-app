@@ -133,7 +133,11 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
     <div class="empty-state" id="empty-state">
       <svg width="40" height="40" fill="none" stroke="#7c3aed" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
       <h3>Smart Canvas Ready</h3>
-      <p>Go Live on xhire.app, then answers stream here automatically.</p>
+      <p id="empty-msg">Go Live on xhire.app, then answers stream here automatically.</p>
+      <button class="wsay-btn" id="btn-go-live" style="display:none;max-width:260px;margin:10px auto 0" onclick="goLiveElectron()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
+        Go Live — Capture System Audio
+      </button>
     </div>
   </div>
 
@@ -175,10 +179,17 @@ var activeFilter = 'all'; // 'all' or 'generated'
 var CARD_CLEANUP_MS = 180000; // 3 minutes for matched card auto-removal
 var pendingManualScroll = false; // true when user triggered a manual action, consume on next card
 
+var isElectronMode = false;
+var systemAudioStream = null;
+var micStream = null;
+var audioProcessor = null;
+var micProcessor = null;
+
 // Parse URL params
 var params = new URLSearchParams(location.search);
 TOKEN = params.get('token') || sessionStorage.getItem('token') || localStorage.getItem('token');
 SESSION_ID = params.get('session');
+isElectronMode = params.get('electron') === '1' || !!(window.electronAPI && window.electronAPI.isElectron);
 
 // ===== HELPERS =====
 function $(id) { return document.getElementById(id); }
@@ -227,13 +238,20 @@ function connect() {
   ws.onopen = function() {
     setStatus('Live', 'on');
     reconnectAttempts = 0;
-    // Send start with mode:'canvas' — server will NOT open Deepgram, just register as listener
-    ws.send(JSON.stringify({
+    // Electron mode: connect as full client with audio capture
+    // Canvas/popout mode: passive listener only
+    var connectMode = isElectronMode ? 'full' : 'canvas';
+    var startMsg = {
       type: 'start',
       token: TOKEN,
       sessionId: parseInt(SESSION_ID),
-      mode: 'canvas'
-    }));
+      mode: connectMode
+    };
+    if (isElectronMode) startMsg.dualStream = true;
+    ws.send(JSON.stringify(startMsg));
+    if (isElectronMode) {
+      startElectronAudio();
+    }
   };
 
   ws.onclose = function() {
@@ -664,6 +682,139 @@ function pickSession(id) {
   history.replaceState(null, '', url.toString());
   $('feed').innerHTML = '<div class="empty-state" id="empty-state"><h3>Smart Canvas Ready</h3><p>Go Live on xhire.app, then answers stream here automatically.</p></div>';
   connect();
+}
+
+// ===== ELECTRON AUDIO CAPTURE =====
+var electronAudioCtx1 = null, electronAudioCtx2 = null;
+var electronProc1 = null, electronProc2 = null;
+var electronSrc1 = null, electronSrc2 = null;
+var electronLive = false;
+var electronUserSpeaking = false;
+
+function processAudioStream(stream, channel) {
+  var audioOnly = new MediaStream(stream.getAudioTracks());
+  var audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+  var source = audioCtx.createMediaStreamSource(audioOnly);
+  var processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+  var LOUD_THRESHOLD = 0.015;
+  var loudFrames = 0, quietFrames = 0;
+
+  processor.onaudioprocess = function(e) {
+    if (!electronLive || !ws || ws.readyState !== WebSocket.OPEN) return;
+    var inputData = e.inputBuffer.getChannelData(0);
+
+    // RMS volume
+    var sum = 0;
+    for (var i = 0; i < inputData.length; i++) { sum += inputData[i] * inputData[i]; }
+    var rms = Math.sqrt(sum / inputData.length);
+
+    // Track speaking state on mic channel
+    if (channel === 2) {
+      if (rms > LOUD_THRESHOLD) { loudFrames++; quietFrames = 0; }
+      else { quietFrames++; loudFrames = 0; }
+      var wasSpeaking = electronUserSpeaking;
+      if (loudFrames >= 3) electronUserSpeaking = true;
+      if (quietFrames >= 6) electronUserSpeaking = false;
+      if (electronUserSpeaking !== wasSpeaking) {
+        ws.send(JSON.stringify({ type: 'user_speaking', speaking: electronUserSpeaking }));
+      }
+    }
+
+    // Convert float32 → int16 PCM
+    var pcm16 = new Int16Array(inputData.length);
+    for (var i = 0; i < inputData.length; i++) {
+      var s = Math.max(-1, Math.min(1, inputData[i]));
+      pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    // Prepend channel byte
+    var buffer = new Uint8Array(pcm16.buffer.byteLength + 1);
+    buffer[0] = channel;
+    buffer.set(new Uint8Array(pcm16.buffer), 1);
+    ws.send(buffer);
+  };
+
+  source.connect(processor);
+  processor.connect(audioCtx.destination);
+
+  if (channel === 1) { electronAudioCtx1 = audioCtx; electronProc1 = processor; electronSrc1 = source; }
+  else { electronAudioCtx2 = audioCtx; electronProc2 = processor; electronSrc2 = source; }
+}
+
+function stopElectronAudio() {
+  electronLive = false;
+  [{ ctx: electronAudioCtx1, proc: electronProc1, src: electronSrc1 },
+   { ctx: electronAudioCtx2, proc: electronProc2, src: electronSrc2 }].forEach(function(a) {
+    try { if (a.proc) a.proc.disconnect(); } catch(e) {}
+    try { if (a.src) a.src.disconnect(); } catch(e) {}
+    try { if (a.ctx) a.ctx.close(); } catch(e) {}
+  });
+  electronAudioCtx1 = electronAudioCtx2 = null;
+  electronProc1 = electronProc2 = null;
+  electronSrc1 = electronSrc2 = null;
+  if (systemAudioStream) { systemAudioStream.getTracks().forEach(function(t) { t.stop(); }); systemAudioStream = null; }
+  if (micStream) { micStream.getTracks().forEach(function(t) { t.stop(); }); micStream = null; }
+  var btn = $('btn-go-live');
+  if (btn) { btn.textContent = 'Go Live — Capture System Audio'; btn.disabled = false; }
+}
+
+async function startElectronAudio() {
+  // Show the Go Live button in Electron mode
+  var btn = $('btn-go-live');
+  if (btn) btn.style.display = 'flex';
+  // Update empty state message
+  var msg = $('empty-msg');
+  if (msg) msg.textContent = 'Click Go Live to capture system audio and start detecting questions.';
+}
+
+async function goLiveElectron() {
+  var btn = $('btn-go-live');
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+
+  try {
+    // Step 1: Capture system audio via getDisplayMedia
+    // In Electron with electron-audio-loopback, this captures actual system audio (not just a tab)
+    systemAudioStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,   // Required by Chromium to show the picker
+      audio: true    // System audio via electron-audio-loopback
+    });
+
+    if (systemAudioStream.getAudioTracks().length === 0) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Go Live — Capture System Audio'; }
+      console.error('[Electron] No audio tracks from getDisplayMedia');
+      return;
+    }
+
+    // Handle user stopping the share
+    systemAudioStream.getAudioTracks()[0].onended = function() {
+      console.log('[Electron] System audio track ended');
+      stopElectronAudio();
+    };
+
+    // Step 2: Get mic for user voice
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+
+    // Step 3: Start processing both streams (server already has dualStream from start message)
+    electronLive = true;
+    processAudioStream(systemAudioStream, 1);  // Channel 1 = interviewer/system
+    processAudioStream(micStream, 2);           // Channel 2 = user mic
+
+    // Update UI
+    if (btn) { btn.textContent = 'Live — Capturing Audio'; btn.style.background = '#EF4444'; btn.style.borderColor = '#EF4444'; }
+    setStatus('Live — Audio', 'on');
+    // Hide empty state
+    var empty = $('empty-state');
+    if (empty) empty.style.display = 'none';
+
+    console.log('[Electron] Audio capture started — Ch1: system, Ch2: mic');
+
+  } catch(e) {
+    console.error('[Electron] Audio capture error:', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Go Live — Capture System Audio'; }
+    stopElectronAudio();
+  }
 }
 
 // ===== INIT =====

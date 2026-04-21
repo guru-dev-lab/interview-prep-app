@@ -1,0 +1,61 @@
+{
+  "name": "xhire-overlay",
+  "version": "1.0.0",
+  "description": "Xhire Interview Prep Overlay — floats on top of Zoom, Teams, or any app",
+  "main": "main.js",
+  "author": "Xhire",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "XHIRE_SERVER=http://localhost:3000 electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --mac --win"
+  },
+  "dependencies": {
+    "electron-audio-loopback": "^1.0.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.0"
+  },
+  "build": {
+    "appId": "com.xhire.overlay",
+    "productName": "Xhire",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "icon": "icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Xhire needs microphone access to capture your voice during interviews.",
+        "NSScreenCaptureUsageDescription": "Xhire needs screen capture to detect interviewer audio from your meeting app."
+      }
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "launcher.html",
+      "tray-icon.png",
+      "icon.*"
+    ],
+    "extraMetadata": {
+      "main": "main.js"
+    }
+  }
+}

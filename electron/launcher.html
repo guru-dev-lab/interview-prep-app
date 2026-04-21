@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Xhire</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-family:Inter,sans-serif;border-radius:12px}
+
+.container{height:100%;background:rgba(6,8,15,.95);border-radius:12px;border:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;overflow:hidden}
+
+/* Titlebar */
+.titlebar{height:36px;background:#0c1019;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:space-between;padding:0 14px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
+.titlebar h1{font:700 11px Inter,sans-serif;color:#94a3b8;display:flex;align-items:center;gap:6px}
+.titlebar .dot{width:7px;height:7px;border-radius:50%;background:#FBBF24}
+
+/* Body */
+.body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;gap:20px}
+
+.logo{font:800 28px Inter,sans-serif;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
+.sub{font:400 13px Inter,sans-serif;color:#64748b;max-width:280px;line-height:1.6}
+
+.form{width:100%;max-width:300px;display:flex;flex-direction:column;gap:10px}
+.form input{width:100%;padding:10px 14px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.05);color:#e2e8f0;font:400 13px Inter,sans-serif;outline:none;transition:.15s;-webkit-app-region:no-drag}
+.form input:focus{border-color:#7c3aed}
+.form input::placeholder{color:#4b5563}
+
+.connect-btn{width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);font:700 13px Inter,sans-serif;color:#fff;cursor:pointer;transition:.15s;-webkit-app-region:no-drag}
+.connect-btn:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(124,58,237,.3)}
+.connect-btn:active{transform:translateY(0)}
+.connect-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.error{font:500 11px Inter,sans-serif;color:#F87171;padding:6px 10px;background:rgba(248,113,113,.08);border-radius:6px;display:none}
+.sessions{width:100%;max-width:300px;display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto}
+.session-item{padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.03);cursor:pointer;text-align:left;transition:.15s;-webkit-app-region:no-drag}
+.session-item:hover{border-color:#7c3aed;background:rgba(124,58,237,.08)}
+.session-item .s-company{font:600 12px Inter,sans-serif;color:#e2e8f0}
+.session-item .s-role{font:400 11px Inter,sans-serif;color:#64748b;margin-top:2px}
+
+.step{display:none}
+.step.active{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}
+.back-btn{font:500 11px Inter,sans-serif;color:#64748b;background:none;border:none;cursor:pointer;-webkit-app-region:no-drag}
+.back-btn:hover{color:#a78bfa}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:16px;height:16px;border:2px solid rgba(167,139,250,.3);border-top-color:#a78bfa;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="titlebar">
+    <h1><span class="dot"></span> Xhire Overlay</h1>
+  </div>
+  <div class="body">
+    <!-- Step 1: Login -->
+    <div id="step-login" class="step active">
+      <div class="logo">Xhire</div>
+      <div class="sub">Interview prep overlay. Floats on top of Zoom, Teams, or any app — invisible to screen sharing.</div>
+      <div class="form">
+        <input id="email" type="email" placeholder="Email" autocomplete="email">
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+        <button id="login-btn" class="connect-btn" onclick="doLogin()">Connect</button>
+      </div>
+      <div id="login-error" class="error"></div>
+    </div>
+
+    <!-- Step 2: Pick Session -->
+    <div id="step-sessions" class="step">
+      <div class="sub">Select a session to go live with:</div>
+      <div id="session-list" class="sessions"></div>
+      <button class="back-btn" onclick="showStep('step-login')">&larr; Back</button>
+    </div>
+
+    <!-- Step 3: Connecting -->
+    <div id="step-connecting" class="step">
+      <span class="spinner"></span>
+      <div class="sub">Connecting to live session...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var SERVER = '';
+var authToken = '';
+var userId = '';
+
+// Get server URL from Electron
+(async function() {
+  if (window.electronAPI) {
+    SERVER = await window.electronAPI.getServerUrl();
+  } else {
+    SERVER = 'https://xhire.app'; // fallback for browser testing
+  }
+})();
+
+function showStep(id) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showError(msg) {
+  var el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(function() { el.style.display = 'none'; }, 4000);
+}
+
+async function doLogin() {
+  var email = document.getElementById('email').value.trim();
+  var pass = document.getElementById('password').value;
+  if (!email || !pass) { showError('Enter email and password'); return; }
+
+  var btn = document.getElementById('login-btn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+
+  try {
+    var res = await fetch(SERVER + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: pass })
+    });
+    var data = await res.json();
+    if (!res.ok || !data.token) { showError(data.error || 'Login failed'); btn.disabled = false; btn.textContent = 'Connect'; return; }
+
+    authToken = data.token;
+    userId = data.userId || data.user_id || '';
+    loadSessions();
+  } catch (e) {
+    showError('Cannot reach server');
+    btn.disabled = false;
+    btn.textContent = 'Connect';
+  }
+}
+
+async function loadSessions() {
+  try {
+    var res = await fetch(SERVER + '/api/sessions', {
+      headers: { 'Authorization': 'Bearer ' + authToken }
+    });
+    var sessions = await res.json();
+    var list = document.getElementById('session-list');
+    list.innerHTML = '';
+
+    if (!sessions.length) {
+      list.innerHTML = '<div class="sub">No sessions found. Create one on xhire.app first.</div>';
+      showStep('step-sessions');
+      return;
+    }
+
+    sessions.forEach(function(s) {
+      var div = document.createElement('div');
+      div.className = 'session-item';
+      div.innerHTML = '<div class="s-company">' + esc(s.company || 'Untitled') + '</div><div class="s-role">' + esc(s.role || 'No role') + '</div>';
+      div.onclick = function() { connectToSession(s.id); };
+      list.appendChild(div);
+    });
+
+    showStep('step-sessions');
+  } catch (e) {
+    showError('Failed to load sessions');
+  }
+}
+
+function connectToSession(sessionId) {
+  showStep('step-connecting');
+
+  // Load the canvas page with auth params
+  var canvasUrl = SERVER + '/canvas?token=' + encodeURIComponent(authToken) + '&session=' + encodeURIComponent(sessionId) + '&electron=1';
+
+  if (window.electronAPI) {
+    window.electronAPI.loadCanvas(canvasUrl);
+  } else {
+    window.location.href = canvasUrl;
+  }
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Enter key to login
+document.getElementById('password').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('email').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('password').focus();
+});
+</script>
+</body>
+</html>
