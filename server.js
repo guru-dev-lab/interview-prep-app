@@ -2235,11 +2235,13 @@ async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 25
 }
 
 // Match + verify + respond — async with Haiku AI verification
-async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter, forceNavigate) {
+async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter, forceNavigate, skipClean) {
   const startMs = Date.now();
-  const q = await aiCleanQuestion(utterance.trim());
+  const tClean = Date.now();
+  const q = skipClean ? utterance.trim() : await aiCleanQuestion(utterance.trim());
   if (!q || q.length < 5) return lastMatchedQId;
   if (!skipFilter && !isQuestion(q)) return lastMatchedQId;
+  if (!skipClean) console.log(`[TIMING] aiCleanQuestion: ${Date.now() - tClean}ms`);
 
   // Get top 3 keyword candidates, excluding already-matched questions
   const topMatches = findTopMatches(q, sessionQuestions, questionIndex, 3)
@@ -2247,7 +2249,9 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
 
   if (topMatches.length > 0) {
     // AI verification — Haiku checks if any candidate is semantically the same question
+    const tVerify = Date.now();
     const verified = await verifyMatch(q, topMatches, ws._sessionContext);
+    console.log(`[TIMING] verifyMatch: ${Date.now() - tVerify}ms`);
 
     if (verified) {
       const elapsed = Date.now() - startMs;
@@ -2521,14 +2525,16 @@ wss.on('connection', (ws) => {
           const ctxLine = (wsCtx.company || wsCtx.role) ? `Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
 
           try {
+            const t0 = Date.now();
             const extracted = await Promise.race([
               callClaude(
-                'You detect interview questions from an interviewer in live speech transcripts.\n\nCRITICAL RULES:\n1. ONLY return a question if the INTERVIEWER is clearly asking the candidate a substantive interview question (behavioral, technical, situational, or about their experience).\n2. The CANDIDATE\'s own speech is NEVER a question — if the speaker is answering, explaining their experience, talking about what they did/built/managed, this is the CANDIDATE speaking. Output NONE.\n3. Output NONE for: statements, agreements, filler, partial sentences, transitions, pleasantries, small talk, scheduling, the candidate\'s own words/answers.\n4. Signs of CANDIDATE speech (always NONE): starts with "I", "We", "My", talks about their past experience, describes what they did, explains a project.\n5. Signs of INTERVIEWER question: asks "Can you tell me about...", "How would you...", "What is your experience with...", "Describe a time when...".\n\nIf an interviewer question is present, output ONLY the clean question text. Otherwise output exactly: NONE',
-                ctxLine + 'Recent speech:\n' + recentText + '\n\nOutput the interview question or NONE:',
+                'You detect interview questions from an interviewer in live speech transcripts. Extract the CLEAN question directly — no filler, no preamble. Keep the full question word intact.\n\nCRITICAL RULES:\n1. ONLY return a question if the INTERVIEWER is clearly asking the candidate a substantive interview question.\n2. The CANDIDATE\'s own speech is NEVER a question. Output NONE.\n3. Output NONE for: statements, agreements, filler, partial sentences, transitions, pleasantries, small talk.\n4. Signs of CANDIDATE speech (always NONE): starts with "I", "We", "My", talks about their experience.\n5. Signs of INTERVIEWER question: asks "Can you tell me about...", "How would you...", "What is your experience with...".\n\nIf a question is present, output ONLY the clean question text — already cleaned, no quotes, no explanation. Otherwise output exactly: NONE',
+                ctxLine + 'Recent speech:\n' + recentText + '\n\nOutput the clean interview question or NONE:',
                 80, MODEL_HAIKU
               ),
               new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500))
             ]);
+            console.log(`[TIMING] AI extract: ${Date.now() - t0}ms`);
             const raw = extracted.trim().replace(/^["']|["']$/g, '');
             // Strong filtering: reject if NONE anywhere, prompt fragments leak, or multi-line
             if (!raw || /\bNONE\b/i.test(raw)) return;
@@ -2536,7 +2542,8 @@ wss.on('connection', (ws) => {
             // Real questions are single-line; multi-line means Haiku is explaining itself
             const firstLine = raw.split(/\n/)[0].trim();
             if (!firstLine || firstLine.length < 10) return;
-            const q = await aiCleanQuestion(firstLine);
+            // AI extraction already returns a clean question — just basic trim, skip redundant Haiku call
+            const q = cleanQuestionText(firstLine);
 
             // Post-filter: even after AI extraction, run isQuestion() to catch false positives
             if (!isQuestion(q)) {
@@ -2566,7 +2573,7 @@ wss.on('connection', (ws) => {
             ws.send(JSON.stringify(qdMsg1));
             broadcastToSession(sessionId, qdMsg1, ws);
             const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-            fastMatchAndRespond(q, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, rebuildIdx).then(newLastId => {
+            fastMatchAndRespond(q, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, rebuildIdx, false, false, true).then(newLastId => {
               if (newLastId) { lastMatchedQId = newLastId; lastAutoMatchTime = Date.now(); }
             });
           } catch (e) {
@@ -2960,7 +2967,9 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
 
     const userPrompt = `${sessionHeader}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}${userContext}${transcriptContext}\n\nQUESTION (detected from speech — may be just the tail end, use RECENT CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
 
+    const tGen = Date.now();
     const answer = await callClaude(system, userPrompt, isTechnical ? 1200 : 600, MODEL_HAIKU);
+    console.log(`[TIMING] generateLiveAnswer: ${Date.now() - tGen}ms`);
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT
     if (questionId) {
