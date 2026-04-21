@@ -13,23 +13,30 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 button,input,select{-webkit-app-region:no-drag;cursor:pointer}
 input[type=text],input[type=email],input[type=password]{cursor:text}
 
-/* Titlebar �� draggable */
-.titlebar{height:28px;background:linear-gradient(180deg,var(--surface),rgba(12,16,25,.95));border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;padding:0 12px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
-.titlebar h1{font:700 10px Inter,sans-serif;color:var(--text2);display:flex;align-items:center;gap:5px}
-.titlebar .dot{width:6px;height:6px;border-radius:50%;background:#F87171;animation:pulse 1.5s ease infinite;box-shadow:0 0 6px rgba(248,113,113,.4)}
-.titlebar-right{display:flex;gap:5px;align-items:center;-webkit-app-region:no-drag}
-.tb-select{font-size:8px;padding:1px 3px;border-radius:4px}
+/* ===== HEADER: Titlebar + Control — unified, compact ===== */
+.titlebar{height:30px;background:linear-gradient(180deg,rgba(16,20,32,.98),var(--surface));border-bottom:1px solid rgba(124,58,237,.08);display:flex;align-items:center;justify-content:space-between;padding:0 10px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
+.titlebar .brand{display:flex;align-items:center;gap:6px}
+.titlebar .brand-icon{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;font:800 9px Inter,sans-serif;color:#fff;letter-spacing:-.5px;flex-shrink:0}
+.titlebar .brand-name{font:700 11px Inter,sans-serif;background:linear-gradient(135deg,#c4b5fd,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.titlebar-right{display:flex;gap:4px;align-items:center;-webkit-app-region:no-drag}
+.tb-btn{width:22px;height:18px;border:none;border-radius:4px;background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;font:600 8px Inter,sans-serif;padding:0;flex-shrink:0}
+.tb-btn:hover{background:rgba(124,58,237,.12);color:var(--accent2)}
+.tb-btn.danger:hover{background:rgba(248,113,113,.12);color:#F87171}
+.tb-select{font:600 8px Inter,sans-serif;padding:1px 4px;border-radius:4px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;outline:none;-webkit-app-region:no-drag}
+.tb-select:hover{border-color:rgba(124,58,237,.2)}
+.tb-select option{background:#0c1019;color:#e2e8f0}
+.tb-divider{width:1px;height:12px;background:rgba(255,255,255,.06);margin:0 1px;flex-shrink:0}
+.status{font:700 7px Inter,sans-serif;padding:2px 6px;border-radius:8px;letter-spacing:.4px;text-transform:uppercase;flex-shrink:0}
+.status.off{background:rgba(248,113,113,.08);color:#F87171}
+.status.on{background:rgba(52,211,153,.1);color:#34D399;box-shadow:0 0 8px rgba(52,211,153,.15)}
+.status.wait{background:rgba(251,191,36,.08);color:#FBBF24}
 
-/* Control bar — single row */
-.control-bar{display:flex;align-items:center;gap:5px;padding:4px 10px;background:var(--surface);border-bottom:1px solid var(--glass-border);flex-shrink:0;-webkit-app-region:no-drag;overflow-x:auto}
-.ctrl-btn{padding:3px 7px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;white-space:nowrap;flex-shrink:0}
-.ctrl-btn:hover{border-color:var(--accent);color:var(--text2)}
-.ctrl-btn.active-green{background:rgba(5,150,105,.15);color:#34D399;border-color:rgba(52,211,153,.3)}
-.ctrl-btn.active-red{background:rgba(239,68,68,.12);color:#F87171;border-color:rgba(248,113,113,.3)}
-.status{font:600 9px Inter,sans-serif;padding:3px 8px;border-radius:10px;letter-spacing:.3px;text-transform:uppercase}
-.status.off{background:rgba(248,113,113,.1);color:#F87171}
-.status.on{background:rgba(52,211,153,.1);color:#34D399}
-.status.wait{background:rgba(251,191,36,.1);color:#FBBF24}
+/* Control bar — answer style only */
+.control-bar{display:flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(12,16,25,.6);border-bottom:1px solid var(--glass-border);flex-shrink:0;-webkit-app-region:no-drag}
+.ctrl-btn{padding:3px 8px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(255,255,255,.04);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.2s;white-space:nowrap;flex-shrink:0}
+.ctrl-btn:hover{border-color:var(--accent);color:var(--text2);background:rgba(124,58,237,.06)}
+.ctrl-btn.active-green{background:rgba(5,150,105,.12);color:#34D399;border-color:rgba(52,211,153,.25);box-shadow:0 0 8px rgba(52,211,153,.1)}
+.ctrl-btn.active-red{background:rgba(239,68,68,.1);color:#F87171;border-color:rgba(248,113,113,.25)}
 
 /* Main layout — flex fills remaining space regardless of header height */
 .canvas-wrap{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
@@ -88,7 +95,6 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .sc-line:nth-child(odd){background:rgba(255,255,255,.015)}
 .sc-blank{height:6px}
 .sc-card-loading{padding:14px;display:flex;align-items:center;gap:8px;color:var(--accent2);font:500 12px Inter,sans-serif}
-.light-btn{padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;-webkit-app-region:no-drag}.light-btn:hover{border-color:var(--accent)}
 
 /* Dropdowns */
 .style-select{padding:2px 6px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;outline:none;-webkit-app-region:no-drag;transition:.15s}
@@ -129,8 +135,13 @@ body.light-mode .sc-card-a pre{background:#0d1117;color:#e6edf3;border-color:#21
 body.light-mode .sc-card-a pre code{color:#e6edf3;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.06);color:#6d28d9;border-color:rgba(109,40,217,.1)}
 body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.02)}
-body.light-mode .titlebar{background:#ebedf2;border-color:rgba(0,0,0,.06)}
-body.light-mode .control-bar{background:#ebedf2;border-color:rgba(0,0,0,.06)}
+body.light-mode .titlebar{background:linear-gradient(180deg,#f0f0f4,#ebedf2);border-color:rgba(0,0,0,.06)}
+body.light-mode .brand-name{background:linear-gradient(135deg,#6d28d9,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+body.light-mode .tb-btn{background:rgba(0,0,0,.04);color:#4b5563}
+body.light-mode .tb-btn:hover{background:rgba(109,40,217,.08);color:#6d28d9}
+body.light-mode .tb-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
+body.light-mode .tb-divider{background:rgba(0,0,0,.08)}
+body.light-mode .control-bar{background:rgba(235,237,242,.7);border-color:rgba(0,0,0,.06)}
 body.light-mode .ctrl-btn,.light-mode .style-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
 body.light-mode .style-select option{background:#fff;color:#111}
 body.light-mode .action-btn{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08);color:#4b5563}
@@ -175,31 +186,42 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
 <body>
 <!-- Draggable titlebar — minimal -->
 <div class="titlebar">
-  <h1><span class="dot"></span> Xhire Pilot</h1>
+  <div class="brand">
+    <div class="brand-icon">Xh</div>
+    <span class="brand-name">Pilot</span>
+  </div>
   <div class="titlebar-right">
-    <button class="light-btn" onclick="changeFontSize(-1)" title="Smaller">A-</button>
-    <button class="light-btn" onclick="changeFontSize(1)" title="Bigger">A+</button>
-    <select class="style-select tb-select" id="look-picker" onchange="setTheme(this.value)" title="Card look">
+    <span class="status off" id="ws-status">Offline</span>
+    <span class="tb-divider"></span>
+    <button class="tb-btn" onclick="changeFontSize(-1)" title="Smaller font">A-</button>
+    <button class="tb-btn" onclick="changeFontSize(1)" title="Bigger font">A+</button>
+    <select class="tb-select" id="look-picker" onchange="setTheme(this.value)" title="Card look">
       <option value="glass">Glass</option><option value="minimal">Minimal</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
     </select>
-    <button class="light-btn" id="light-toggle" onclick="toggleLightMode()" title="Toggle light/dark">Light</button>
-    <button class="light-btn" onclick="doLogout()" style="color:#F87171;border-color:rgba(248,113,113,.3)" title="Logout">Out</button>
-    <span class="status off" id="ws-status">Offline</span>
-    <button class="light-btn" id="btn-quit" style="display:none;color:#F87171;border-color:rgba(248,113,113,.3)" onclick="quitApp()" title="Quit Xhire">✕</button>
+    <button class="tb-btn" id="light-toggle" onclick="toggleLightMode()" title="Light/Dark">
+      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <span class="tb-divider"></span>
+    <button class="tb-btn danger" onclick="doLogout()" title="Logout">
+      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </button>
+    <button class="tb-btn danger" id="btn-quit" style="display:none" onclick="quitApp()" title="Quit">
+      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   </div>
 </div>
-<!-- Control bar — live essentials only -->
+<!-- Control bar — live essentials -->
 <div class="control-bar" id="control-bar">
   <button class="ctrl-btn" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">Go Live</button>
   <button class="ctrl-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">Stealth: On</button>
   <select class="style-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)" title="Answer style">
-    <option value="conversational">💬 Conversational</option>
-    <option value="direct">🎯 Direct</option>
-    <option value="technical">⚙️ Technical</option>
-    <option value="executive">📊 Executive</option>
-    <option value="star">⭐ STAR</option>
-    <option value="storytelling">📖 Storytelling</option>
-    <option value="datadriven">📈 Data-Driven</option>
+    <option value="conversational">Conversational</option>
+    <option value="direct">Direct</option>
+    <option value="technical">Technical</option>
+    <option value="executive">Executive</option>
+    <option value="star">STAR</option>
+    <option value="storytelling">Storytelling</option>
+    <option value="datadriven">Data-Driven</option>
   </select>
 </div>
 
@@ -858,9 +880,14 @@ function toggleLightMode() {
   document.documentElement.classList.toggle('light-mode', isLightMode);
   var btn = $('light-toggle');
   if (btn) {
-    btn.textContent = isLightMode ? 'Dark' : 'Light';
-    if (isLightMode) { btn.style.background = 'rgba(0,0,0,.06)'; btn.style.color = '#334155'; btn.style.borderColor = 'rgba(0,0,0,.15)'; }
-    else { btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+    // Swap icon: sun for dark mode, moon for light mode
+    if (isLightMode) {
+      btn.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
+      btn.style.background = 'rgba(0,0,0,.06)';
+    } else {
+      btn.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+      btn.style.background = '';
+    }
   }
 }
 
