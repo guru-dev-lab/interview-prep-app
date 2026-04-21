@@ -1929,6 +1929,33 @@ app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => 
 // Standalone Smart Canvas page
 app.get('/canvas', (req, res) => res.sendFile(path.join(__dirname, 'public', 'canvas.html')));
 
+// Download page for Electron overlay app
+app.get('/download', (req, res) => res.sendFile(path.join(__dirname, 'public', 'download.html')));
+
+// API: redirect to latest GitHub release download based on platform
+app.get('/api/download/latest', async (req, res) => {
+  try {
+    const platform = (req.query.platform || '').toLowerCase();
+    const ghRes = await fetch('https://api.github.com/repos/guru-dev-lab/interview-prep-app/releases/latest');
+    if (!ghRes.ok) return res.redirect('/download');
+    const release = await ghRes.json();
+    const assets = release.assets || [];
+
+    let target = null;
+    if (platform === 'mac' || platform === 'macos') {
+      target = assets.find(a => a.name.toLowerCase().endsWith('.dmg') && a.name.toLowerCase().includes('arm64'))
+            || assets.find(a => a.name.toLowerCase().endsWith('.dmg'));
+    } else if (platform === 'win' || platform === 'windows') {
+      target = assets.find(a => a.name.toLowerCase().endsWith('.exe'));
+    }
+
+    if (target) return res.redirect(target.browser_download_url);
+    res.redirect('/download');
+  } catch (e) {
+    res.redirect('/download');
+  }
+});
+
 // Serve frontend (MUST be last — catch-all for SPA routing)
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 

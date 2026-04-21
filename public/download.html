@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Download Xhire Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#06080f;--surface:#0c1019;--accent:#7c3aed;--accent2:#a78bfa;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--glass-border:rgba(255,255,255,.06)}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:Inter,sans-serif}
+
+.page{max-width:640px;margin:0 auto;padding:60px 24px}
+
+.logo{font:800 36px Inter,sans-serif;background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}
+.tagline{font:400 15px Inter,sans-serif;color:var(--text3);margin-bottom:40px;line-height:1.6}
+
+.hero-card{background:var(--surface);border:1px solid var(--glass-border);border-radius:16px;padding:40px 32px;text-align:center;margin-bottom:32px}
+.hero-card h2{font:700 22px Inter,sans-serif;color:var(--text);margin-bottom:8px}
+.hero-card p{font:400 14px Inter,sans-serif;color:var(--text2);margin-bottom:28px;line-height:1.7}
+
+.download-btn{display:inline-flex;align-items:center;gap:10px;padding:14px 32px;border:none;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#6d28d9);font:700 15px Inter,sans-serif;color:#fff;cursor:pointer;transition:.2s;text-decoration:none}
+.download-btn:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(124,58,237,.35)}
+.download-btn:active{transform:translateY(0)}
+.download-btn svg{flex-shrink:0}
+
+.download-btn.secondary{background:rgba(255,255,255,.06);border:1px solid var(--glass-border);color:var(--text2);font-weight:600}
+.download-btn.secondary:hover{border-color:var(--accent);color:var(--text)}
+
+.btn-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+
+.version-tag{font:500 11px Inter,sans-serif;color:var(--text3);margin-top:16px;letter-spacing:.3px}
+
+.features{display:grid;gap:16px;margin-bottom:32px}
+.feature{background:var(--surface);border:1px solid var(--glass-border);border-radius:12px;padding:20px 24px;display:flex;gap:14px;align-items:flex-start}
+.feature-icon{width:36px;height:36px;border-radius:8px;background:rgba(124,58,237,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.feature h3{font:600 14px Inter,sans-serif;color:var(--text);margin-bottom:4px}
+.feature p{font:400 13px Inter,sans-serif;color:var(--text3);line-height:1.5}
+
+.steps{margin-bottom:32px}
+.steps h3{font:700 16px Inter,sans-serif;color:var(--text);margin-bottom:16px}
+.step{display:flex;gap:14px;margin-bottom:14px}
+.step-num{width:28px;height:28px;border-radius:50%;background:rgba(124,58,237,.12);color:var(--accent2);font:700 13px Inter,sans-serif;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-text{font:400 14px Inter,sans-serif;color:var(--text2);line-height:1.6;padding-top:3px}
+.step-text strong{color:var(--text);font-weight:600}
+
+.back-link{display:inline-flex;align-items:center;gap:6px;font:500 13px Inter,sans-serif;color:var(--text3);text-decoration:none;margin-bottom:24px;transition:.15s}
+.back-link:hover{color:var(--accent2)}
+
+.platform-detect{font:500 12px Inter,sans-serif;color:var(--accent2);margin-bottom:8px}
+
+.requirements{font:400 12px Inter,sans-serif;color:var(--text3);margin-top:24px;line-height:1.6;text-align:center}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <a href="/" class="back-link">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5m7-7l-7 7 7 7"/></svg>
+    Back to Xhire
+  </a>
+
+  <div class="logo">Xhire Overlay</div>
+  <div class="tagline">Desktop app that floats on top of Zoom, Teams, or any meeting app — invisible to screen sharing.</div>
+
+  <div class="hero-card">
+    <div class="platform-detect" id="platform-msg"></div>
+    <h2>Download for your platform</h2>
+    <p>One-click install. Runs as a floating overlay with system audio capture — no Chrome extensions or tab sharing needed.</p>
+
+    <div id="primary-download"></div>
+
+    <div class="btn-row" id="other-downloads"></div>
+
+    <div class="version-tag" id="version-info">Checking latest version...</div>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">
+        <svg width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div>
+        <h3>Invisible to screen share</h3>
+        <p>Content-protected window — interviewers can't see it even if you share your entire screen.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">
+        <svg width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
+      </div>
+      <div>
+        <h3>System audio capture</h3>
+        <p>Captures interviewer audio directly from Zoom/Teams — no tab sharing or virtual audio drivers needed on macOS 14.2+.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">
+        <svg width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <div>
+        <h3>Works with any app</h3>
+        <p>Zoom, Teams, Webex, Google Meet desktop — any meeting app. Floats on top of fullscreen windows.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">
+        <svg width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      </div>
+      <div>
+        <h3>Synced with web canvas</h3>
+        <p>Answers appear simultaneously on the desktop overlay, web canvas, and popout — all connected in real time.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <h3>How to use</h3>
+    <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Download and install</strong> — open the DMG (Mac) or run the installer (Windows).</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Log in</strong> — use your Xhire account credentials. The overlay appears in your menu bar / system tray.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Pick a session</strong> — select the interview prep session you created on xhire.app.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-text"><strong>Click Go Live</strong> — grant audio permissions, then the overlay captures system audio and starts detecting questions automatically.</div></div>
+    <div class="step"><div class="step-num">5</div><div class="step-text"><strong>Use during your interview</strong> — answers float on screen. Drag to reposition. Right-click the tray icon to adjust opacity or resize.</div></div>
+  </div>
+
+  <div class="requirements">
+    <strong>Requirements:</strong> macOS 14.2+ (Sonoma) for system audio capture, or macOS 12+ with screen sharing picker. Windows 10+ supported.
+  </div>
+</div>
+
+<script>
+var GITHUB_REPO = 'guru-dev-lab/interview-prep-app';
+
+// Detect platform
+var platform = 'unknown';
+var ua = navigator.userAgent.toLowerCase();
+if (ua.indexOf('mac') !== -1) platform = 'mac';
+else if (ua.indexOf('win') !== -1) platform = 'windows';
+
+var platformMsg = document.getElementById('platform-msg');
+if (platform === 'mac') platformMsg.textContent = 'Detected: macOS';
+else if (platform === 'windows') platformMsg.textContent = 'Detected: Windows';
+
+// Fetch latest release from GitHub
+async function loadRelease() {
+  try {
+    var res = await fetch('https://api.github.com/repos/' + GITHUB_REPO + '/releases/latest');
+    if (!res.ok) throw new Error('No releases yet');
+    var release = await res.json();
+
+    var macDmg = null, macDmgArm = null, winExe = null;
+    (release.assets || []).forEach(function(a) {
+      var name = a.name.toLowerCase();
+      if (name.endsWith('.dmg') && name.indexOf('arm64') !== -1) macDmgArm = a;
+      else if (name.endsWith('.dmg')) macDmg = a;
+      else if (name.endsWith('.exe')) winExe = a;
+    });
+
+    // Use arm64 DMG as primary Mac download if available
+    var primaryMac = macDmgArm || macDmg;
+
+    var primary = document.getElementById('primary-download');
+    var other = document.getElementById('other-downloads');
+
+    if (platform === 'mac' && primaryMac) {
+      primary.innerHTML = '<a href="' + primaryMac.browser_download_url + '" class="download-btn">'
+        + '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
+        + 'Download for macOS</a>';
+      if (winExe) other.innerHTML = '<a href="' + winExe.browser_download_url + '" class="download-btn secondary">Windows</a>';
+      if (macDmg && macDmgArm) other.innerHTML += '<a href="' + macDmg.browser_download_url + '" class="download-btn secondary">macOS (Intel)</a>';
+    } else if (platform === 'windows' && winExe) {
+      primary.innerHTML = '<a href="' + winExe.browser_download_url + '" class="download-btn">'
+        + '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
+        + 'Download for Windows</a>';
+      if (primaryMac) other.innerHTML = '<a href="' + primaryMac.browser_download_url + '" class="download-btn secondary">macOS</a>';
+    } else {
+      // Unknown platform — show all
+      var btns = '';
+      if (primaryMac) btns += '<a href="' + primaryMac.browser_download_url + '" class="download-btn">macOS (Apple Silicon)</a>';
+      if (macDmg && macDmg !== primaryMac) btns += '<a href="' + macDmg.browser_download_url + '" class="download-btn secondary">macOS (Intel)</a>';
+      if (winExe) btns += '<a href="' + winExe.browser_download_url + '" class="download-btn secondary">Windows</a>';
+      primary.innerHTML = btns || '<p style="color:var(--text3)">No builds available yet. Run the build workflow first.</p>';
+    }
+
+    document.getElementById('version-info').textContent = 'Version ' + release.tag_name + ' — ' + new Date(release.published_at).toLocaleDateString();
+
+  } catch (e) {
+    // No releases yet — show manual build info
+    document.getElementById('primary-download').innerHTML =
+      '<p style="color:var(--text2);font:400 14px Inter,sans-serif;line-height:1.6">'
+      + 'First release is being built. Check back shortly, or build locally:<br>'
+      + '<code style="display:inline-block;margin-top:8px;padding:8px 14px;background:rgba(255,255,255,.05);border-radius:6px;font-size:12px;color:var(--accent2)">'
+      + 'cd electron && npm install && npm start</code></p>';
+    document.getElementById('version-info').textContent = 'No releases yet';
+  }
+}
+
+loadRelease();
+</script>
+</body>
+</html>
