@@ -9,7 +9,7 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#06080f;--surface:#0c1019;--accent:#7c3aed;--accent2:#a78bfa;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--glass-border:rgba(255,255,255,.06)}
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;border-radius:12px}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;border-radius:12px;display:flex;flex-direction:column}
 button,input,select{-webkit-app-region:no-drag;cursor:pointer}
 input[type=text],input[type=email],input[type=password]{cursor:text}
 
@@ -19,21 +19,19 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .titlebar .dot{width:6px;height:6px;border-radius:50%;background:#F87171;animation:pulse 1.5s ease infinite;box-shadow:0 0 6px rgba(248,113,113,.4)}
 .titlebar-right{display:flex;gap:6px;align-items:center;-webkit-app-region:no-drag}
 
-/* Control bar — all buttons visible */
-.control-bar{display:flex;align-items:center;gap:6px;padding:5px 10px;background:var(--surface);border-bottom:1px solid var(--glass-border);flex-shrink:0;flex-wrap:wrap;-webkit-app-region:no-drag}
-.ctrl-btn{padding:3px 8px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;white-space:nowrap}
+/* Control bar — single row */
+.control-bar{display:flex;align-items:center;gap:5px;padding:4px 10px;background:var(--surface);border-bottom:1px solid var(--glass-border);flex-shrink:0;-webkit-app-region:no-drag;overflow-x:auto}
+.ctrl-btn{padding:3px 7px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;white-space:nowrap;flex-shrink:0}
 .ctrl-btn:hover{border-color:var(--accent);color:var(--text2)}
 .ctrl-btn.active-green{background:rgba(5,150,105,.15);color:#34D399;border-color:rgba(52,211,153,.3)}
 .ctrl-btn.active-red{background:rgba(239,68,68,.12);color:#F87171;border-color:rgba(248,113,113,.3)}
-.control-bar label{font:400 9px Inter,sans-serif;color:var(--text3);display:flex;align-items:center;gap:3px}
-.control-bar input[type=range]{width:45px;height:3px;cursor:pointer;accent-color:var(--accent)}
 .status{font:600 9px Inter,sans-serif;padding:3px 8px;border-radius:10px;letter-spacing:.3px;text-transform:uppercase}
 .status.off{background:rgba(248,113,113,.1);color:#F87171}
 .status.on{background:rgba(52,211,153,.1);color:#34D399}
 .status.wait{background:rgba(251,191,36,.1);color:#FBBF24}
 
-/* Main layout */
-.canvas-wrap{display:flex;flex-direction:column;height:calc(100% - 56px)}
+/* Main layout — flex fills remaining space regardless of header height */
+.canvas-wrap{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
 
 /* Feed — scrollable center */
 .feed-wrap{flex:1;overflow-y:auto;padding:10px 14px;scroll-behavior:smooth;background:radial-gradient(ellipse at 50% 0%,rgba(124,58,237,.03) 0%,transparent 70%)}
@@ -179,6 +177,8 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
   <h1><span class="dot"></span> Xhire Pilot</h1>
   <div class="titlebar-right">
     <span class="status off" id="ws-status">Offline</span>
+    <button class="light-btn" id="light-toggle" onclick="toggleLightMode()" title="Toggle light/dark mode">Light</button>
+    <button class="light-btn" onclick="doLogout()" style="color:#F87171;border-color:rgba(248,113,113,.3)" title="Logout">Out</button>
     <button class="light-btn" id="btn-quit" style="display:none;color:#F87171;border-color:rgba(248,113,113,.3)" onclick="quitApp()" title="Quit Xhire">✕</button>
   </div>
 </div>
@@ -200,9 +200,6 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
   <select class="style-select" id="look-picker" onchange="setTheme(this.value)" title="Card look">
     <option value="glass">Glass</option><option value="minimal">Minimal</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
   </select>
-  <label><input type="range" id="opacity-slider" min="30" max="100" value="100"></label>
-  <button class="ctrl-btn" id="light-toggle" onclick="toggleLightMode()" style="margin-left:auto" title="Toggle light/dark mode">Light</button>
-  <button class="ctrl-btn" onclick="doLogout()" style="color:#F87171;border-color:rgba(248,113,113,.2)" title="Logout">Logout</button>
 </div>
 
 <div class="canvas-wrap">
@@ -344,13 +341,16 @@ function setStatus(text, state) {
 })();
 
 // ===== OPACITY — sends to Electron main process =====
-$('opacity-slider').oninput = function() {
-  if (window.electronAPI && window.electronAPI.setOpacity) {
-    window.electronAPI.setOpacity(this.value / 100);
-  } else {
-    document.body.style.opacity = this.value / 100;
-  }
-};
+var _opSlider = $('opacity-slider');
+if (_opSlider) {
+  _opSlider.oninput = function() {
+    if (window.electronAPI && window.electronAPI.setOpacity) {
+      window.electronAPI.setOpacity(this.value / 100);
+    } else {
+      document.body.style.opacity = this.value / 100;
+    }
+  };
+}
 
 // ===== WEBSOCKET =====
 function connect() {
