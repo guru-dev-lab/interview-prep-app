@@ -238,6 +238,61 @@ app.post('/api/auth/google', async (req, res) => {
   } catch (e) { console.error('Google auth error:', e); res.status(500).json({ error: 'Google auth failed' }); }
 });
 
+// Google OAuth callback (redirect flow for Electron)
+app.get('/api/auth/google/callback', async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.status(400).send('No authorization code');
+
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${process.env.SERVER_URL || 'https://xhire.app'}/api/auth/google/callback`,
+        grant_type: 'authorization_code'
+      })
+    });
+    const tokens = await tokenRes.json();
+    if (!tokens.id_token) return res.status(400).send('Failed to get ID token');
+
+    // Decode the ID token
+    const parts = tokens.id_token.split('.');
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    const { sub: googleId, email, name, picture } = payload;
+    if (!email) return res.status(400).send('No email in token');
+
+    // Find or create user (same logic as POST /api/auth/google)
+    let result = await pool.query('SELECT * FROM users WHERE email = $1 OR google_id = $2', [email.toLowerCase(), googleId]);
+    let user;
+    if (result.rows.length) {
+      user = result.rows[0];
+      await pool.query('UPDATE users SET google_id = COALESCE(google_id, $1), avatar_url = COALESCE(avatar_url, $2), updated_at = NOW() WHERE id = $3',
+        [googleId, picture, user.id]);
+    } else {
+      result = await pool.query('INSERT INTO users (email, name, google_id, avatar_url) VALUES ($1, $2, $3, $4) RETURNING *',
+        [email.toLowerCase(), name, googleId, picture]);
+      user = result.rows[0];
+    }
+    const freshUser = (await pool.query('SELECT * FROM users WHERE id = $1', [user.id])).rows[0];
+    const token = generateToken(freshUser);
+
+    // Redirect to launcher with token so it can proceed to session picker
+    res.send(`<!DOCTYPE html><html><head><title>Xhire</title></head><body style="background:#06080f;color:#e2e8f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><h2>Signed in!</h2><p>Loading sessions...</p></div><script>
+      var token = ${JSON.stringify(token)};
+      var userId = ${JSON.stringify(String(freshUser.id))};
+      sessionStorage.setItem('token', token);
+      window.location.href = '/launcher?authed=1&token=' + encodeURIComponent(token);
+    </script></body></html>`);
+  } catch (e) {
+    console.error('Google callback error:', e);
+    res.status(500).send('Google sign-in failed: ' + e.message);
+  }
+});
+
 // Get current user (also refreshes token with latest DB state)
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {

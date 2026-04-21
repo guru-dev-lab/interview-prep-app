@@ -146,11 +146,7 @@ body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.15);co
     <div class="empty-state" id="empty-state">
       <svg width="40" height="40" fill="none" stroke="#7c3aed" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
       <h3>Smart Canvas Ready</h3>
-      <p id="empty-msg">Go Live on xhire.app, then answers stream here automatically.</p>
-      <button class="wsay-btn" id="btn-go-live" style="display:none;max-width:260px;margin:10px auto 0" onclick="goLiveElectron()">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
-        Go Live — Capture System Audio
-      </button>
+      <p id="empty-msg">Click Go Live above to start capturing audio.</p>
     </div>
   </div>
 
@@ -812,17 +808,12 @@ function stopElectronAudio() {
   electronSrc1 = electronSrc2 = null;
   if (systemAudioStream) { systemAudioStream.getTracks().forEach(function(t) { t.stop(); }); systemAudioStream = null; }
   if (micStream) { micStream.getTracks().forEach(function(t) { t.stop(); }); micStream = null; }
-  var btn = $('btn-go-live');
-  if (btn) { btn.textContent = 'Go Live — Capture System Audio'; btn.disabled = false; }
 }
 
 async function startElectronAudio() {
-  // Show the Go Live button in empty state
-  var btn = $('btn-go-live');
-  if (btn) btn.style.display = 'flex';
-  // Update empty state message
+  // Update empty state message for Electron mode
   var msg = $('empty-msg');
-  if (msg) msg.textContent = 'Click Go Live in the titlebar to start capturing audio.';
+  if (msg) msg.textContent = 'Click Go Live above to start capturing audio.';
 }
 
 function updateLiveUI(isLive) {
@@ -857,27 +848,27 @@ async function toggleElectronLive() {
 }
 
 async function goLiveElectron() {
-  var btn = $('btn-go-live');
-  if (btn) { btn.disabled = true; btn.textContent = 'Starting...'; }
+  var tb = $('btn-live-tb');
+  if (tb) { tb.textContent = 'Starting...'; tb.className = 'ctrl-btn'; }
 
   try {
     // Step 1: Capture system audio via getDisplayMedia
-    // In Electron with electron-audio-loopback, this captures actual system audio (not just a tab)
     systemAudioStream = await navigator.mediaDevices.getDisplayMedia({
       video: true,   // Required by Chromium to show the picker
       audio: true    // System audio via electron-audio-loopback
     });
 
     if (systemAudioStream.getAudioTracks().length === 0) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Go Live — Capture System Audio'; }
-      console.error('[Electron] No audio tracks from getDisplayMedia');
+      if (tb) { tb.textContent = 'Go Live'; tb.className = 'ctrl-btn active-green'; }
+      setStatus('No audio track', 'off');
       return;
     }
 
     // Handle user stopping the share
     systemAudioStream.getAudioTracks()[0].onended = function() {
-      console.log('[Electron] System audio track ended');
       stopElectronAudio();
+      updateLiveUI(false);
+      setStatus('Live', 'on');
     };
 
     // Step 2: Get mic for user voice
@@ -885,24 +876,21 @@ async function goLiveElectron() {
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
 
-    // Step 3: Start processing both streams (server already has dualStream from start message)
+    // Step 3: Start processing both streams
     electronLive = true;
     processAudioStream(systemAudioStream, 1);  // Channel 1 = interviewer/system
     processAudioStream(micStream, 2);           // Channel 2 = user mic
 
     // Update UI
-    if (btn) { btn.style.display = 'none'; }
     updateLiveUI(true);
     setStatus('Live — Audio', 'on');
-    // Hide empty state
     var empty = $('empty-state');
     if (empty) empty.style.display = 'none';
 
-    console.log('[Electron] Audio capture started — Ch1: system, Ch2: mic');
-
   } catch(e) {
     console.error('[Electron] Audio capture error:', e);
-    if (btn) { btn.disabled = false; btn.textContent = 'Go Live — Capture System Audio'; }
+    if (tb) { tb.textContent = 'Go Live'; tb.className = 'ctrl-btn active-green'; }
+    setStatus('Audio error', 'off');
     stopElectronAudio();
   }
 }
