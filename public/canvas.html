@@ -8,8 +8,9 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#06080f;--surface:#0c1019;--accent:#7c3aed;--accent2:#a78bfa;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--glass-border:rgba(255,255,255,.06)}
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;-webkit-app-region:drag;border-radius:12px}
-button,input,select{-webkit-app-region:no-drag}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;border-radius:12px}
+button,input,select{-webkit-app-region:no-drag;cursor:pointer}
+input[type=text],input[type=email],input[type=password]{cursor:text}
 
 /* Titlebar — draggable */
 .titlebar{height:36px;background:var(--surface);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
