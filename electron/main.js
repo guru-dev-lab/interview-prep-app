@@ -28,6 +28,10 @@ if (!gotLock) {
 
 app.on('second-instance', () => {
   if (mainWindow) {
+    // Reload launcher fresh when re-opening
+    mainWindow.loadURL(SERVER_URL + '/launcher').catch(() => {
+      mainWindow.loadFile(path.join(__dirname, 'launcher.html'));
+    });
     mainWindow.show();
     mainWindow.focus();
   }
@@ -232,6 +236,10 @@ function toggleOverlay() {
     mainWindow.hide();
     isVisible = false;
   } else {
+    // Reload launcher so it's a fresh start (kills stale WebSocket)
+    mainWindow.loadURL(SERVER_URL + '/launcher').catch(() => {
+      mainWindow.loadFile(path.join(__dirname, 'launcher.html'));
+    });
     mainWindow.show();
     isVisible = true;
   }
