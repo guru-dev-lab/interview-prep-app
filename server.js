@@ -1967,32 +1967,35 @@ function removeSessionClient(sessionId, ws) {
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 const MATCH_THRESHOLD = 0.45; // Raised from 0.30 — prevents weak keyword overlaps (e.g. EDA matching "data, info, insights")
 
-// Strip interviewer preambles from question text: "The next question is, explain X" → "explain X"
+// Quick regex cleanup — fast, runs on every text. AI cleanup runs after for detected questions.
 function cleanQuestionText(text) {
   var t = text.trim();
-  // If the buffer has a sentence before the question, extract just the question part.
-  // Look for question openers after a period, comma, or transition phrase.
-  var qOpener = /(?:^|[.!]\s+|[,;]\s*(?:the next question is[,:]?\s*|okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|let's move on[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*|next up[,:]?\s*|let me ask you[,:]?\s*|i(?:'d| would) like to ask[,:]?\s*|here's (?:a|another) question[,:]?\s*|and\s+|but\s+))(what|how|why|when|where|who|which|can you|could you|would you|do you|did you|have you|are you|were you|is there|tell me|describe|explain|walk me through|give me)/gi;
-  var lastMatch = null;
-  var m;
-  while ((m = qOpener.exec(t)) !== null) {
-    lastMatch = m;
-  }
-  if (lastMatch) {
-    // Extract from the question word onward
-    var idx = lastMatch.index + lastMatch[1].length;
-    t = t.substring(idx).trim();
-  } else {
-    // Fallback: strip leading transition phrases only
-    t = t.replace(/^(the next question is[,:]?\s*|okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|let's move on[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*|next up[,:]?\s*|let me ask you[,:]?\s*|i(?:'d| would) like to ask[,:]?\s*|here's (?:a|another) question[,:]?\s*)/i, '').trim();
-  }
-  // Clean trailing filler: "...right?", "...you know?", "...if that makes sense"
-  t = t.replace(/[,.]?\s*(right|you know|if that makes sense|if you will|so to speak|you know what I mean)\s*[?.]*\s*$/i, '').trim();
-  // Clean trailing incomplete fragments after the question: "How do you handle X. And then..."
-  t = t.replace(/\.\s*(and then|so then|and also|but also|and|but|or|so)\s*\.{0,3}\s*$/i, '').trim();
-  // Capitalize first letter
+  // Basic leading filler strip
+  t = t.replace(/^(okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|um[,:]?\s*|uh[,:]?\s*|well[,:]?\s*|and[,:]?\s*|but[,:]?\s*|the next question is[,:]?\s*|let me ask you[,:]?\s*|here's (?:a|another) question[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*)/i, '').trim();
   if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
   return t;
+}
+
+// AI-powered question cleanup — Haiku extracts JUST the clean question from messy speech
+async function aiCleanQuestion(rawText) {
+  try {
+    const cleaned = await Promise.race([
+      callClaude(
+        'You clean up interview questions from live speech transcripts. The input may contain filler, preamble, or conversation before the actual question. Extract ONLY the clean interview question — nothing else. Keep the full question intact including the question word (What, How, Can you, Tell me, etc.). Never cut off the beginning of the question. If the input IS already a clean question, return it as-is. Output ONLY the clean question text, no quotes, no explanation.',
+        'Clean this: ' + rawText,
+        80, MODEL_HAIKU
+      ),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+    ]);
+    const result = cleaned.trim().replace(/^["']|["']$/g, '');
+    // Sanity check: AI result should be shorter or similar length, and not empty
+    if (result && result.length >= 5 && result.length <= rawText.length + 10) {
+      return result;
+    }
+    return cleanQuestionText(rawText); // fallback to regex
+  } catch (e) {
+    return cleanQuestionText(rawText); // timeout — use regex
+  }
 }
 
 function isQuestion(text) {
@@ -2234,7 +2237,7 @@ async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 25
 // Match + verify + respond — async with Haiku AI verification
 async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter, forceNavigate) {
   const startMs = Date.now();
-  const q = cleanQuestionText(utterance.trim());
+  const q = await aiCleanQuestion(utterance.trim());
   if (!q || q.length < 5) return lastMatchedQId;
   if (!skipFilter && !isQuestion(q)) return lastMatchedQId;
 
@@ -2533,7 +2536,7 @@ wss.on('connection', (ws) => {
             // Real questions are single-line; multi-line means Haiku is explaining itself
             const firstLine = raw.split(/\n/)[0].trim();
             if (!firstLine || firstLine.length < 10) return;
-            const q = cleanQuestionText(firstLine);
+            const q = await aiCleanQuestion(firstLine);
 
             // Post-filter: even after AI extraction, run isQuestion() to catch false positives
             if (!isQuestion(q)) {
@@ -2743,7 +2746,7 @@ wss.on('connection', (ws) => {
             callClaude(extractSystem, extractUser, 100, MODEL_HAIKU),
             new Promise((_, reject) => setTimeout(() => reject(new Error('extract_timeout')), 2000))
           ]);
-          questionText = cleanQuestionText(questionText.trim().replace(/^["']|["']$/g, ''));
+          questionText = await aiCleanQuestion(questionText.trim().replace(/^["']|["']$/g, ''));
           console.log('[WhatShouldISay] Haiku extracted:', questionText);
         } catch (e) {
           // Fallback: use most recent lines
