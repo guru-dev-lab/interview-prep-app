@@ -227,6 +227,7 @@ var reconnectAttempts = 0;
 var activeFilter = 'all'; // 'all' or 'generated'
 var CARD_CLEANUP_MS = 180000; // 3 minutes for matched card auto-removal
 var pendingManualScroll = false; // true when user triggered a manual action, consume on next card
+var userScrolledUp = false; // true when user has scrolled away from bottom
 
 var isElectronMode = false;
 var systemAudioStream = null;
@@ -299,6 +300,18 @@ function setStatus(text, state) {
   el.textContent = text;
   el.className = 'status ' + (state || 'off');
 }
+
+// ===== SMART SCROLL — auto-scroll to new answers unless user scrolled up =====
+(function() {
+  var feed = $('feed');
+  if (feed) {
+    feed.addEventListener('scroll', function() {
+      // User is "at bottom" if within 80px of the bottom
+      var atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+      userScrolledUp = !atBottom;
+    });
+  }
+})();
 
 // ===== OPACITY — sends to Electron main process =====
 $('opacity-slider').oninput = function() {
@@ -432,6 +445,10 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
     if (el) {
       var aEl = el.querySelector('.sc-card-a');
       if (aEl) aEl.innerHTML = formatAnswer(answer);
+      // Scroll to updated card if user hasn't scrolled up
+      if (!userScrolledUp) {
+        setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+      }
     }
     return;
   }
@@ -476,8 +493,9 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
   if (emptyEl) emptyEl.remove();
   feed.appendChild(card);
 
-  // Only scroll for manual actions (What should I say, typed question), not auto-detected
-  if (shouldScroll) {
+  // Auto-scroll to new card unless user has scrolled up to read older content
+  // Always scroll for manual actions (What should I say, typed question)
+  if (shouldScroll || !userScrolledUp) {
     setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
   }
 
