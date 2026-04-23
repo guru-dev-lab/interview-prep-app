@@ -973,10 +973,9 @@ app.get('/api/sessions/:id/jd-requirements', authMiddleware, async (req, res) =>
     const session = s.rows[0];
     if (!session.jd || session.jd.trim().length < 20) return res.json({ requirements: null, message: 'No JD uploaded' });
 
-    const aiRes = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: `Extract and categorize ALL requirements from this job description for the role of "${session.role || 'Unknown'}" at "${session.company || 'Unknown'}".
+    const text = await callClaude(
+      'You extract and categorize job requirements from job descriptions. Return ONLY valid JSON, no markdown, no explanation.',
+      `Extract and categorize ALL requirements from this job description for the role of "${session.role || 'Unknown'}" at "${session.company || 'Unknown'}".
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -992,10 +991,10 @@ Return ONLY valid JSON with this exact structure:
 
 Include EVERY requirement mentioned. If a category has nothing, use an empty array. No markdown, no explanation — just the JSON.
 
-JD:\n${session.jd.substring(0, 4000)}` }]
-    });
-
-    const text = aiRes.content[0].text.trim();
+JD:\n${session.jd.substring(0, 4000)}`,
+      1500,
+      MODEL_HAIKU
+    );
     // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.json({ requirements: null, message: 'Could not parse requirements' });

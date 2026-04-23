@@ -1146,11 +1146,17 @@ async function showJDRequirements() {
     if (d.requirements) {
       _jdCache[S.id] = d.requirements;
       renderJDRequirements(d.requirements);
+    } else if (d.error) {
+      // Server error — fall back to raw JD display
+      console.error('[JD Requirements]', d.error);
+      renderRawJD(body);
     } else {
       body.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3);font:400 13px Inter,sans-serif">' + (d.message || 'No requirements found') + '</div>';
     }
   } catch(e) {
-    body.innerHTML = '<div style="text-align:center;padding:40px 0;color:#F87171;font:400 13px Inter,sans-serif">Failed to extract requirements</div>';
+    console.error('[JD Requirements]', e);
+    // Fallback: show raw JD formatted
+    renderRawJD(body);
   }
 }
 
@@ -1185,6 +1191,29 @@ function renderJDRequirements(req) {
   if (!hasContent) html = '<div style="text-align:center;padding:40px 0;color:var(--text3);font:400 13px Inter,sans-serif">No specific requirements found in JD</div>';
   body.innerHTML = html;
 }
+
+function renderRawJD(body) {
+  if (!S || !S.jd) { body.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3);font:400 13px Inter,sans-serif">No JD available</div>'; return; }
+  // Parse the raw JD text into formatted sections
+  var lines = S.jd.split(/\n/).filter(function(l) { return l.trim().length > 0; });
+  var html = '<div class="jd-section"><div class="jd-section-title"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Job Description</div>';
+  lines.forEach(function(line) {
+    var t = line.trim();
+    // Detect section headers (all caps, or ends with colon, or short bold-like lines)
+    if (t.length < 60 && (t === t.toUpperCase() || t.endsWith(':') || /^(requirements|qualifications|responsibilities|about|what you|who you|nice to have|preferred|minimum|must have|skills|experience)/i.test(t))) {
+      html += '<div style="font:700 12px Inter,sans-serif;color:var(--accent2);margin-top:16px;margin-bottom:6px">' + esc(t) + '</div>';
+    } else if (/^[\-\•\*\–\—]/.test(t) || /^\d+[\.\)]/.test(t)) {
+      // Bullet point
+      var cleaned = t.replace(/^[\-\•\*\–\—\d\.\)]+\s*/, '');
+      html += '<div class="jd-bullet">' + esc(cleaned) + '</div>';
+    } else {
+      html += '<div style="font:400 13px/1.6 Inter,sans-serif;color:var(--text2);margin-bottom:4px">' + esc(t) + '</div>';
+    }
+  });
+  html += '</div>';
+  body.innerHTML = html;
+}
+
 function pickStage(btn,stage){
   $('mm-s').value=stage;
   var chips=$('stage-chips').querySelectorAll('button');
