@@ -153,7 +153,7 @@ button{font-family:inherit;cursor:pointer}
 .jd-close:hover{background:rgba(248,113,113,.12);color:#F87171}
 .jd-modal-body{padding:20px 24px;overflow-y:auto;flex:1}
 .jd-modal-body::-webkit-scrollbar{width:4px}.jd-modal-body::-webkit-scrollbar-thumb{background:rgba(124,58,237,.3);border-radius:2px}
-.jd-section{margin-bottom:20px}
+.jd-section{margin-bottom:16px}
 .jd-section:last-child{margin-bottom:0}
 .jd-section-title{font:700 11px Inter,sans-serif;text-transform:uppercase;letter-spacing:.8px;color:var(--accent2);margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .jd-section-title svg{opacity:.6}
@@ -163,10 +163,19 @@ button{font-family:inherit;cursor:pointer}
 .jd-tag.soft{background:rgba(52,211,153,.08);color:#34D399;border-color:rgba(52,211,153,.15)}
 .jd-tag.cert{background:rgba(248,113,113,.08);color:#FCA5A5;border-color:rgba(248,113,113,.15)}
 .jd-tag.domain{background:rgba(56,189,248,.08);color:#7DD3FC;border-color:rgba(56,189,248,.15)}
-.jd-bullet{padding:6px 0;font:400 13px/1.6 Inter,sans-serif;color:var(--text2);display:flex;align-items:flex-start;gap:8px}
+.jd-bullet{padding:4px 0;font:400 13px/1.6 Inter,sans-serif;color:var(--text2);display:flex;align-items:flex-start;gap:8px}
 .jd-bullet::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent2);margin-top:7px;flex-shrink:0}
 .jd-loading{text-align:center;padding:40px 0;color:var(--text3)}
 .jd-loading .spinner{width:20px;height:20px;border:2px solid rgba(167,139,250,.3);border-top-color:#a78bfa;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;margin-bottom:10px}
+.jd-outline{border:1px solid rgba(255,255,255,.06);border-radius:10px;overflow:hidden;margin-top:12px}
+.jd-outline-hdr{padding:10px 14px;background:rgba(255,255,255,.02);cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:.15s;user-select:none}
+.jd-outline-hdr:hover{background:rgba(255,255,255,.04)}
+.jd-outline-hdr .jd-section-title{margin-bottom:0}
+.jd-outline-chevron{width:16px;height:16px;color:var(--text3);transition:transform .2s;flex-shrink:0}
+.jd-outline.open .jd-outline-chevron{transform:rotate(180deg)}
+.jd-outline-body{display:none;padding:8px 14px 14px;border-top:1px solid rgba(255,255,255,.04)}
+.jd-outline.open .jd-outline-body{display:block}
+.jd-outline-count{font:500 10px Inter,sans-serif;color:var(--text3);background:rgba(255,255,255,.06);padding:2px 8px;border-radius:10px;margin-left:auto;margin-right:8px}
 .info-btn{width:22px;height:22px;border-radius:50%;border:1.5px solid rgba(124,58,237,.3);background:rgba(124,58,237,.06);color:var(--accent2);font:700 11px Inter,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
 .info-btn:hover{background:rgba(124,58,237,.15);border-color:rgba(124,58,237,.5);transform:scale(1.1)}
 
@@ -1163,31 +1172,55 @@ async function showJDRequirements() {
 function renderJDRequirements(req) {
   var body = $('jd-modal-body');
   var html = '';
-  var sections = [
+  // INLINE sections — always visible
+  var inlineSections = [
+    { key: 'responsibilities', label: 'Key Responsibilities', cls: 'exp', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>' },
+    { key: 'experience', label: 'Experience Required', cls: 'exp', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' }
+  ];
+  // OUTLINE sections — collapsed by default
+  var outlineSections = [
     { key: 'technical_skills', label: 'Technical Skills', cls: 'tech', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>' },
     { key: 'tools_platforms', label: 'Tools & Platforms', cls: 'tech', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>' },
-    { key: 'experience', label: 'Experience Required', cls: 'exp', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
     { key: 'soft_skills', label: 'Soft Skills', cls: 'soft', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>' },
     { key: 'certifications', label: 'Certifications', cls: 'cert', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' },
     { key: 'domain_knowledge', label: 'Domain Knowledge', cls: 'domain', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>' },
-    { key: 'education', label: 'Education', cls: 'domain', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 1 2 3 6 3s6-2 6-3v-5"/></svg>' },
-    { key: 'responsibilities', label: 'Key Responsibilities', cls: 'exp', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>' }
+    { key: 'education', label: 'Education', cls: 'domain', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 1 2 3 6 3s6-2 6-3v-5"/></svg>' }
   ];
   var hasContent = false;
-  sections.forEach(function(sec) {
+
+  // Render inline sections
+  inlineSections.forEach(function(sec) {
     var items = req[sec.key];
     if (!items || !items.length) return;
     hasContent = true;
-    html += '<div class="jd-section"><div class="jd-section-title">' + sec.icon + ' ' + sec.label + '</div><div style="display:flex;flex-wrap:wrap;gap:2px">';
-    if (sec.key === 'responsibilities' || sec.key === 'experience') {
-      html += '</div>';
-      items.forEach(function(item) { html += '<div class="jd-bullet">' + esc(item) + '</div>'; });
-    } else {
-      items.forEach(function(item) { html += '<span class="jd-tag ' + sec.cls + '">' + esc(item) + '</span>'; });
-      html += '</div>';
-    }
+    html += '<div class="jd-section"><div class="jd-section-title">' + sec.icon + ' ' + sec.label + '</div>';
+    items.forEach(function(item) { html += '<div class="jd-bullet">' + esc(item) + '</div>'; });
     html += '</div>';
   });
+
+  // Render outline (collapsible) sections
+  var outlineCount = 0;
+  var outlineHtml = '';
+  outlineSections.forEach(function(sec) {
+    var items = req[sec.key];
+    if (!items || !items.length) return;
+    hasContent = true;
+    outlineCount++;
+    var id = 'jd-ol-' + sec.key;
+    outlineHtml += '<div class="jd-outline" id="' + id + '">';
+    outlineHtml += '<div class="jd-outline-hdr" onclick="this.parentElement.classList.toggle(\'open\')">';
+    outlineHtml += '<div class="jd-section-title">' + sec.icon + ' ' + sec.label + '</div>';
+    outlineHtml += '<span class="jd-outline-count">' + items.length + '</span>';
+    outlineHtml += '<svg class="jd-outline-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>';
+    outlineHtml += '</div><div class="jd-outline-body"><div style="display:flex;flex-wrap:wrap;gap:2px">';
+    items.forEach(function(item) { outlineHtml += '<span class="jd-tag ' + sec.cls + '">' + esc(item) + '</span>'; });
+    outlineHtml += '</div></div></div>';
+  });
+
+  if (outlineCount > 0) {
+    html += '<div style="margin-top:4px">' + outlineHtml + '</div>';
+  }
+
   if (!hasContent) html = '<div style="text-align:center;padding:40px 0;color:var(--text3);font:400 13px Inter,sans-serif">No specific requirements found in JD</div>';
   body.innerHTML = html;
 }
