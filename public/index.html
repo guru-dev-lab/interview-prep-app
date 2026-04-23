@@ -140,6 +140,36 @@ button{font-family:inherit;cursor:pointer}
 /* Company brief */
 .co-brief{padding:12px 20px;border-bottom:1px solid var(--glass-border);font:400 12px/1.6 'Inter',sans-serif;color:var(--text2);background:rgba(124,58,237,.02)}
 
+/* JD Requirements modal */
+.jd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(6px);z-index:200;display:none;align-items:center;justify-content:center;animation:fadeIn .2s}
+.jd-overlay.show{display:flex}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.jd-modal{width:90%;max-width:580px;max-height:80vh;background:var(--bg3);border:1px solid var(--glass-border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.5);animation:slideUp .25s ease}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.jd-modal-hdr{padding:20px 24px 16px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.jd-modal-hdr h3{font:800 16px Inter,sans-serif;color:var(--text);display:flex;align-items:center;gap:10px}
+.jd-modal-hdr h3 .jd-icon{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center}
+.jd-close{width:28px;height:28px;border-radius:8px;border:none;background:rgba(255,255,255,.06);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;font-size:14px}
+.jd-close:hover{background:rgba(248,113,113,.12);color:#F87171}
+.jd-modal-body{padding:20px 24px;overflow-y:auto;flex:1}
+.jd-modal-body::-webkit-scrollbar{width:4px}.jd-modal-body::-webkit-scrollbar-thumb{background:rgba(124,58,237,.3);border-radius:2px}
+.jd-section{margin-bottom:20px}
+.jd-section:last-child{margin-bottom:0}
+.jd-section-title{font:700 11px Inter,sans-serif;text-transform:uppercase;letter-spacing:.8px;color:var(--accent2);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.jd-section-title svg{opacity:.6}
+.jd-tag{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;font:500 12px Inter,sans-serif;margin:3px;border:1px solid rgba(255,255,255,.08)}
+.jd-tag.tech{background:rgba(99,102,241,.1);color:#A5B4FC;border-color:rgba(99,102,241,.2)}
+.jd-tag.exp{background:rgba(251,191,36,.08);color:#FBBF24;border-color:rgba(251,191,36,.15)}
+.jd-tag.soft{background:rgba(52,211,153,.08);color:#34D399;border-color:rgba(52,211,153,.15)}
+.jd-tag.cert{background:rgba(248,113,113,.08);color:#FCA5A5;border-color:rgba(248,113,113,.15)}
+.jd-tag.domain{background:rgba(56,189,248,.08);color:#7DD3FC;border-color:rgba(56,189,248,.15)}
+.jd-bullet{padding:6px 0;font:400 13px/1.6 Inter,sans-serif;color:var(--text2);display:flex;align-items:flex-start;gap:8px}
+.jd-bullet::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent2);margin-top:7px;flex-shrink:0}
+.jd-loading{text-align:center;padding:40px 0;color:var(--text3)}
+.jd-loading .spinner{width:20px;height:20px;border:2px solid rgba(167,139,250,.3);border-top-color:#a78bfa;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;margin-bottom:10px}
+.info-btn{width:22px;height:22px;border-radius:50%;border:1.5px solid rgba(124,58,237,.3);background:rgba(124,58,237,.06);color:var(--accent2);font:700 11px Inter,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.info-btn:hover{background:rgba(124,58,237,.15);border-color:rgba(124,58,237,.5);transform:scale(1.1)}
+
 /* Filters */
 .filters{display:flex;padding:10px 14px;gap:4px;border-bottom:1px solid var(--glass-border);flex-wrap:wrap}
 .flt{padding:5px 12px;border-radius:100px;border:none;font:500 12px 'Inter',sans-serif;color:var(--text3);background:transparent;cursor:pointer;transition:.12s}
@@ -735,8 +765,23 @@ body.canvas-open .prep-content{margin-right:480px}
       <div style="max-width:860px;margin:0 auto;display:flex;flex-direction:column;height:100%;min-height:0">
       <div id="main-pipeline" style="display:none;margin:0 0 12px;flex-shrink:0"><div id="main-stages"></div></div>
       <div id="co-brief" style="display:none;background:rgba(255,255,255,.02);border:1px solid var(--glass-border);border-radius:14px;padding:18px 24px;margin-bottom:20px;flex-shrink:0">
-        <div style="font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:1px;color:var(--accent2);margin-bottom:8px">About the Company</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:1px;color:var(--accent2)">About the Company</div>
+          <button class="info-btn" onclick="showJDRequirements()" title="View JD Requirements">i</button>
+        </div>
         <div id="co-brief-txt" style="font:400 15px/1.7 Inter,sans-serif;color:var(--text2)"></div>
+      </div>
+
+      <!-- JD Requirements Modal -->
+      <div class="jd-overlay" id="jd-overlay" onclick="if(event.target===this)hideJDModal()">
+        <div class="jd-modal">
+          <div class="jd-modal-hdr">
+            <h3><span class="jd-icon"><svg width="14" height="14" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>Job Requirements</h3>
+            <button class="jd-close" onclick="hideJDModal()">&times;</button>
+          </div>
+          <div class="jd-modal-body" id="jd-modal-body">
+          </div>
+        </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;justify-content:flex-end;flex-shrink:0;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:8px">
@@ -1076,6 +1121,70 @@ function showM(id){
   }
 }
 function hideM(id){$(id).classList.remove('show')}
+
+// JD Requirements
+var _jdCache = {};
+function hideJDModal() { $('jd-overlay').classList.remove('show'); }
+async function showJDRequirements() {
+  var overlay = $('jd-overlay');
+  var body = $('jd-modal-body');
+  overlay.classList.add('show');
+
+  if (!S || !S.jd || S.jd.trim().length < 20) {
+    body.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3)"><svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="opacity:.4;margin-bottom:12px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div style="font:500 13px Inter,sans-serif">No job description uploaded</div><div style="font:400 12px Inter,sans-serif;margin-top:4px;opacity:.6">Upload a JD to see extracted requirements</div></div>';
+    return;
+  }
+
+  // Check cache
+  if (_jdCache[S.id]) { renderJDRequirements(_jdCache[S.id]); return; }
+
+  body.innerHTML = '<div class="jd-loading"><div class="spinner"></div><div style="font:500 12px Inter,sans-serif;margin-top:8px">Extracting requirements...</div></div>';
+
+  try {
+    var r = await apiFetch('/api/sessions/' + S.id + '/jd-requirements');
+    var d = await r.json();
+    if (d.requirements) {
+      _jdCache[S.id] = d.requirements;
+      renderJDRequirements(d.requirements);
+    } else {
+      body.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3);font:400 13px Inter,sans-serif">' + (d.message || 'No requirements found') + '</div>';
+    }
+  } catch(e) {
+    body.innerHTML = '<div style="text-align:center;padding:40px 0;color:#F87171;font:400 13px Inter,sans-serif">Failed to extract requirements</div>';
+  }
+}
+
+function renderJDRequirements(req) {
+  var body = $('jd-modal-body');
+  var html = '';
+  var sections = [
+    { key: 'technical_skills', label: 'Technical Skills', cls: 'tech', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>' },
+    { key: 'tools_platforms', label: 'Tools & Platforms', cls: 'tech', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>' },
+    { key: 'experience', label: 'Experience Required', cls: 'exp', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
+    { key: 'soft_skills', label: 'Soft Skills', cls: 'soft', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>' },
+    { key: 'certifications', label: 'Certifications', cls: 'cert', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' },
+    { key: 'domain_knowledge', label: 'Domain Knowledge', cls: 'domain', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>' },
+    { key: 'education', label: 'Education', cls: 'domain', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 1 2 3 6 3s6-2 6-3v-5"/></svg>' },
+    { key: 'responsibilities', label: 'Key Responsibilities', cls: 'exp', icon: '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>' }
+  ];
+  var hasContent = false;
+  sections.forEach(function(sec) {
+    var items = req[sec.key];
+    if (!items || !items.length) return;
+    hasContent = true;
+    html += '<div class="jd-section"><div class="jd-section-title">' + sec.icon + ' ' + sec.label + '</div><div style="display:flex;flex-wrap:wrap;gap:2px">';
+    if (sec.key === 'responsibilities' || sec.key === 'experience') {
+      html += '</div>';
+      items.forEach(function(item) { html += '<div class="jd-bullet">' + esc(item) + '</div>'; });
+    } else {
+      items.forEach(function(item) { html += '<span class="jd-tag ' + sec.cls + '">' + esc(item) + '</span>'; });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  if (!hasContent) html = '<div style="text-align:center;padding:40px 0;color:var(--text3);font:400 13px Inter,sans-serif">No specific requirements found in JD</div>';
+  body.innerHTML = html;
+}
 function pickStage(btn,stage){
   $('mm-s').value=stage;
   var chips=$('stage-chips').querySelectorAll('button');

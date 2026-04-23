@@ -964,6 +964,49 @@ app.get('/api/sessions/:id', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Extract JD requirements (AI-powered, cached)
+app.get('/api/sessions/:id/jd-requirements', authMiddleware, async (req, res) => {
+  try {
+    if (!isValidUUID(req.params.id)) return res.status(400).json({ error: 'Invalid session ID' });
+    const s = await pool.query('SELECT jd, role, company FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    if (!s.rows.length) return res.status(404).json({ error: 'Not found' });
+    const session = s.rows[0];
+    if (!session.jd || session.jd.trim().length < 20) return res.json({ requirements: null, message: 'No JD uploaded' });
+
+    const aiRes = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: `Extract and categorize ALL requirements from this job description for the role of "${session.role || 'Unknown'}" at "${session.company || 'Unknown'}".
+
+Return ONLY valid JSON with this exact structure:
+{
+  "technical_skills": ["skill1", "skill2"],
+  "tools_platforms": ["tool1", "tool2"],
+  "experience": ["3+ years in data analytics", "..."],
+  "soft_skills": ["communication", "..."],
+  "certifications": ["AWS Certified", "..."],
+  "domain_knowledge": ["healthcare", "finance", "..."],
+  "education": ["Bachelor's in CS", "..."],
+  "responsibilities": ["Lead team of 5", "..."]
+}
+
+Include EVERY requirement mentioned. If a category has nothing, use an empty array. No markdown, no explanation — just the JSON.
+
+JD:\n${session.jd.substring(0, 4000)}` }]
+    });
+
+    const text = aiRes.content[0].text.trim();
+    // Extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.json({ requirements: null, message: 'Could not parse requirements' });
+    const requirements = JSON.parse(jsonMatch[0]);
+    res.json({ requirements });
+  } catch (e) {
+    console.error('[JD Requirements Error]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Plan limits (monthly)
 const PLAN_LIMITS = { free: { sessions: 1, answers: 10 }, test: { sessions: 2, answers: 999 }, pro: { sessions: 20, answers: 999 }, premium: { sessions: 60, answers: 999 }, admin: { sessions: 999, answers: 999 } };
 function getPlanLimits(plan) { return PLAN_LIMITS[plan] || PLAN_LIMITS.free; }
