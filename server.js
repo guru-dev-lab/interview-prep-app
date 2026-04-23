@@ -68,6 +68,7 @@ async function initDB() {
         candidate_name VARCHAR(255) DEFAULT '',
         experience JSONB DEFAULT '[]',
         pipeline_stages JSONB DEFAULT '[]',
+        jd_requirements JSONB DEFAULT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
@@ -129,6 +130,7 @@ async function initDB() {
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS stage VARCHAR(255) DEFAULT '';
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'build';
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS answer_style VARCHAR(50) DEFAULT 'conversational';
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS jd_requirements JSONB DEFAULT NULL;
     `).catch(() => {});
     console.log('Database tables ready');
   } finally { client.release(); }
@@ -968,12 +970,18 @@ app.get('/api/sessions/:id', authMiddleware, async (req, res) => {
 app.get('/api/sessions/:id/jd-requirements', authMiddleware, async (req, res) => {
   try {
     if (!isValidUUID(req.params.id)) return res.status(400).json({ error: 'Invalid session ID' });
-    const s = await pool.query('SELECT jd, role, company FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    const s = await pool.query('SELECT jd, role, company, jd_requirements FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
     if (!s.rows.length) return res.status(404).json({ error: 'Not found' });
     const session = s.rows[0];
     if (!session.jd || session.jd.trim().length < 20) return res.json({ requirements: null, message: 'No JD uploaded' });
 
-    console.log('[JD Req] Calling Haiku for session', req.params.id, 'JD length:', session.jd.length);
+    // Return cached if available
+    if (session.jd_requirements) {
+      console.log('[JD Req] Returning cached requirements for session', req.params.id);
+      return res.json({ requirements: session.jd_requirements, cached: true });
+    }
+
+    console.log('[JD Req] Extracting requirements for session', req.params.id, 'JD length:', session.jd.length);
     const text = await callClaude(
       'You extract and categorize job requirements from job descriptions. Return ONLY valid JSON, no markdown code fences, no explanation.',
       `Extract and categorize ALL requirements from this job description for the role of "${session.role || 'Unknown'}" at "${session.company || 'Unknown'}".
@@ -994,6 +1002,9 @@ JD:\n${session.jd.substring(0, 4000)}`,
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.json({ requirements: null, message: 'Could not parse AI response' });
     const requirements = JSON.parse(jsonMatch[0]);
+    // Cache in DB so we never extract again for this session
+    await pool.query('UPDATE sessions SET jd_requirements = $1 WHERE id = $2', [JSON.stringify(requirements), req.params.id]);
+    console.log('[JD Req] Cached requirements for session', req.params.id);
     res.json({ requirements });
   } catch (e) {
     console.error('[JD Requirements Error]', e.message);
