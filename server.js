@@ -973,31 +973,26 @@ app.get('/api/sessions/:id/jd-requirements', authMiddleware, async (req, res) =>
     const session = s.rows[0];
     if (!session.jd || session.jd.trim().length < 20) return res.json({ requirements: null, message: 'No JD uploaded' });
 
+    console.log('[JD Req] Calling Haiku for session', req.params.id, 'JD length:', session.jd.length);
     const text = await callClaude(
-      'You extract and categorize job requirements from job descriptions. Return ONLY valid JSON, no markdown, no explanation.',
+      'You extract and categorize job requirements from job descriptions. Return ONLY valid JSON, no markdown code fences, no explanation.',
       `Extract and categorize ALL requirements from this job description for the role of "${session.role || 'Unknown'}" at "${session.company || 'Unknown'}".
 
-Return ONLY valid JSON with this exact structure:
-{
-  "technical_skills": ["skill1", "skill2"],
-  "tools_platforms": ["tool1", "tool2"],
-  "experience": ["3+ years in data analytics", "..."],
-  "soft_skills": ["communication", "..."],
-  "certifications": ["AWS Certified", "..."],
-  "domain_knowledge": ["healthcare", "finance", "..."],
-  "education": ["Bachelor's in CS", "..."],
-  "responsibilities": ["Lead team of 5", "..."]
-}
+Return ONLY valid JSON (no \`\`\`json wrapper) with this structure:
+{"technical_skills":[],"tools_platforms":[],"experience":[],"soft_skills":[],"certifications":[],"domain_knowledge":[],"education":[],"responsibilities":[]}
 
-Include EVERY requirement mentioned. If a category has nothing, use an empty array. No markdown, no explanation — just the JSON.
+Fill each array with strings extracted from the JD. If a category has nothing, use an empty array.
 
 JD:\n${session.jd.substring(0, 4000)}`,
       1500,
       MODEL_HAIKU
     );
+    console.log('[JD Req] Haiku response:', text.substring(0, 200));
+    // Strip markdown fences if present
+    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     // Extract JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return res.json({ requirements: null, message: 'Could not parse requirements' });
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.json({ requirements: null, message: 'Could not parse AI response' });
     const requirements = JSON.parse(jsonMatch[0]);
     res.json({ requirements });
   } catch (e) {
