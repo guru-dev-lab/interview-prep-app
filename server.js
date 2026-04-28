@@ -417,40 +417,43 @@ EXAMPLE OF WRONG FORMAT (DO NOT DO THIS):
 ^ WRONG. Those are paragraphs. Each sentence must be its own line.
 
 ANSWERING RULES — CRITICAL:
+MOST IMPORTANT RULE — DO NOT FORCE ROLE/COMPANY REFERENCES:
+NEVER say "At [company] I did X" or "In my role as [title] I..." UNLESS the question specifically asks about your experience at a company or in a role.
+"How do you use Tableau?" → "I usually build dashboards by connecting to the data source, setting up calculated fields..." — NO company name needed.
+"What is a CTE?" → Just explain what a CTE is. Period.
+"Tell me about your experience with X at your current role" → NOW you can reference the company.
+The resume and JD are there for CONTEXT ONLY — do not parrot them into every answer.
+
 1. MATCH the question type to the answer style:
-   - "What is X?" or "Explain X" → Define/explain it simply. No personal story needed.
-   - "How do you use X?" or "How would you do X?" → Explain the approach/steps plainly.
-   - "Tell me about a time" / "Describe your experience" / "How have you used X in the past" → NOW use personal experience from Q&A bank.
-   - "Walk me through" → Step by step explanation, use real examples only if it helps.
+   - "What is X?" or "Explain X" → Define/explain it simply. No personal story.
+   - "How do you use X?" or "How would you do X?" → Explain YOUR approach/steps plainly. Say "I do X" not "At [company] I do X."
+   - "Tell me about a time" / "Describe your experience" / "in your role" → NOW use personal experience with company/role context.
+   - "Walk me through" → Step by step explanation. Use "I" naturally but don't name-drop companies.
 
-2. DO NOT force personal experience into every answer.
-   Only reference "At [company] I did X" when the question ASKS about your experience.
-   "What is a CTE?" does NOT need "At R&L Carriers I used CTEs to..."
-   Just explain what a CTE is clearly.
-
-3. Keep it simple. No jargon. No buzzwords. Plain English.
-   BANNED: leverage, utilize, robust, comprehensive, drive, facilitate, synergy, paradigm, ecosystem, holistic, scalable, cross-functional, stakeholder alignment.
+2. Keep it simple. No jargon. No buzzwords. Plain English.
+   BANNED: leverage, utilize, robust, comprehensive, drive, facilitate, synergy, paradigm, ecosystem, holistic, scalable, cross-functional, stakeholder alignment, "in my capacity as."
    USE INSTEAD: use, build, fix, run, help, work with, make, set up, improve.
 
 VOICE — READ-ALOUD READY:
 The candidate is reading your words to the interviewer.
-Use "I" only when talking about personal experience.
+Use "I" naturally — "I usually do X", "I like to start by", "The way I handle that is."
+Do NOT prefix with company/role unless asked — "I build dashboards using..." NOT "As a Senior BI Analyst at R&L, I build dashboards..."
 Use spoken transitions: "So basically", "The way it works is", "Think of it like."
 NEVER use labels: "Result:", "Context:", "Additionally", "Furthermore."
 Contractions always. Sound like a person talking, not a textbook.
 
 CONTENT:
-Use the Q&A BANK as source of truth for experience-based answers only.
+Use the Q&A BANK as source of truth for experience-based answers ONLY when the question asks about past experience.
 Use the resume for facts ONLY when the question asks about the candidate's background.
-Use the JD only to understand the role context, never copy its language.
+Use the JD ONLY to understand what tools/skills matter — never copy its language, never reference the target company.
 Never fabricate. No filler lines.
 
 QUESTION TYPES:
-"What is X?" / Concept questions → 3-5 lines. Simple, clear definition. One example if helpful.
-"How do you do X?" / Process questions → 4-6 lines. Steps or approach. Keep it practical.
-"Tell me about yourself" → 6-8 lines. Name, role, experience highlights, why this role.
-Behavioral (tell me about a time) → 5-7 lines. Use real experience from Q&A bank.
-Technical (code/SQL) → 3-5 lines. Show the code or steps, brief explanation.
+"What is X?" / Concept questions → 3-5 lines. Simple, clear definition. One example if helpful. NO personal experience needed.
+"How do you do X?" / Process questions → 4-6 lines. Steps or approach. Say "I do X" — no company name.
+"Tell me about yourself" → 6-8 lines. Name, background highlights, why this role.
+Behavioral (tell me about a time) → 5-7 lines. Use real experience from Q&A bank. NOW you can name companies.
+Technical (code/SQL) → 3-5 lines. Show the code or steps, brief explanation. No company references.
 "Why this role/company?" → 4-5 lines. Genuine reasons tied to the role.
 
 Output ONLY the answer. No intro, no labels, no "Here's my answer."`;
@@ -762,14 +765,21 @@ Output ONLY the answer. No intro, no labels.`
   }
 };
 
-// Get style prompt by key — fallback to conversational, always append code rules
+// Universal anti-role-stuffing rule appended to ALL styles
+const NO_ROLE_STUFFING = `
+
+CRITICAL — DO NOT FORCE COMPANY/ROLE REFERENCES:
+Never say "At [company]..." or "In my role as [title]..." or "As a [title] at [company]..." UNLESS the question explicitly asks about your experience at a specific place.
+"How do you use SQL?" → "I write queries to pull data, join tables, and build reports." — NO company name.
+"Tell me about a time you used SQL in your role" → NOW you can say "At [company], I built a pipeline that..."
+The JD and resume are context — not things to parrot into every answer.`;
+
+// Get style prompt by key — fallback to conversational, always append code rules + anti-stuffing
 function getStylePrompt(styleKey) {
-  return (ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).prompt + CODE_ANSWER_ADDENDUM;
+  return (ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).prompt + CODE_ANSWER_ADDENDUM + NO_ROLE_STUFFING;
 }
 
-const BATCH_PROMPT = `You are a real-time interview assistant. The candidate's name, role, and experience come ONLY from the resume provided below.
-
-You will receive MULTIPLE interview questions. You MUST generate a separate, complete, high-quality answer for EACH question.
+const BATCH_PREAMBLE = `You will receive MULTIPLE interview questions. You MUST generate a separate, complete, high-quality answer for EACH question.
 
 CRITICAL RULES FOR BATCHING:
 - Treat EVERY question independently. Do NOT let one answer influence another.
@@ -788,7 +798,16 @@ OUTPUT FORMAT — FOLLOW EXACTLY:
 
 Each answer between the ===Q markers must be complete and standalone.
 
-` + ANSWER_PROMPT + CODE_ANSWER_ADDENDUM;
+`;
+
+// Build batch prompt using the selected style (not hardcoded default)
+function getBatchPrompt(styleKey) {
+  const stylePrompt = (ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).prompt;
+  return BATCH_PREAMBLE + stylePrompt + CODE_ANSWER_ADDENDUM;
+}
+
+// Legacy fallback
+const BATCH_PROMPT = BATCH_PREAMBLE + ANSWER_PROMPT + CODE_ANSWER_ADDENDUM;
 
 // ============ FILE EXTRACTION ============
 async function extractText(buf, name) {
@@ -1525,9 +1544,9 @@ app.post('/api/sessions/:id/generate/:qid', authMiddleware, async (req, res) => 
     const userInstruction = req.body?.instruction?.trim() || '';
     let userMsg = `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${question.text}\n\n`;
     if (userInstruction) {
-      userMsg += `USER INSTRUCTION (follow this closely): ${userInstruction}\n\nGenerate an answer following the user's instruction, tailored to the resume and JD.`;
+      userMsg += `USER INSTRUCTION (follow this closely): ${userInstruction}\n\nGenerate an answer following the user's instruction. Only reference companies or role titles if the question specifically asks about experience.`;
     } else {
-      userMsg += `Give me a strong answer tailored to this JD.`;
+      userMsg += `Answer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`;
     }
 
     const stylePrompt = getStylePrompt(session.answer_style);
@@ -1558,7 +1577,7 @@ app.post('/api/sessions/:id/generate-batch', authMiddleware, async (req, res) =>
     if (batch.length === 1) {
       try {
         const answer = await callClaude(stylePrompt,
-          `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${batch[0].text}\n\nGive me a strong answer tailored to this JD.`,
+          `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${batch[0].text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
           1500, MODEL_HAIKU
         );
         await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, batch[0].id]);
@@ -1567,8 +1586,8 @@ app.post('/api/sessions/:id/generate-batch', authMiddleware, async (req, res) =>
     } else {
       const questionsBlock = batch.map((q, idx) => `Q${idx + 1}: ${q.text}`).join('\n');
       try {
-        const batchResponse = await callClaude(BATCH_PROMPT,
-          `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\n${batch.length} QUESTIONS TO ANSWER:\n${questionsBlock}\n\nGenerate a strong, complete answer for EACH question. Use the ===Q1=== ===Q2=== format. Every answer must be tailored to this JD.`,
+        const batchResponse = await callClaude(getBatchPrompt(session.answer_style),
+          `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\n${batch.length} QUESTIONS TO ANSWER:\n${questionsBlock}\n\nAnswer each question naturally. Use the ===Q1=== ===Q2=== format. Only reference companies or role titles when the question specifically asks about experience.`,
           batch.length * 1500, MODEL_HAIKU
         );
         const parts = batchResponse.split(/===Q\d+===/);
@@ -1586,8 +1605,8 @@ app.post('/api/sessions/:id/generate-batch', authMiddleware, async (req, res) =>
       } catch(e) {
         for (const q of batch) {
           try {
-            const answer = await callClaude(ANSWER_PROMPT,
-              `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${q.text}\n\nGive me a strong answer tailored to this JD.`,
+            const answer = await callClaude(stylePrompt,
+              `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${q.text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
               1500, MODEL_HAIKU
             );
             await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, q.id]);
@@ -1743,7 +1762,7 @@ app.put('/api/sessions/:id/answer-style', authMiddleware, async (req, res) => {
     const stylePrompt = getStylePrompt(style);
     const qaBank = getQABank();
     const sampleAnswer = await callClaude(stylePrompt,
-      `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume || 'Experienced professional'}\n\nJD:\n${session.jd || 'Software role'}\n\nQuestion:\n${sampleQ}\n\nGive me a strong answer tailored to this JD.`,
+      `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume || 'Experienced professional'}\n\nJD:\n${session.jd || 'Software role'}\n\nQuestion:\n${sampleQ}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
       1000, MODEL_HAIKU
     );
 
