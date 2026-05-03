@@ -73,17 +73,46 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .mode-btn:hover{color:var(--text2);background:rgba(255,255,255,.04)}
 .mode-btn.active{background:rgba(124,58,237,.22);color:#C7D2FE;box-shadow:inset 0 0 10px rgba(124,58,237,.08)}
 .mode-btn.active.copilot-mode{background:rgba(99,102,241,.22);color:#A5B4FC;box-shadow:inset 0 0 10px rgba(99,102,241,.08)}
-/* Co-pilot inline controls */
-.copilot-inline{display:none;align-items:center;gap:4px}
-.copilot-inline.show{display:flex}
-.copilot-capture-btn{height:24px;padding:0 10px;border:1px solid rgba(99,102,241,.18);border-radius:5px;background:rgba(99,102,241,.08);font:600 9px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:3px}
-.copilot-capture-btn:hover{background:rgba(99,102,241,.2);border-color:rgba(99,102,241,.35);transform:scale(1.03);box-shadow:0 0 10px rgba(99,102,241,.12)}
+/* ===== FLOATING CONFIG PILL — style + theme, detached ===== */
+.config-float{position:fixed;top:44px;left:10px;display:none;align-items:center;gap:6px;padding:5px 10px;background:rgba(10,12,22,.92);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border:1px solid rgba(124,58,237,.15);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 10px rgba(124,58,237,.06);animation:floatIn .25s cubic-bezier(.22,1,.36,1)}
+.config-float.show{display:flex}
+.config-float-label{font:700 8px Inter,sans-serif;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px}
+.config-float .cfg-sep{width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(124,58,237,.15),transparent);flex-shrink:0}
+.config-float .hud-select{height:24px;font:500 10px Inter,sans-serif;padding:0 6px;border-radius:5px;border:none;background:rgba(255,255,255,.04);color:var(--text2);cursor:pointer;outline:none;transition:.15s}
+.config-float .hud-select:hover{background:rgba(255,255,255,.08);color:var(--text)}
+/* Light mode config float */
+body.light-mode .config-float{background:rgba(255,255,255,.92);border-color:rgba(109,40,217,.12);box-shadow:0 4px 20px rgba(0,0,0,.1),0 0 10px rgba(109,40,217,.04)}
+body.light-mode .config-float-label{color:#7c3aed}
+body.light-mode .config-float .cfg-sep{background:linear-gradient(180deg,transparent,rgba(109,40,217,.1),transparent)}
+body.light-mode .config-float .hud-select{background:rgba(0,0,0,.03);color:#374151}
+body.light-mode .config-float .hud-select:hover{background:rgba(0,0,0,.06);color:#111}
+
+/* ===== FLOATING CO-PILOT PILL — detached from HUD, Cluely-style ===== */
+.copilot-float{position:fixed;top:44px;right:10px;display:none;align-items:center;gap:6px;padding:5px 10px;background:rgba(10,12,22,.92);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 10px rgba(99,102,241,.08);animation:floatIn .25s cubic-bezier(.22,1,.36,1)}
+.copilot-float.show{display:flex}
+@keyframes floatIn{from{opacity:0;transform:translateY(-6px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+.copilot-float-label{font:700 8px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.5px}
+.copilot-float .cpf-sep{width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(99,102,241,.2),transparent);flex-shrink:0}
+.copilot-capture-btn{height:26px;padding:0 12px;border:1px solid rgba(99,102,241,.2);border-radius:6px;background:rgba(99,102,241,.1);font:600 10px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:4px}
+.copilot-capture-btn:hover{background:rgba(99,102,241,.22);border-color:rgba(99,102,241,.4);transform:scale(1.03);box-shadow:0 0 12px rgba(99,102,241,.15)}
+.copilot-capture-btn:active{transform:scale(.97)}
 .copilot-capture-btn.loading{opacity:.5;pointer-events:none}
-.copilot-gear-btn{height:24px;width:24px;border:1px solid rgba(99,102,241,.12);border-radius:5px;background:transparent;color:#818CF8;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0}
+.copilot-gear-btn{height:26px;width:26px;border:1px solid rgba(99,102,241,.15);border-radius:6px;background:transparent;color:#818CF8;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0}
 .copilot-gear-btn:hover{background:rgba(99,102,241,.14);transform:scale(1.08)}
-.copilot-gear-btn.has-data{border-color:rgba(52,211,153,.25);color:#34D399;box-shadow:0 0 6px rgba(52,211,153,.12)}
-.copilot-dot-live{width:6px;height:6px;border-radius:50%;background:#818CF8;box-shadow:0 0 8px rgba(129,140,248,.4);animation:copilot-blink 1.5s ease infinite;flex-shrink:0}
-@keyframes copilot-blink{0%,100%{opacity:1;box-shadow:0 0 8px rgba(129,140,248,.4)}50%{opacity:.3;box-shadow:0 0 3px rgba(129,140,248,.2)}}
+.copilot-gear-btn:active{transform:scale(.94)}
+.copilot-gear-btn.has-data{border-color:rgba(52,211,153,.3);color:#34D399;box-shadow:0 0 8px rgba(52,211,153,.12)}
+.copilot-dot-live{width:7px;height:7px;border-radius:50%;background:#818CF8;box-shadow:0 0 8px rgba(129,140,248,.5);animation:copilot-blink 1.5s ease infinite;flex-shrink:0}
+@keyframes copilot-blink{0%,100%{opacity:1;box-shadow:0 0 8px rgba(129,140,248,.5)}50%{opacity:.3;box-shadow:0 0 3px rgba(129,140,248,.15)}}
+/* Light mode — co-pilot float */
+body.light-mode .copilot-float{background:rgba(255,255,255,.92);border-color:rgba(99,102,241,.15);box-shadow:0 4px 20px rgba(0,0,0,.12),0 0 10px rgba(99,102,241,.05)}
+body.light-mode .copilot-float-label{color:#6366f1}
+body.light-mode .copilot-capture-btn{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.15);color:#4338CA}
+body.light-mode .copilot-capture-btn:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3);color:#4338CA}
+body.light-mode .copilot-gear-btn{color:#6366f1;border-color:rgba(99,102,241,.12)}
+body.light-mode .copilot-gear-btn:hover{background:rgba(99,102,241,.08)}
+body.light-mode .copilot-gear-btn.has-data{color:#059669;border-color:rgba(5,150,105,.25)}
+body.light-mode .copilot-dot-live{background:#6366f1;box-shadow:0 0 8px rgba(99,102,241,.4)}
+body.light-mode .cpf-sep{background:linear-gradient(180deg,transparent,rgba(99,102,241,.12),transparent)}
 /* Tag styles */
 .sc-tag.copilot{background:rgba(99,102,241,.2);color:#A5B4FC}
 .sc-card.copilot-card{border-left-color:#818CF8}
@@ -217,13 +246,43 @@ body.light-mode .brand-name{background:linear-gradient(135deg,#6d28d9,#7c3aed);-
 body.light-mode .tb-btn{background:rgba(0,0,0,.04);color:#4b5563}
 body.light-mode .tb-btn:hover{background:rgba(109,40,217,.08);color:#6d28d9}
 body.light-mode .hud-sep{background:linear-gradient(180deg,transparent,rgba(0,0,0,.1),transparent)}
-body.light-mode .hud-btn,.light-mode .hud-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
-body.light-mode .mode-toggle{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06)}
-body.light-mode .mode-btn.active{background:rgba(109,40,217,.12);color:#6d28d9}
+body.light-mode .hud-btn{color:#4b5563}
+body.light-mode .hud-btn:hover{background:rgba(109,40,217,.06);color:#6d28d9}
+body.light-mode .hud-btn.live{background:rgba(5,150,105,.1);color:#059669}
+body.light-mode .hud-btn.live:hover{background:rgba(5,150,105,.18)}
+body.light-mode .hud-btn.live-stop{background:rgba(239,68,68,.08);color:#DC2626}
+body.light-mode .hud-select{color:#4b5563}
+body.light-mode .hud-select:hover{background:rgba(0,0,0,.04);color:#1f2937}
 body.light-mode .hud-select option{background:#fff;color:#111}
+body.light-mode .mode-toggle{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06)}
+body.light-mode .mode-btn{color:#6b7280}
+body.light-mode .mode-btn:hover{color:#374151;background:rgba(0,0,0,.03)}
+body.light-mode .mode-btn.active{background:rgba(109,40,217,.12);color:#6d28d9}
+body.light-mode .mode-btn.active.copilot-mode{background:rgba(99,102,241,.12);color:#4338CA}
+body.light-mode .hud-dot.off{background:#EF4444;box-shadow:0 0 6px rgba(239,68,68,.3)}
+body.light-mode .hud-dot.on{background:#10B981;box-shadow:0 0 8px rgba(16,185,129,.35)}
+body.light-mode .hud-status{color:#6b7280}
 body.light-mode .action-btn{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08);color:#4b5563}
-body.light-mode .bottom-bar{background:#ebedf2;border-color:rgba(0,0,0,.06)}
+body.light-mode .action-btn:hover{border-color:rgba(109,40,217,.2);background:rgba(109,40,217,.04);color:#374151}
+body.light-mode .action-btn.primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}
+body.light-mode .bottom-bar{background:rgba(235,237,242,.92);backdrop-filter:blur(16px) saturate(1.2);border-color:rgba(0,0,0,.06)}
+body.light-mode .bottom-bar::before{background:linear-gradient(90deg,transparent,rgba(109,40,217,.12),transparent)}
 body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.1);color:#111827}
+body.light-mode .input-row button{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}
+body.light-mode .copilot-gear-overlay{background:rgba(255,255,255,.5)}
+body.light-mode .copilot-gear-modal{background:#fff;border-color:rgba(99,102,241,.15);box-shadow:0 20px 60px rgba(0,0,0,.15)}
+body.light-mode .copilot-gear-header{color:#1e1b4b;border-color:rgba(0,0,0,.06)}
+body.light-mode .copilot-gear-close{color:#6b7280}
+body.light-mode .copilot-gear-close:hover{background:rgba(0,0,0,.04);color:#111}
+body.light-mode .copilot-gear-label{color:#4338CA}
+body.light-mode .copilot-gear-desc{color:#6b7280}
+body.light-mode .copilot-gear-textarea{background:#f8f8fb;border-color:rgba(0,0,0,.08);color:#1f2937}
+body.light-mode .copilot-gear-textarea:focus{border-color:rgba(99,102,241,.3)}
+body.light-mode .copilot-gear-save{background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(109,40,217,.15));border-color:rgba(99,102,241,.2);color:#4338CA}
+body.light-mode .copilot-upload-zone{border-color:rgba(99,102,241,.15);color:#6b7280}
+body.light-mode .copilot-file-item{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.06);color:#374151}
+body.light-mode .sc-tag.copilot{background:rgba(99,102,241,.1);color:#4338CA}
+body.light-mode .copilot-transcript{color:#6b7280;background:rgba(0,0,0,.02)}
 body.light-mode .filter-btn{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.06)}
 body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9;border-color:rgba(109,40,217,.2)}
 
@@ -285,29 +344,10 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
         <button class="mode-btn" id="mode-copilot" data-tip="Live task assistant" onclick="setMode('copilot')">Co-pilot</button>
       </div>
       <div class="hud-sep"></div>
-      <select class="hud-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)" data-tip="Answer style">
-        <option value="conversational">💬 Chat</option>
-        <option value="technical">⚙️ Tech</option>
-        <option value="executive">📊 Exec</option>
-        <option value="star">⭐ STAR</option>
-        <option value="storytelling">📖 Story</option>
-        <option value="datadriven">📈 Data</option>
-        <option value="direct">🎯 Direct</option>
-        <option value="framework">🏗️ Frame</option>
-        <option value="leadership">👔 Lead</option>
-        <option value="teacher">🧠 Teach</option>
-        <option value="keywords">⚡ Keys</option>
-      </select>
-      <select class="hud-select" id="look-picker" onchange="setTheme(this.value)" data-tip="Visual theme">
-        <option value="glass">Glass</option><option value="minimal">Mini</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
-      </select>
-      <!-- Co-pilot inline controls -->
-      <div class="copilot-inline" id="copilot-inline">
-        <div class="hud-sep"></div>
-        <span class="copilot-dot-live" id="copilot-dot-live" style="display:none"></span>
-        <button class="copilot-capture-btn" id="btn-copilot-capture" data-tip="Capture screen for AI analysis" onclick="copilotCapture()">📸 Capture</button>
-        <button class="copilot-gear-btn" id="btn-copilot-gear" data-tip="Upload files & custom instructions" onclick="showCopilotGear()">⚙</button>
-      </div>
+      <!-- Config button — opens floating config pill -->
+      <button class="hud-btn" id="btn-config" data-tip="Style & theme settings" onclick="toggleConfigPill()">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
     </div>
     <div class="hud-right">
       <button class="tb-btn" data-tip="Smaller text" onclick="changeFontSize(-1)">A−</button>
@@ -323,6 +363,38 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
       </button>
     </div>
   </div>
+</div>
+
+<!-- Floating Config Pill — style + theme -->
+<div class="config-float" id="config-float">
+  <span class="config-float-label">Style</span>
+  <select class="hud-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)">
+    <option value="conversational">💬 Chat</option>
+    <option value="technical">⚙️ Tech</option>
+    <option value="executive">📊 Exec</option>
+    <option value="star">⭐ STAR</option>
+    <option value="storytelling">📖 Story</option>
+    <option value="datadriven">📈 Data</option>
+    <option value="direct">🎯 Direct</option>
+    <option value="framework">🏗️ Frame</option>
+    <option value="leadership">👔 Lead</option>
+    <option value="teacher">🧠 Teach</option>
+    <option value="keywords">⚡ Keys</option>
+  </select>
+  <div class="cfg-sep"></div>
+  <span class="config-float-label">Theme</span>
+  <select class="hud-select" id="look-picker" onchange="setTheme(this.value)">
+    <option value="glass">Glass</option><option value="minimal">Mini</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
+  </select>
+</div>
+
+<!-- Floating Co-pilot Pill — detached, Cluely-style -->
+<div class="copilot-float" id="copilot-float">
+  <span class="copilot-dot-live" id="copilot-dot-live" style="display:none"></span>
+  <span class="copilot-float-label">Co-pilot</span>
+  <div class="cpf-sep"></div>
+  <button class="copilot-capture-btn" id="btn-copilot-capture" data-tip="Capture screen for AI analysis" onclick="copilotCapture()">📸 Capture</button>
+  <button class="copilot-gear-btn" id="btn-copilot-gear" data-tip="Upload files & instructions" onclick="showCopilotGear()">⚙</button>
 </div>
 
 <!-- Co-pilot Gear Modal -->
@@ -489,14 +561,14 @@ function setStatus(text, state) {
 function setMode(mode) {
   var qaBtn = $('mode-qa');
   var cpBtn = $('mode-copilot');
-  var cpInline = $('copilot-inline');
+  var cpFloat = $('copilot-float');
   var cpDot = $('copilot-dot-live');
 
   if (mode === 'copilot') {
     copilotActive = true;
     qaBtn.className = 'mode-btn';
     cpBtn.className = 'mode-btn active copilot-mode';
-    cpInline.classList.add('show');
+    cpFloat.classList.add('show');
     // Only show the pulsing dot when actually live
     if (electronLive) { cpDot.style.display = ''; }
     copilotTranscriptBuffer = '';
@@ -511,7 +583,7 @@ function setMode(mode) {
     copilotActive = false;
     qaBtn.className = 'mode-btn active';
     cpBtn.className = 'mode-btn';
-    cpInline.classList.remove('show');
+    cpFloat.classList.remove('show');
     cpDot.style.display = 'none';
     copilotTranscriptBuffer = '';
     if (copilotAutoTimer) { clearTimeout(copilotAutoTimer); copilotAutoTimer = null; }
@@ -1069,6 +1141,25 @@ function toggleLightMode() {
 
 // ===== STEALTH MODE (content protection toggle) =====
 var stealthOn = true; // Default: content protection ON
+// ===== CONFIG PILL TOGGLE =====
+function toggleConfigPill() {
+  var pill = $('config-float');
+  pill.classList.toggle('show');
+  // Auto-close after 8s of inactivity
+  if (pill.classList.contains('show')) {
+    if (window._configTimer) clearTimeout(window._configTimer);
+    window._configTimer = setTimeout(function() { pill.classList.remove('show'); }, 8000);
+  }
+}
+// Close config pill when clicking outside
+document.addEventListener('click', function(e) {
+  var pill = $('config-float');
+  var btn = $('btn-config');
+  if (pill && pill.classList.contains('show') && !pill.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+    pill.classList.remove('show');
+  }
+});
+
 function toggleStealth() {
   stealthOn = !stealthOn;
   var btn = $('btn-stealth');
