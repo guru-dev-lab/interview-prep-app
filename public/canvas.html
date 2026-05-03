@@ -37,6 +37,18 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .ctrl-btn:hover{border-color:var(--accent);color:var(--text2);background:rgba(124,58,237,.06)}
 .ctrl-btn.active-green{background:rgba(5,150,105,.12);color:#34D399;border-color:rgba(52,211,153,.25);box-shadow:0 0 8px rgba(52,211,153,.1)}
 .ctrl-btn.active-red{background:rgba(239,68,68,.1);color:#F87171;border-color:rgba(248,113,113,.25)}
+.ctrl-btn.active-copilot{background:rgba(99,102,241,.15);color:#818CF8;border-color:rgba(129,140,248,.3);box-shadow:0 0 10px rgba(99,102,241,.15);animation:copilot-pulse 2s ease-in-out infinite}
+@keyframes copilot-pulse{0%,100%{box-shadow:0 0 8px rgba(99,102,241,.15)}50%{box-shadow:0 0 16px rgba(99,102,241,.3)}}
+.copilot-bar{display:flex;align-items:center;justify-content:space-between;padding:4px 12px;background:rgba(99,102,241,.08);border-bottom:1px solid rgba(99,102,241,.15)}
+.copilot-status{display:flex;align-items:center;gap:6px;font:500 10px Inter,sans-serif;color:#A5B4FC}
+.copilot-dot{width:6px;height:6px;border-radius:50%;background:#818CF8;animation:copilot-pulse-dot 1.5s ease-in-out infinite}
+@keyframes copilot-pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+.copilot-capture-btn{padding:4px 10px;border:1px solid rgba(99,102,241,.25);border-radius:6px;background:rgba(99,102,241,.12);font:600 10px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:.2s}
+.copilot-capture-btn:hover{background:rgba(99,102,241,.25);color:#E0E7FF}
+.copilot-capture-btn.loading{opacity:.5;pointer-events:none}
+.sc-tag.copilot{background:rgba(99,102,241,.2);color:#A5B4FC}
+.sc-card.copilot-card{border-left:2px solid rgba(99,102,241,.4)}
+.copilot-transcript{font:400 9px Inter,sans-serif;color:var(--text4);margin-bottom:4px;padding:2px 8px;background:rgba(255,255,255,.02);border-radius:4px;font-style:italic}
 
 /* Main layout — flex fills remaining space regardless of header height */
 .canvas-wrap{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
@@ -214,6 +226,7 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
 <div class="control-bar" id="control-bar">
   <button class="ctrl-btn" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">Go Live</button>
   <button class="ctrl-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">Stealth: On</button>
+  <button class="ctrl-btn" id="btn-copilot" onclick="toggleCopilot()" title="Co-pilot mode for live task interviews">🤖 Co-pilot</button>
   <select class="style-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)" title="Answer style">
     <option value="conversational">💬 Conversational</option>
     <option value="technical">⚙️ Technical</option>
@@ -227,6 +240,11 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
     <option value="teacher">🧠 Teach</option>
     <option value="keywords">⚡ Keywords</option>
   </select>
+</div>
+<!-- Co-pilot capture bar — shown when co-pilot is active -->
+<div class="copilot-bar" id="copilot-bar" style="display:none">
+  <div class="copilot-status"><span class="copilot-dot"></span> Co-pilot Active — Listening</div>
+  <button class="copilot-capture-btn" id="btn-copilot-capture" onclick="copilotCapture()">📸 Capture Screen</button>
 </div>
 
 <div class="canvas-wrap">
@@ -454,6 +472,15 @@ function connect() {
     }
     else if (msg.type === 'screen_assist') {
       addCard(msg.questionId, msg.questionText || 'Screen Assist', msg.answer || '', 'screen', 0, false, true);
+    }
+    else if (msg.type === 'copilot_step') {
+      addCopilotCard(msg.answer, msg.instruction, msg.stepNumber);
+    }
+    else if (msg.type === 'transcript' && msg.isFinal && copilotActive) {
+      copilotOnTranscript(msg.text);
+    }
+    else if (msg.type === 'interviewer_final' && copilotActive) {
+      copilotOnTranscript(msg.text);
     }
     else if (msg.type === 'status') {
       // Server status message (e.g. "Canvas connected")
@@ -1136,6 +1163,145 @@ async function goLiveElectron() {
     setStatus('Audio error', 'off');
     stopElectronAudio();
   }
+}
+
+// ===== CO-PILOT MODE =====
+var copilotActive = false;
+var copilotTranscriptBuffer = ''; // Buffer interviewer speech during co-pilot
+var copilotAutoTimer = null;
+var COPILOT_AUTO_DELAY = 3000; // 3s after interviewer stops talking → auto-capture
+
+function toggleCopilot() {
+  copilotActive = !copilotActive;
+  var btn = $('btn-copilot');
+  var bar = $('copilot-bar');
+
+  if (copilotActive) {
+    btn.className = 'ctrl-btn active-copilot';
+    btn.textContent = '🤖 Co-pilot ON';
+    bar.style.display = 'flex';
+    copilotTranscriptBuffer = '';
+    // Clear any old co-pilot step history on server
+    if (SESSION_ID && TOKEN) {
+      fetch('/api/sessions/' + SESSION_ID + '/copilot/reset', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
+      }).catch(function(){});
+    }
+  } else {
+    btn.className = 'ctrl-btn';
+    btn.textContent = '🤖 Co-pilot';
+    bar.style.display = 'none';
+    copilotTranscriptBuffer = '';
+    if (copilotAutoTimer) { clearTimeout(copilotAutoTimer); copilotAutoTimer = null; }
+  }
+}
+
+// Called when interviewer speech is detected (Ch1 transcript)
+function copilotOnTranscript(text) {
+  if (!copilotActive || !text || !text.trim()) return;
+  copilotTranscriptBuffer += (copilotTranscriptBuffer ? ' ' : '') + text.trim();
+
+  // Reset the auto-capture timer — wait for interviewer to stop talking
+  if (copilotAutoTimer) clearTimeout(copilotAutoTimer);
+  copilotAutoTimer = setTimeout(function() {
+    copilotAutoTimer = null;
+    // Interviewer stopped talking — auto-capture screen + send
+    if (copilotTranscriptBuffer.trim().length > 10) {
+      copilotSend(copilotTranscriptBuffer.trim(), 'instruction');
+      copilotTranscriptBuffer = '';
+    }
+  }, COPILOT_AUTO_DELAY);
+}
+
+// Manual capture button
+async function copilotCapture() {
+  var btn = $('btn-copilot-capture');
+  btn.className = 'copilot-capture-btn loading';
+  btn.textContent = '📸 Capturing...';
+
+  var transcript = copilotTranscriptBuffer.trim();
+  copilotTranscriptBuffer = '';
+  if (copilotAutoTimer) { clearTimeout(copilotAutoTimer); copilotAutoTimer = null; }
+
+  await copilotSend(transcript, 'check');
+
+  btn.className = 'copilot-capture-btn';
+  btn.textContent = '📸 Capture Screen';
+}
+
+async function copilotSend(transcript, mode) {
+  if (!SESSION_ID || !TOKEN) return;
+
+  var image = null;
+  try {
+    // Try to capture screen if we have a stream
+    if (screenStream && screenStream.active) {
+      image = await captureFrame(screenStream);
+    } else {
+      // Try to get a screen stream
+      var stream = await getScreenStream();
+      if (stream) {
+        image = await captureFrame(stream);
+      }
+    }
+  } catch(e) {
+    console.warn('[Co-pilot] Screen capture failed:', e);
+  }
+
+  // Show loading card
+  var loadingId = 'copilot-loading-' + Date.now();
+  addCard(loadingId, 'Co-pilot', '', 'copilot', 0, false, true);
+
+  try {
+    var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: image, transcript: transcript || '', mode: mode || 'check' })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Remove loading card and add real one
+    removeCard(loadingId);
+    addCopilotCard(data.answer, transcript, data.stepNumber);
+  } catch(e) {
+    console.error('[Co-pilot] Error:', e);
+    removeCard(loadingId);
+    addCard('copilot-err-' + Date.now(), 'Co-pilot Error', 'Failed: ' + e.message, 'copilot', 0, false, true);
+  }
+}
+
+function removeCard(id) {
+  var el = document.getElementById('card-' + id);
+  if (el) el.remove();
+  cards = cards.filter(function(c) { return c.id !== id; });
+}
+
+function addCopilotCard(answer, instruction, stepNumber) {
+  var id = 'copilot-' + Date.now() + '-' + (stepNumber || 0);
+  var instructionHtml = '';
+  if (instruction && instruction.trim()) {
+    instructionHtml = '<div class="copilot-transcript">🎙 "' + esc(instruction.substring(0, 200)) + '"</div>';
+  }
+  var cardHtml = '<div class="sc-card copilot-card" id="card-' + id + '">' +
+    '<div class="sc-card-q"><span class="sc-tag copilot">🤖 Co-pilot</span>' +
+    (stepNumber ? '<span style="font:500 9px Inter,sans-serif;color:var(--text4);margin-left:auto">Step ' + stepNumber + '</span>' : '') +
+    '</div>' +
+    instructionHtml +
+    '<div class="sc-card-a">' + formatAnswer(answer) + '</div>' +
+    '</div>';
+
+  var feed = $('feed');
+  if (feed) {
+    var empty = $('empty-state');
+    if (empty) empty.style.display = 'none';
+    feed.insertAdjacentHTML('beforeend', cardHtml);
+    // Scroll to new card
+    var newCard = document.getElementById('card-' + id);
+    if (newCard) newCard.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+  cards.push({ id: id, question: 'Co-pilot Step', answer: answer, source: 'copilot', ts: Date.now() });
 }
 
 // ===== INIT =====

@@ -2187,6 +2187,169 @@ app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => 
   }
 });
 
+// ============ CO-PILOT MODE ============
+// Step-by-step task guidance for live task interviews (Excel, SQL, Tableau, etc.)
+const copilotMemory = new Map(); // sessionId → { steps: [], lastInstruction: '', context: '' }
+const COPILOT_MAX_STEPS = 30;
+
+const COPILOT_PROMPT = `You are a LIVE TASK CO-PILOT. The candidate is in a live interview where they are being asked to perform tasks on screen (Excel, SQL, Tableau, Python, Power BI, etc.). You see their screen and hear what the interviewer said.
+
+YOUR JOB: Give the candidate the EXACT next step to do. One step at a time. Short. Specific. Actionable.
+
+OUTPUT FORMAT — CRITICAL:
+Output ONLY the immediate next step(s) the candidate should take.
+Each step = one short line, 3-10 words, starting with the action.
+If a formula or code is needed, give the EXACT formula/code to type.
+Separate steps with blank lines.
+
+EXAMPLES OF GOOD CO-PILOT OUTPUT:
+
+Interviewer says: "Get distinct values from column B"
+Screen shows: Excel with data in column B
+
+Select cell C1
+
+Type: =UNIQUE(B2:B100)
+
+Press Enter
+
+---
+
+Interviewer says: "Now filter to show only values above 500"
+Screen shows: Excel with data
+
+Select the data range
+
+Data tab → Filter
+
+Click column dropdown → Number Filters
+
+Greater Than → type 500 → OK
+
+---
+
+Interviewer says: "Write a query to find duplicate emails"
+Screen shows: SQL editor
+
+Type this query:
+
+\`\`\`sql
+SELECT email, COUNT(*) as cnt
+FROM users
+GROUP BY email
+HAVING COUNT(*) > 1
+\`\`\`
+
+Run the query
+
+RULES:
+- NEVER explain WHY — just tell them WHAT to do
+- NEVER write paragraphs — only short action steps
+- Give EXACT formulas, functions, code — not descriptions
+- If you see they already did a step, skip it and give the next one
+- If the screen shows an error, tell them how to fix it
+- Be specific to what's on screen: "Click cell C1" not "click a cell"
+- For code/formulas: give the complete thing ready to type, wrapped in code blocks
+- Use the step history to know what's been done — NEVER repeat a completed step
+- If no new instruction has been given and screen hasn't changed, output: "Waiting for next instruction..."
+
+STEP HISTORY:
+You will receive a history of steps already given. Use this to:
+1. Know what the candidate has already been told to do
+2. Never repeat those steps
+3. Understand the flow of the current task
+4. Build on previous steps logically`;
+
+function getCopilotMemory(sessionId) {
+  if (!copilotMemory.has(sessionId)) {
+    copilotMemory.set(sessionId, { steps: [], lastInstruction: '', context: '' });
+  }
+  return copilotMemory.get(sessionId);
+}
+
+function addCopilotStep(sessionId, instruction, response) {
+  const mem = getCopilotMemory(sessionId);
+  mem.steps.push({ ts: Date.now(), instruction: instruction || '', response: response.substring(0, 500) });
+  if (mem.steps.length > COPILOT_MAX_STEPS) mem.steps = mem.steps.slice(-COPILOT_MAX_STEPS);
+  if (instruction) mem.lastInstruction = instruction;
+}
+
+app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
+  try {
+    const { image, transcript, mode } = req.body;
+    // mode: 'instruction' (new interviewer speech) or 'check' (manual capture to check progress)
+    if (!image && !transcript) return res.status(400).json({ error: 'Need image or transcript' });
+
+    const sessionId = req.params.id;
+    const s = await pool.query('SELECT resume, jd, company, role FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
+    if (!s.rows.length) return res.status(404).json({ error: 'Session not found' });
+
+    const session = s.rows[0];
+    const mem = getCopilotMemory(sessionId);
+
+    // Build step history context
+    let stepHistory = '';
+    if (mem.steps.length > 0) {
+      stepHistory = '\n\nSTEP HISTORY (what has already been done — do NOT repeat these):\n' +
+        mem.steps.map((s, i) => {
+          let entry = 'Step ' + (i + 1) + ':';
+          if (s.instruction) entry += ' [Instruction: ' + s.instruction + ']';
+          entry += '\n' + s.response;
+          return entry;
+        }).join('\n\n');
+    }
+
+    let textPrompt = 'INTERVIEW FOR: ' + (session.role || 'this role') + ' at ' + (session.company || 'the company');
+
+    if (transcript) {
+      textPrompt += '\n\nINTERVIEWER JUST SAID:\n"' + transcript + '"';
+    } else if (mode === 'check') {
+      textPrompt += '\n\nThe candidate clicked CAPTURE to check their progress. Look at the screen and tell them the next step based on what you see.';
+      if (mem.lastInstruction) {
+        textPrompt += '\nLast instruction was: "' + mem.lastInstruction + '"';
+      }
+    }
+
+    textPrompt += stepHistory;
+    textPrompt += '\n\nLook at the screen. What should the candidate do RIGHT NOW? Give the exact next step(s).';
+
+    let answer;
+    if (image) {
+      const mediaMatch = image.match(/^data:image\/([\w+]+);base64,/);
+      const mediaType = mediaMatch ? 'image/' + mediaMatch[1] : 'image/jpeg';
+      const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+      console.log('[Co-pilot] Image size:', (base64Data.length / 1024).toFixed(0) + 'KB, mode:', mode || 'instruction');
+      answer = await callClaudeVision(COPILOT_PROMPT, base64Data, textPrompt, 1000, MODEL_HAIKU, mediaType);
+    } else {
+      // Audio-only (no screen capture) — just process the instruction
+      answer = await callClaude(COPILOT_PROMPT, textPrompt, 1000, MODEL_HAIKU);
+    }
+
+    // Save to memory
+    addCopilotStep(sessionId, transcript || '', answer);
+    console.log('[Co-pilot] Steps in memory:', mem.steps.length, 'for session', sessionId);
+
+    // Broadcast to canvas clients
+    broadcastToSession(sessionId, {
+      type: 'copilot_step',
+      answer: answer,
+      instruction: transcript || '',
+      stepNumber: mem.steps.length
+    });
+
+    res.json({ answer, stepNumber: mem.steps.length });
+  } catch (e) {
+    console.error('[Co-pilot Error]', e.message, e.stack);
+    res.status(500).json({ error: 'Co-pilot failed: ' + e.message });
+  }
+});
+
+// Clear co-pilot memory when session ends
+app.post('/api/sessions/:id/copilot/reset', authMiddleware, (req, res) => {
+  copilotMemory.delete(req.params.id);
+  res.json({ ok: true });
+});
+
 // Standalone Smart Canvas page
 app.get('/canvas', (req, res) => res.sendFile(path.join(__dirname, 'public', 'canvas.html')));
 
@@ -3000,6 +3163,8 @@ wss.on('connection', (ws) => {
                 questionFiredForBuffer = false;
 
                 ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true }));
+                // Broadcast final interviewer transcript to canvas/copilot clients
+                broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
                 transcript.push({ text: fullUtterance, ts: Date.now() });
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
 
