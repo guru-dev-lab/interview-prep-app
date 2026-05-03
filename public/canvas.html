@@ -13,45 +13,57 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 button,input,select{-webkit-app-region:no-drag;cursor:pointer}
 input[type=text],input[type=email],input[type=password]{cursor:text}
 
-/* ===== HEADER: Titlebar + Control — unified, compact ===== */
-.titlebar{height:30px;background:linear-gradient(180deg,rgba(16,20,32,.98),var(--surface));border-bottom:1px solid rgba(124,58,237,.08);display:flex;align-items:center;justify-content:space-between;padding:0 10px;-webkit-app-region:drag;flex-shrink:0;border-radius:12px 12px 0 0}
-.titlebar .brand{display:flex;align-items:center;gap:6px}
-.titlebar .brand-icon{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;font:800 9px Inter,sans-serif;color:#fff;letter-spacing:-.5px;flex-shrink:0}
-.titlebar .brand-name{font:700 11px Inter,sans-serif;background:linear-gradient(135deg,#c4b5fd,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.titlebar-right{display:flex;gap:4px;align-items:center;-webkit-app-region:no-drag}
-.tb-btn{width:22px;height:18px;border:none;border-radius:4px;background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;font:600 8px Inter,sans-serif;padding:0;flex-shrink:0}
-.tb-btn:hover{background:rgba(124,58,237,.12);color:var(--accent2)}
-.tb-btn.danger:hover{background:rgba(248,113,113,.12);color:#F87171}
-.tb-select{font:600 8px Inter,sans-serif;padding:1px 4px;border-radius:4px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;outline:none;-webkit-app-region:no-drag}
-.tb-select:hover{border-color:rgba(124,58,237,.2)}
-.tb-select option{background:#0c1019;color:#e2e8f0}
-.tb-divider{width:1px;height:12px;background:rgba(255,255,255,.06);margin:0 1px;flex-shrink:0}
-.status{font:700 7px Inter,sans-serif;padding:2px 6px;border-radius:8px;letter-spacing:.4px;text-transform:uppercase;flex-shrink:0}
-.status.off{background:rgba(248,113,113,.08);color:#F87171}
-.status.on{background:rgba(52,211,153,.1);color:#34D399;box-shadow:0 0 8px rgba(52,211,153,.15)}
-.status.wait{background:rgba(251,191,36,.08);color:#FBBF24}
-
-/* Control bar — answer style only */
-.control-bar{display:flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(12,16,25,.6);border-bottom:1px solid var(--glass-border);flex-shrink:0;-webkit-app-region:no-drag}
-.ctrl-btn{padding:3px 8px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(255,255,255,.04);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.2s;white-space:nowrap;flex-shrink:0}
-.ctrl-btn:hover{border-color:var(--accent);color:var(--text2);background:rgba(124,58,237,.06)}
-.ctrl-btn.active-green{background:rgba(5,150,105,.12);color:#34D399;border-color:rgba(52,211,153,.25);box-shadow:0 0 8px rgba(52,211,153,.1)}
-.ctrl-btn.active-red{background:rgba(239,68,68,.1);color:#F87171;border-color:rgba(248,113,113,.25)}
-.ctrl-btn.active-copilot{background:rgba(99,102,241,.15);color:#818CF8;border-color:rgba(129,140,248,.3);box-shadow:0 0 10px rgba(99,102,241,.15);animation:copilot-pulse 2s ease-in-out infinite}
-@keyframes copilot-pulse{0%,100%{box-shadow:0 0 8px rgba(99,102,241,.15)}50%{box-shadow:0 0 16px rgba(99,102,241,.3)}}
-.copilot-bar{display:flex;align-items:center;justify-content:space-between;padding:4px 12px;background:rgba(99,102,241,.08);border-bottom:1px solid rgba(99,102,241,.15)}
-.copilot-status{display:flex;align-items:center;gap:6px;font:500 10px Inter,sans-serif;color:#A5B4FC}
-.copilot-dot{width:6px;height:6px;border-radius:50%;background:#818CF8;animation:copilot-pulse-dot 1.5s ease-in-out infinite}
-@keyframes copilot-pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
-.copilot-capture-btn{padding:4px 10px;border:1px solid rgba(99,102,241,.25);border-radius:6px;background:rgba(99,102,241,.12);font:600 10px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:.2s}
-.copilot-capture-btn:hover{background:rgba(99,102,241,.25);color:#E0E7FF}
+/* ===== HEADER: Unified HUD — two rows, zero waste ===== */
+.hud{flex-shrink:0;background:linear-gradient(180deg,rgba(16,20,32,.98) 0%,var(--surface) 100%);border-bottom:1px solid rgba(124,58,237,.1);-webkit-app-region:drag;border-radius:12px 12px 0 0}
+/* Row 1: Brand + status + window controls */
+.hud-top{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 10px}
+.hud .brand{display:flex;align-items:center;gap:5px}
+.hud .brand-icon{width:16px;height:16px;border-radius:4px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;font:800 8px Inter,sans-serif;color:#fff;letter-spacing:-.5px;flex-shrink:0}
+.hud .brand-name{font:700 10px Inter,sans-serif;background:linear-gradient(135deg,#c4b5fd,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hud-center{display:flex;align-items:center;gap:6px;-webkit-app-region:no-drag}
+.hud-right{display:flex;gap:3px;align-items:center;-webkit-app-region:no-drag}
+.hud-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;transition:.3s}
+.hud-dot.off{background:#F87171;box-shadow:0 0 4px rgba(248,113,113,.3)}
+.hud-dot.on{background:#34D399;box-shadow:0 0 6px rgba(52,211,153,.4);animation:dot-pulse 2s ease infinite}
+.hud-dot.wait{background:#FBBF24;box-shadow:0 0 4px rgba(251,191,36,.3)}
+@keyframes dot-pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.hud-status{font:600 7px Inter,sans-serif;color:var(--text3);text-transform:uppercase;letter-spacing:.3px}
+.tb-btn{width:20px;height:18px;border:none;border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;font:600 8px Inter,sans-serif;padding:0;flex-shrink:0}
+.tb-btn:hover{background:rgba(255,255,255,.06);color:var(--accent2)}
+.tb-btn.danger:hover{background:rgba(248,113,113,.1);color:#F87171}
+/* Row 2: Controls — smart toolbar */
+.hud-controls{height:26px;display:flex;align-items:center;gap:4px;padding:0 8px;border-top:1px solid rgba(255,255,255,.03);-webkit-app-region:no-drag}
+.hud-btn{height:20px;padding:0 7px;border:none;border-radius:4px;background:transparent;font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;white-space:nowrap;display:flex;align-items:center;gap:3px}
+.hud-btn:hover{background:rgba(255,255,255,.06);color:var(--text2)}
+.hud-btn.live{background:rgba(5,150,105,.15);color:#34D399}
+.hud-btn.live:hover{background:rgba(5,150,105,.25)}
+.hud-btn.live-stop{background:rgba(239,68,68,.12);color:#FCA5A5}
+.hud-btn.live-stop:hover{background:rgba(239,68,68,.2)}
+.hud-sep{width:1px;height:12px;background:rgba(255,255,255,.06);flex-shrink:0}
+.hud-select{height:20px;font:500 8px Inter,sans-serif;padding:0 4px;border-radius:4px;border:none;background:transparent;color:var(--text3);cursor:pointer;outline:none}
+.hud-select:hover{background:rgba(255,255,255,.06)}
+.hud-select option{background:#0c1019;color:#e2e8f0}
+/* Mode pill — Q&A / Co-pilot toggle */
+.mode-toggle{display:flex;background:rgba(255,255,255,.04);border-radius:4px;overflow:hidden;height:20px}
+.mode-btn{padding:0 8px;border:none;background:transparent;font:600 8px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:.15s;white-space:nowrap}
+.mode-btn:hover{color:var(--text2)}
+.mode-btn.active{background:rgba(124,58,237,.2);color:#C7D2FE}
+.mode-btn.active.copilot-mode{background:rgba(99,102,241,.2);color:#A5B4FC}
+/* Co-pilot inline controls — appear when co-pilot mode is on */
+.copilot-inline{display:none;align-items:center;gap:4px}
+.copilot-inline.show{display:flex}
+.copilot-capture-btn{height:20px;padding:0 8px;border:1px solid rgba(99,102,241,.2);border-radius:4px;background:rgba(99,102,241,.1);font:600 8px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:3px}
+.copilot-capture-btn:hover{background:rgba(99,102,241,.2);border-color:rgba(99,102,241,.35)}
 .copilot-capture-btn.loading{opacity:.5;pointer-events:none}
+.copilot-gear-btn{height:20px;width:20px;border:1px solid rgba(99,102,241,.15);border-radius:4px;background:transparent;color:#818CF8;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;padding:0}
+.copilot-gear-btn:hover{background:rgba(99,102,241,.12)}
+.copilot-gear-btn.has-data{border-color:rgba(52,211,153,.3);color:#34D399}
+.copilot-dot-live{width:5px;height:5px;border-radius:50%;background:#818CF8;animation:copilot-blink 1.5s ease infinite;flex-shrink:0}
+@keyframes copilot-blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* Tag styles */
 .sc-tag.copilot{background:rgba(99,102,241,.2);color:#A5B4FC}
-.sc-card.copilot-card{border-left:2px solid rgba(99,102,241,.4)}
+.sc-card.copilot-card{border-left-color:#818CF8}
 .copilot-transcript{font:400 9px Inter,sans-serif;color:var(--text4);margin-bottom:4px;padding:2px 8px;background:rgba(255,255,255,.02);border-radius:4px;font-style:italic}
-.copilot-gear-btn{width:28px;height:28px;border:1px solid rgba(99,102,241,.2);border-radius:6px;background:rgba(99,102,241,.08);color:#A5B4FC;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;padding:0}
-.copilot-gear-btn:hover{background:rgba(99,102,241,.2);color:#C7D2FE}
-.copilot-gear-btn.has-data{border-color:rgba(52,211,153,.3);box-shadow:0 0 6px rgba(52,211,153,.15)}
 .copilot-gear-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .copilot-gear-modal{background:#1a1b2e;border:1px solid rgba(99,102,241,.2);border-radius:14px;width:90%;max-width:480px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .copilot-gear-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font:600 14px Inter,sans-serif;color:#E0E7FF}
@@ -136,10 +148,7 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .sc-blank{height:6px}
 .sc-card-loading{padding:14px;display:flex;align-items:center;gap:8px;color:var(--accent2);font:500 12px Inter,sans-serif}
 
-/* Dropdowns */
-.style-select{padding:2px 6px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:rgba(255,255,255,.05);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;outline:none;-webkit-app-region:no-drag;transition:.15s}
-.style-select:hover{border-color:rgba(124,58,237,.3)}
-.style-select option{background:#0c1019;color:#e2e8f0}
+/* (legacy .style-select removed — picker now uses .hud-select) */
 
 /* ===== LOOK: Glass ===== */
 body.look-glass .sc-card{background:linear-gradient(135deg,rgba(124,58,237,.04),rgba(99,102,241,.02));border-color:rgba(124,58,237,.1);border-left-width:3px;box-shadow:0 2px 12px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
@@ -175,15 +184,14 @@ body.light-mode .sc-card-a pre{background:#0d1117;color:#e6edf3;border-color:#21
 body.light-mode .sc-card-a pre code{color:#e6edf3;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.06);color:#6d28d9;border-color:rgba(109,40,217,.1)}
 body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.02)}
-body.light-mode .titlebar{background:linear-gradient(180deg,#f0f0f4,#ebedf2);border-color:rgba(0,0,0,.06)}
+body.light-mode .hud{background:linear-gradient(180deg,#f0f0f4,#ebedf2);border-color:rgba(0,0,0,.06)}
 body.light-mode .brand-name{background:linear-gradient(135deg,#6d28d9,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 body.light-mode .tb-btn{background:rgba(0,0,0,.04);color:#4b5563}
 body.light-mode .tb-btn:hover{background:rgba(109,40,217,.08);color:#6d28d9}
-body.light-mode .tb-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
-body.light-mode .tb-divider{background:rgba(0,0,0,.08)}
-body.light-mode .control-bar{background:rgba(235,237,242,.7);border-color:rgba(0,0,0,.06)}
-body.light-mode .ctrl-btn,.light-mode .style-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
-body.light-mode .style-select option{background:#fff;color:#111}
+body.light-mode .hud-sep{background:rgba(0,0,0,.08)}
+body.light-mode .hud-controls{background:rgba(235,237,242,.7);border-color:rgba(0,0,0,.06)}
+body.light-mode .hud-btn,.light-mode .hud-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
+body.light-mode .hud-select option{background:#fff;color:#111}
 body.light-mode .action-btn{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08);color:#4b5563}
 body.light-mode .bottom-bar{background:#ebedf2;border-color:rgba(0,0,0,.06)}
 body.light-mode .input-row input{background:#fff;border-color:rgba(0,0,0,.1);color:#111827}
@@ -224,57 +232,67 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
 </style>
 </head>
 <body>
-<!-- Draggable titlebar — minimal -->
-<div class="titlebar">
-  <div class="brand">
-    <div class="brand-icon">Xh</div>
-    <span class="brand-name">Pilot</span>
+<!-- HUD — unified header -->
+<div class="hud" id="hud">
+  <!-- Row 1: Brand + live status + window buttons -->
+  <div class="hud-top">
+    <div class="brand">
+      <div class="brand-icon">Xh</div>
+      <span class="brand-name">Pilot</span>
+    </div>
+    <div class="hud-center">
+      <span class="hud-dot off" id="hud-dot"></span>
+      <span class="hud-status" id="hud-status">Offline</span>
+    </div>
+    <div class="hud-right">
+      <button class="tb-btn" onclick="changeFontSize(-1)" title="Smaller">A-</button>
+      <button class="tb-btn" onclick="changeFontSize(1)" title="Bigger">A+</button>
+      <button class="tb-btn" id="light-toggle" onclick="toggleLightMode()" title="Light/Dark">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+      <button class="tb-btn danger" onclick="doLogout()" title="Logout">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+      <button class="tb-btn danger" id="btn-quit" style="display:none" onclick="quitApp()" title="Quit">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
   </div>
-  <div class="titlebar-right">
-    <span class="status off" id="ws-status">Offline</span>
-    <span class="tb-divider"></span>
-    <button class="tb-btn" onclick="changeFontSize(-1)" title="Smaller font">A-</button>
-    <button class="tb-btn" onclick="changeFontSize(1)" title="Bigger font">A+</button>
-    <select class="tb-select" id="look-picker" onchange="setTheme(this.value)" title="Card look">
-      <option value="glass">Glass</option><option value="minimal">Minimal</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
+  <!-- Row 2: Smart toolbar — Go Live + Mode + Style + Co-pilot controls -->
+  <div class="hud-controls" id="hud-controls">
+    <button class="hud-btn live" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">● Go Live</button>
+    <button class="hud-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">🛡</button>
+    <div class="hud-sep" id="sep-after-live" style="display:none"></div>
+    <!-- Mode toggle: Q&A ↔ Co-pilot -->
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="mode-qa" onclick="setMode('qa')">Q&A</button>
+      <button class="mode-btn" id="mode-copilot" onclick="setMode('copilot')">Co-pilot</button>
+    </div>
+    <div class="hud-sep"></div>
+    <!-- Style picker — visible in Q&A mode -->
+    <select class="hud-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)" title="Answer style">
+      <option value="conversational">💬 Chat</option>
+      <option value="technical">⚙️ Tech</option>
+      <option value="executive">📊 Exec</option>
+      <option value="star">⭐ STAR</option>
+      <option value="storytelling">📖 Story</option>
+      <option value="datadriven">📈 Data</option>
+      <option value="direct">🎯 Direct</option>
+      <option value="framework">🏗️ Frame</option>
+      <option value="leadership">👔 Lead</option>
+      <option value="teacher">🧠 Teach</option>
+      <option value="keywords">⚡ Keys</option>
     </select>
-    <button class="tb-btn" id="light-toggle" onclick="toggleLightMode()" title="Light/Dark">
-      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-    </button>
-    <span class="tb-divider"></span>
-    <button class="tb-btn danger" onclick="doLogout()" title="Logout">
-      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-    </button>
-    <button class="tb-btn danger" id="btn-quit" style="display:none" onclick="quitApp()" title="Quit">
-      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-  </div>
-</div>
-<!-- Control bar — live essentials -->
-<div class="control-bar" id="control-bar">
-  <button class="ctrl-btn" id="btn-live-tb" style="display:none" onclick="toggleElectronLive()">Go Live</button>
-  <button class="ctrl-btn" id="btn-stealth" style="display:none" onclick="toggleStealth()">Stealth: On</button>
-  <button class="ctrl-btn" id="btn-copilot" onclick="toggleCopilot()" title="Co-pilot mode for live task interviews">🤖 Co-pilot</button>
-  <select class="style-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)" title="Answer style">
-    <option value="conversational">💬 Conversational</option>
-    <option value="technical">⚙️ Technical</option>
-    <option value="executive">📊 Executive</option>
-    <option value="star">⭐ STAR</option>
-    <option value="storytelling">📖 Storytelling</option>
-    <option value="datadriven">📈 Data-Driven</option>
-    <option value="direct">🎯 Direct</option>
-    <option value="framework">🏗️ Framework</option>
-    <option value="leadership">👔 Leadership</option>
-    <option value="teacher">🧠 Teach</option>
-    <option value="keywords">⚡ Keywords</option>
-  </select>
-</div>
-<!-- Co-pilot capture bar — shown when co-pilot is active -->
-<div class="copilot-bar" id="copilot-bar" style="display:none">
-  <div class="copilot-status"><span class="copilot-dot"></span> Co-pilot Active — Listening</div>
-  <div style="display:flex;gap:6px;align-items:center">
-    <button class="copilot-gear-btn" id="btn-copilot-gear" onclick="showCopilotGear()" title="Upload files & instructions">⚙️</button>
-    <button class="copilot-capture-btn" id="btn-copilot-capture" onclick="copilotCapture()">📸 Capture</button>
+    <select class="hud-select" id="look-picker" onchange="setTheme(this.value)" title="Theme">
+      <option value="glass">Glass</option><option value="minimal">Mini</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
+    </select>
+    <!-- Co-pilot inline controls — only visible when co-pilot mode active + live -->
+    <div class="copilot-inline" id="copilot-inline">
+      <div class="hud-sep"></div>
+      <span class="copilot-dot-live" id="copilot-dot-live" style="display:none"></span>
+      <button class="copilot-capture-btn" id="btn-copilot-capture" onclick="copilotCapture()">📸 Capture</button>
+      <button class="copilot-gear-btn" id="btn-copilot-gear" onclick="showCopilotGear()" title="Upload files & instructions">⚙</button>
+    </div>
   </div>
 </div>
 
@@ -385,9 +403,11 @@ if (isElectronMode) {
     var qBtn = document.getElementById('btn-quit');
     if (qBtn) qBtn.style.display = 'inline-block';
     var liveBtn = document.getElementById('btn-live-tb');
-    if (liveBtn) liveBtn.style.display = 'inline-block';
+    if (liveBtn) liveBtn.style.display = '';
     var stealthBtn = document.getElementById('btn-stealth');
-    if (stealthBtn) stealthBtn.style.display = 'inline-block';
+    if (stealthBtn) stealthBtn.style.display = '';
+    var sepLive = document.getElementById('sep-after-live');
+    if (sepLive) sepLive.style.display = '';
   }, 100);
 }
 
@@ -431,9 +451,42 @@ function syntaxHL(code){
 }
 
 function setStatus(text, state) {
-  var el = $('ws-status');
-  el.textContent = text;
-  el.className = 'status ' + (state || 'off');
+  var dot = $('hud-dot');
+  var label = $('hud-status');
+  if (dot) dot.className = 'hud-dot ' + (state || 'off');
+  if (label) label.textContent = text;
+}
+
+function setMode(mode) {
+  var qaBtn = $('mode-qa');
+  var cpBtn = $('mode-copilot');
+  var cpInline = $('copilot-inline');
+  var cpDot = $('copilot-dot-live');
+
+  if (mode === 'copilot') {
+    copilotActive = true;
+    qaBtn.className = 'mode-btn';
+    cpBtn.className = 'mode-btn active copilot-mode';
+    cpInline.classList.add('show');
+    // Only show the pulsing dot when actually live
+    if (electronLive) { cpDot.style.display = ''; }
+    copilotTranscriptBuffer = '';
+    // Reset co-pilot step history
+    if (SESSION_ID && TOKEN) {
+      fetch('/api/sessions/' + SESSION_ID + '/copilot/reset', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
+      }).catch(function(){});
+    }
+  } else {
+    copilotActive = false;
+    qaBtn.className = 'mode-btn active';
+    cpBtn.className = 'mode-btn';
+    cpInline.classList.remove('show');
+    cpDot.style.display = 'none';
+    copilotTranscriptBuffer = '';
+    if (copilotAutoTimer) { clearTimeout(copilotAutoTimer); copilotAutoTimer = null; }
+  }
 }
 
 // ===== SMART SCROLL — auto-scroll to new answers unless user scrolled up =====
@@ -991,14 +1044,8 @@ function toggleStealth() {
   stealthOn = !stealthOn;
   var btn = $('btn-stealth');
   if (btn) {
-    btn.textContent = 'Stealth: ' + (stealthOn ? 'On' : 'Off');
-    if (stealthOn) {
-      btn.classList.add('active-green');
-      btn.classList.remove('active-red');
-    } else {
-      btn.classList.remove('active-green');
-      btn.classList.add('active-red');
-    }
+    btn.textContent = stealthOn ? '🛡 On' : '🛡 Off';
+    btn.style.color = stealthOn ? '#34D399' : '#F87171';
   }
   if (window.electronAPI && window.electronAPI.setStealth) {
     window.electronAPI.setStealth(stealthOn);
@@ -1007,7 +1054,7 @@ function toggleStealth() {
 // Set initial stealth button state
 setTimeout(function() {
   var btn = $('btn-stealth');
-  if (btn && isElectronMode) btn.classList.add('active-green');
+  if (btn && isElectronMode) btn.style.color = '#34D399';
 }, 150);
 
 // ===== SESSION PICKER =====
@@ -1154,17 +1201,15 @@ function updateLiveUI(isLive) {
   if (tb) {
     if (isLive) {
       tb.textContent = '■ Stop';
-      tb.className = 'ctrl-btn active-red';
+      tb.className = 'hud-btn live-stop';
     } else {
-      tb.textContent = 'Go Live';
-      tb.className = 'ctrl-btn active-green';
+      tb.textContent = '● Go Live';
+      tb.className = 'hud-btn live';
     }
   }
-  // Also update the dot in the titlebar
-  var dot = document.querySelector('.titlebar .dot');
-  if (dot) {
-    dot.style.background = isLive ? '#34D399' : '#F87171';
-  }
+  // Show/hide co-pilot listening dot when live + copilot mode
+  var cpDot = $('copilot-dot-live');
+  if (cpDot) cpDot.style.display = (isLive && copilotActive) ? '' : 'none';
 }
 
 async function toggleElectronLive() {
@@ -1182,7 +1227,7 @@ async function toggleElectronLive() {
 
 async function goLiveElectron() {
   var tb = $('btn-live-tb');
-  if (tb) { tb.textContent = 'Starting...'; tb.className = 'ctrl-btn'; }
+  if (tb) { tb.textContent = 'Starting...'; tb.className = 'hud-btn'; }
 
   try {
     // Step 1: Capture system audio via getDisplayMedia
@@ -1192,7 +1237,7 @@ async function goLiveElectron() {
     });
 
     if (systemAudioStream.getAudioTracks().length === 0) {
-      if (tb) { tb.textContent = 'Go Live'; tb.className = 'ctrl-btn active-green'; }
+      if (tb) { tb.textContent = '● Go Live'; tb.className = 'hud-btn live'; }
       setStatus('No audio track', 'off');
       return;
     }
@@ -1222,7 +1267,7 @@ async function goLiveElectron() {
 
   } catch(e) {
     console.error('[Electron] Audio capture error:', e);
-    if (tb) { tb.textContent = 'Go Live'; tb.className = 'ctrl-btn active-green'; }
+    if (tb) { tb.textContent = '● Go Live'; tb.className = 'hud-btn live'; }
     setStatus('Audio error', 'off');
     stopElectronAudio();
   }
@@ -1237,29 +1282,7 @@ var copilotFiles = []; // { name, size, content (extracted text) }
 var copilotInstructions = ''; // Custom instructions text
 
 function toggleCopilot() {
-  copilotActive = !copilotActive;
-  var btn = $('btn-copilot');
-  var bar = $('copilot-bar');
-
-  if (copilotActive) {
-    btn.className = 'ctrl-btn active-copilot';
-    btn.textContent = '🤖 Co-pilot ON';
-    bar.style.display = 'flex';
-    copilotTranscriptBuffer = '';
-    // Clear any old co-pilot step history on server
-    if (SESSION_ID && TOKEN) {
-      fetch('/api/sessions/' + SESSION_ID + '/copilot/reset', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }
-      }).catch(function(){});
-    }
-  } else {
-    btn.className = 'ctrl-btn';
-    btn.textContent = '🤖 Co-pilot';
-    bar.style.display = 'none';
-    copilotTranscriptBuffer = '';
-    if (copilotAutoTimer) { clearTimeout(copilotAutoTimer); copilotAutoTimer = null; }
-  }
+  setMode(copilotActive ? 'qa' : 'copilot');
 }
 
 // Called when interviewer speech is detected (Ch1 transcript)
@@ -1292,7 +1315,7 @@ async function copilotCapture() {
   await copilotSend(transcript, 'check');
 
   btn.className = 'copilot-capture-btn';
-  btn.textContent = '📸 Capture Screen';
+  btn.textContent = '📸 Capture';
 }
 
 async function copilotSend(transcript, mode) {
