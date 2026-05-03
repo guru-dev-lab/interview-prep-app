@@ -49,6 +49,34 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 .sc-tag.copilot{background:rgba(99,102,241,.2);color:#A5B4FC}
 .sc-card.copilot-card{border-left:2px solid rgba(99,102,241,.4)}
 .copilot-transcript{font:400 9px Inter,sans-serif;color:var(--text4);margin-bottom:4px;padding:2px 8px;background:rgba(255,255,255,.02);border-radius:4px;font-style:italic}
+.copilot-gear-btn{width:28px;height:28px;border:1px solid rgba(99,102,241,.2);border-radius:6px;background:rgba(99,102,241,.08);color:#A5B4FC;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;padding:0}
+.copilot-gear-btn:hover{background:rgba(99,102,241,.2);color:#C7D2FE}
+.copilot-gear-btn.has-data{border-color:rgba(52,211,153,.3);box-shadow:0 0 6px rgba(52,211,153,.15)}
+.copilot-gear-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.copilot-gear-modal{background:#1a1b2e;border:1px solid rgba(99,102,241,.2);border-radius:14px;width:90%;max-width:480px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.copilot-gear-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font:600 14px Inter,sans-serif;color:#E0E7FF}
+.copilot-gear-close{background:none;border:none;color:var(--text4);font-size:16px;cursor:pointer;padding:4px 8px;border-radius:6px}
+.copilot-gear-close:hover{background:rgba(255,255,255,.06);color:#fff}
+.copilot-gear-body{padding:16px 18px}
+.copilot-gear-section{margin-bottom:16px}
+.copilot-gear-label{font:600 12px Inter,sans-serif;color:#C7D2FE;display:block;margin-bottom:4px}
+.copilot-gear-desc{font:400 10px Inter,sans-serif;color:var(--text4);margin:0 0 8px;line-height:1.4}
+.copilot-upload-zone{border:2px dashed rgba(99,102,241,.2);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:.2s;font:400 11px Inter,sans-serif;color:var(--text3)}
+.copilot-upload-zone:hover,.copilot-upload-zone.drag{border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.05)}
+.copilot-upload-icon{font-size:24px;margin-bottom:6px}
+.copilot-upload-hint{font:400 9px Inter,sans-serif;color:var(--text4);margin-top:4px}
+.copilot-files-list{margin-top:8px}
+.copilot-file-item{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;margin-bottom:4px;font:400 11px Inter,sans-serif;color:var(--text2)}
+.copilot-file-item .file-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.copilot-file-item .file-size{font:400 9px Inter,sans-serif;color:var(--text4);margin:0 8px}
+.copilot-file-remove{background:none;border:none;color:#F87171;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px}
+.copilot-file-remove:hover{background:rgba(248,113,113,.1)}
+.copilot-gear-textarea{width:100%;min-height:80px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:var(--text2);font:400 11px Inter,sans-serif;resize:vertical;outline:none;box-sizing:border-box}
+.copilot-gear-textarea:focus{border-color:rgba(99,102,241,.3)}
+.copilot-gear-textarea::placeholder{color:var(--text4)}
+.copilot-gear-save{width:100%;padding:10px;background:linear-gradient(135deg,rgba(99,102,241,.3),rgba(124,58,237,.3));border:1px solid rgba(99,102,241,.3);border-radius:8px;color:#E0E7FF;font:600 12px Inter,sans-serif;cursor:pointer;transition:.2s}
+.copilot-gear-save:hover{background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(124,58,237,.4))}
+.copilot-gear-status{text-align:center;font:400 10px Inter,sans-serif;color:#34D399;margin-top:6px;min-height:14px}
 
 /* Main layout — flex fills remaining space regardless of header height */
 .canvas-wrap{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
@@ -244,7 +272,42 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
 <!-- Co-pilot capture bar — shown when co-pilot is active -->
 <div class="copilot-bar" id="copilot-bar" style="display:none">
   <div class="copilot-status"><span class="copilot-dot"></span> Co-pilot Active — Listening</div>
-  <button class="copilot-capture-btn" id="btn-copilot-capture" onclick="copilotCapture()">📸 Capture Screen</button>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button class="copilot-gear-btn" id="btn-copilot-gear" onclick="showCopilotGear()" title="Upload files & instructions">⚙️</button>
+    <button class="copilot-capture-btn" id="btn-copilot-capture" onclick="copilotCapture()">📸 Capture</button>
+  </div>
+</div>
+
+<!-- Co-pilot Gear Modal -->
+<div class="copilot-gear-overlay" id="copilot-gear-overlay" style="display:none" onclick="if(event.target===this)hideCopilotGear()">
+  <div class="copilot-gear-modal">
+    <div class="copilot-gear-header">
+      <span>⚙️ Co-pilot Setup</span>
+      <button class="copilot-gear-close" onclick="hideCopilotGear()">✕</button>
+    </div>
+    <div class="copilot-gear-body">
+      <div class="copilot-gear-section">
+        <label class="copilot-gear-label">📎 Reference Files</label>
+        <p class="copilot-gear-desc">Upload cheat sheets, study guides, formula references — any docs you want the AI to use during the interview.</p>
+        <div class="copilot-upload-zone" id="copilot-upload-zone" onclick="$('copilot-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleCopilotFiles(event.dataTransfer.files)">
+          <div class="copilot-upload-icon">📄</div>
+          <div>Drop files here or click to upload</div>
+          <div class="copilot-upload-hint">PDF, TXT, DOCX, images — up to 5 files</div>
+        </div>
+        <input type="file" id="copilot-file-input" multiple accept=".pdf,.txt,.docx,.doc,.csv,.xlsx,.png,.jpg,.jpeg,.md" style="display:none" onchange="handleCopilotFiles(this.files)">
+        <div class="copilot-files-list" id="copilot-files-list"></div>
+      </div>
+      <div class="copilot-gear-section">
+        <label class="copilot-gear-label">📝 Custom Instructions</label>
+        <p class="copilot-gear-desc">Tell the AI anything specific — "This is an Excel assessment, focus on formulas" or "I'm weak on VLOOKUP, give extra detail there."</p>
+        <textarea class="copilot-gear-textarea" id="copilot-instructions" placeholder="e.g. This interview is a live Excel test. Help me with formulas, pivot alternatives, and data cleaning functions. I'm strong on SQL but rusty on advanced Excel."></textarea>
+      </div>
+      <div class="copilot-gear-section">
+        <button class="copilot-gear-save" onclick="saveCopilotGear()">Save & Close</button>
+        <div class="copilot-gear-status" id="copilot-gear-status"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="canvas-wrap">
@@ -1170,6 +1233,8 @@ var copilotActive = false;
 var copilotTranscriptBuffer = ''; // Buffer interviewer speech during co-pilot
 var copilotAutoTimer = null;
 var COPILOT_AUTO_DELAY = 3000; // 3s after interviewer stops talking → auto-capture
+var copilotFiles = []; // { name, size, content (extracted text) }
+var copilotInstructions = ''; // Custom instructions text
 
 function toggleCopilot() {
   copilotActive = !copilotActive;
@@ -1257,7 +1322,7 @@ async function copilotSend(transcript, mode) {
     var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: image, transcript: transcript || '', mode: mode || 'check' })
+      body: JSON.stringify({ image: image, transcript: transcript || '', mode: mode || 'check', context: getCopilotContext() })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -1302,6 +1367,117 @@ function addCopilotCard(answer, instruction, stepNumber) {
     if (newCard) newCard.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }
   cards.push({ id: id, question: 'Co-pilot Step', answer: answer, source: 'copilot', ts: Date.now() });
+}
+
+// ===== CO-PILOT GEAR =====
+function showCopilotGear() {
+  $('copilot-gear-overlay').style.display = 'flex';
+  $('copilot-instructions').value = copilotInstructions;
+  renderCopilotFiles();
+}
+function hideCopilotGear() {
+  $('copilot-gear-overlay').style.display = 'none';
+}
+function saveCopilotGear() {
+  copilotInstructions = $('copilot-instructions').value.trim();
+  var gearBtn = $('btn-copilot-gear');
+  if (copilotFiles.length > 0 || copilotInstructions) {
+    gearBtn.classList.add('has-data');
+  } else {
+    gearBtn.classList.remove('has-data');
+  }
+  $('copilot-gear-status').textContent = 'Saved! Co-pilot will use this context.';
+  setTimeout(function() { $('copilot-gear-status').textContent = ''; }, 2000);
+  hideCopilotGear();
+}
+
+async function handleCopilotFiles(fileList) {
+  if (!fileList || !fileList.length) return;
+  var maxFiles = 5;
+  for (var i = 0; i < fileList.length && copilotFiles.length < maxFiles; i++) {
+    var file = fileList[i];
+    if (file.size > 5 * 1024 * 1024) { continue; } // Skip files > 5MB
+    try {
+      var content = await extractCopilotFileContent(file);
+      if (content) {
+        copilotFiles.push({ name: file.name, size: file.size, content: content });
+      }
+    } catch(e) {
+      console.warn('[Co-pilot Gear] Failed to extract:', file.name, e);
+    }
+  }
+  renderCopilotFiles();
+}
+
+function extractCopilotFileContent(file) {
+  return new Promise(function(resolve, reject) {
+    // For text-based files, read directly
+    var textTypes = ['.txt', '.md', '.csv', '.json', '.sql', '.py', '.js', '.html', '.css', '.xml', '.yaml', '.yml'];
+    var ext = '.' + file.name.split('.').pop().toLowerCase();
+
+    if (textTypes.indexOf(ext) >= 0 || file.type.startsWith('text/')) {
+      var reader = new FileReader();
+      reader.onload = function() { resolve(reader.result.substring(0, 15000)); };
+      reader.onerror = reject;
+      reader.readAsText(file);
+      return;
+    }
+
+    // For images, convert to base64 and mark as image
+    if (file.type.startsWith('image/')) {
+      var reader = new FileReader();
+      reader.onload = function() {
+        resolve('[IMAGE FILE: ' + file.name + '] Content uploaded as reference image.');
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // For PDFs, DOCX etc — upload to server for extraction
+    var fd = new FormData();
+    fd.append('file', file);
+    fetch('/api/sessions/' + SESSION_ID + '/copilot/extract', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN },
+      body: fd
+    }).then(function(r) { return r.json(); })
+      .then(function(d) { resolve(d.text ? d.text.substring(0, 15000) : '[Could not extract text from ' + file.name + ']'); })
+      .catch(function() { resolve('[Could not extract text from ' + file.name + ']'); });
+  });
+}
+
+function renderCopilotFiles() {
+  var list = $('copilot-files-list');
+  if (!copilotFiles.length) { list.innerHTML = ''; return; }
+  list.innerHTML = copilotFiles.map(function(f, i) {
+    var sizeStr = f.size < 1024 ? f.size + 'B' : (f.size / 1024).toFixed(0) + 'KB';
+    return '<div class="copilot-file-item">' +
+      '<span class="file-name">📄 ' + esc(f.name) + '</span>' +
+      '<span class="file-size">' + sizeStr + '</span>' +
+      '<button class="copilot-file-remove" onclick="removeCopilotFile(' + i + ')">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+function removeCopilotFile(idx) {
+  copilotFiles.splice(idx, 1);
+  renderCopilotFiles();
+}
+
+function getCopilotContext() {
+  var ctx = '';
+  if (copilotInstructions) {
+    ctx += '\n\nUSER INSTRUCTIONS:\n' + copilotInstructions;
+  }
+  if (copilotFiles.length > 0) {
+    ctx += '\n\nREFERENCE FILES UPLOADED BY CANDIDATE:';
+    copilotFiles.forEach(function(f) {
+      ctx += '\n\n--- ' + f.name + ' ---\n' + f.content;
+    });
+    ctx += '\n\nUse the above reference files to give more accurate, specific help. If the candidate uploaded an Excel cheat sheet, use those exact formulas. If they uploaded SQL notes, reference those patterns.';
+  }
+  return ctx;
 }
 
 // ===== INIT =====

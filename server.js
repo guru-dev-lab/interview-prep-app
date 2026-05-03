@@ -2276,7 +2276,7 @@ function addCopilotStep(sessionId, instruction, response) {
 
 app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   try {
-    const { image, transcript, mode } = req.body;
+    const { image, transcript, mode, context } = req.body;
     // mode: 'instruction' (new interviewer speech) or 'check' (manual capture to check progress)
     if (!image && !transcript) return res.status(400).json({ error: 'Need image or transcript' });
 
@@ -2310,6 +2310,11 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       }
     }
 
+    // Append user-uploaded reference materials and custom instructions
+    if (context && context.trim()) {
+      textPrompt += context;
+    }
+
     textPrompt += stepHistory;
     textPrompt += '\n\nLook at the screen. What should the candidate do RIGHT NOW? Give the exact next step(s).';
 
@@ -2341,6 +2346,18 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[Co-pilot Error]', e.message, e.stack);
     res.status(500).json({ error: 'Co-pilot failed: ' + e.message });
+  }
+});
+
+// Extract text from uploaded file for co-pilot context
+app.post('/api/sessions/:id/copilot/extract', authMiddleware, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file' });
+    const text = await extractText(req.file.buffer, req.file.originalname);
+    res.json({ text: text ? text.substring(0, 15000) : '' });
+  } catch(e) {
+    console.error('[Co-pilot Extract]', e.message);
+    res.json({ text: '[Could not extract text]' });
   }
 });
 
