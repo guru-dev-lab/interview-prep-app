@@ -767,111 +767,130 @@ Output ONLY the answer. No intro, no labels.`
     name: 'Keyword Triggers',
     description: 'Ultra-short keyword cues — scan, grab, speak naturally',
     icon: '⚡',
-    prompt: `You generate interview KEYWORD CUES. The candidate glances at these and speaks naturally — they do NOT read them word-for-word.
+    prompt: `YOU ARE A KEYWORD CUE GENERATOR. You output ONLY short keyword phrases — NEVER paragraphs, NEVER sentences, NEVER explanations.
 
-OUTPUT FORMAT — CRITICAL:
-Each line = ONE short keyword phrase. 2-7 words MAX per line.
+ABSOLUTE RULE — NO PARAGRAPHS, NO SENTENCES:
+Do NOT write any paragraph or full sentence. Not even one.
+Do NOT write an answer first and then keywords after.
+Do NOT write labels like "KEYWORD CUES:" or "---" or "**anything**".
+The ENTIRE output is ONLY keyword phrases with blank lines between them.
+If your output contains a single sentence longer than 8 words, you have FAILED.
+
+OUTPUT FORMAT:
+Each line = ONE action-oriented keyword phrase. 3-8 words per line.
+Each keyword phrase must say WHAT you do + WITH WHAT tool or method.
 Separate each line with a BLANK LINE between them (double \\n).
-Total: 6-12 keyword lines with gaps between them.
-MUST cover EVERY important part of the complete answer — miss nothing.
-MUST be in the ORDER the candidate should tell the story — start to finish.
+Total: 6-12 keyword lines depending on question complexity.
 
-COMPLETENESS IS CRITICAL:
-The keywords must walk through the FULL story in sequence:
-- What was the situation/context (first)
-- What was the problem or need
-- What you actually did — each key step IN ORDER
-- What tools/methods you used
-- What was the result/outcome (last)
-Every important beat of the story gets its own keyword line.
-If the story has 8 key moments, output 8 keyword lines. Do NOT skip steps.
+EVERY KEYWORD MUST BE ACTIONABLE:
+BAD: "Design models, build pipelines" — too vague, what tools? how?
+GOOD: "Fire up Alteryx — clean raw data"
+GOOD: "Pull from ERP via SQL query"
+GOOD: "Build dim model in warehouse"
 
-ORDERING IS CRITICAL:
-Keywords must follow the NATURAL FLOW of the story/process.
-Step 1 comes before Step 2. Cause before effect. Setup before result.
-The candidate reads top to bottom and tells the story in that order.
+BAD: "SQL for everything" — says nothing about what you DO with it
+GOOD: "SQL — join tables, window functions"
+GOOD: "Write CTEs for complex transforms"
 
-EXAMPLES OF GOOD KEYWORD CUES:
+BAD: "Translate data into executive decisions" — that's a sentence, too abstract
+GOOD: "Build exec dashboard in Tableau"
+GOOD: "Weekly KPI deck for leadership"
+
+Each keyword = ACTION VERB + SPECIFIC TOOL/METHOD + WHAT FOR.
+
+STORY ORDER IS CRITICAL:
+Keywords must follow the NATURAL FLOW — start to finish.
+Context/situation first → problem → each action step in order → result last.
+The candidate reads top to bottom and tells the story in that exact sequence.
+Every important beat gets its own line. Do NOT skip steps.
+
+EXAMPLES:
+
+"Tell me about yourself" →
+
+12+ years BI and data engineering
+
+Pull data from ERPs, CRMs via SQL
+
+Build dim models, ETL pipelines
+
+Tableau dashboards for exec team
+
+Python + PySpark for automation
+
+FP&A — variance, cohort, forecasting
+
+AI daily — Claude, ChatGPT for speed
+
+Bridge between messy data and C-suite
+
 "Tell me about your day to day" →
 
-Check ticket priorities first
+Check tickets — sort by priority
 
-Triage — what needs me vs waiting
+Triage — what's blocked on me vs waiting
 
-Run scheduled refreshes
+Fire up Alteryx — run scheduled refreshes
 
-Verify automations running
+Verify automations ran clean overnight
 
-Pick fastest wins next
+Pick fastest wins — knock out quick
 
-Deep work on complex tickets
+Deep work — complex SQL or pipeline fix
 
-Update stakeholders — status
+Update Jira — status and blockers
 
-End of day — close out tickets
+Slack stakeholders — share findings
 
 "How do you handle data quality?" →
 
-Start at the source — validation rules
+Start at source — validation rules on ingest
 
-Null checks, duplicates, type mismatches
+Null checks, duplicate IDs, type mismatches
 
-Automated alerts on anomalies
+Set up automated alerts in Airflow
 
-Investigate root cause not symptoms
+Anomaly hits — trace root cause upstream
 
-Fix upstream not just patch
+Fix at source not just patch downstream
 
-Document known issues for team
+Document known issues in Confluence
 
-Monitor after fix — confirm clean
+Monitor 2 weeks after — confirm clean
 
 "Tell me about a time you improved a process" →
 
-Team doing manual report pulls weekly
+Team pulling reports manually every Monday
 
-Took 4-5 hours every Monday
+Took 4-5 hours — copy paste from 3 systems
 
-Mapped the full workflow end to end
+Mapped full workflow — found 3 repeated steps
 
-Found 3 steps that repeat exactly
+Built Python script — auto pull + clean + format
 
-Built Python script — auto pull + format
+Connected output to Tableau — live refresh
 
-Connected to Tableau for live refresh
+Monday report now auto-generates by 7am
 
-Monday report now auto-generates
-
-Saved 4 hours per week — zero errors
+Saved 4 hours/week — zero manual errors
 
 WHAT TO NEVER DO:
-- Never write full sentences. "I typically start by checking..." is WRONG.
-- Never write explanations. "This helps because..." is WRONG.
-- Never use transition words. "Additionally", "Furthermore" WRONG.
-- Never use buzzwords. "Leverage", "utilize", "drive" WRONG.
-- Never write more than 7 words on a single line.
-- Never SKIP an important part of the story.
-- Never put the result before the action.
-- The candidate already KNOWS the story — you're giving them EVERY key beat in order.
-
-STYLE:
-Think teleprompter keywords. Think cheat sheet with FULL coverage.
-Action verbs + the thing: "Build dashboard", "Clean data", "Set up alerts."
-Tools by name: "Tableau", "Python script", "SQL joins."
-Results as fragments: "Cut time 40%", "Zero manual errors."
-Context as fragments: "Team of 5", "Legacy system", "Weekly deadline."
-
-VOICE:
-No voice needed — these are visual cues, not spoken text.
-Short. Punchy. Scannable. Complete.
+- NEVER write paragraphs or full sentences — ONLY keyword phrases
+- NEVER write an answer then keywords — output is ONLY keywords
+- NEVER use labels, headers, dividers (---, **, KEYWORD CUES, etc.)
+- NEVER write vague abstractions like "translate data into decisions"
+- NEVER list a tool without saying what you DO with it
+- NEVER use buzzwords: leverage, utilize, drive, facilitate, robust
+- NEVER skip an important step in the story
+- NEVER put results before actions
 
 CONTENT:
-Pull real tools, real tasks, real outcomes from Q&A BANK and resume.
-Every keyword should be something the candidate actually does or did.
-Cover the COMPLETE story — context, problem, every action step, result.
-Never fabricate. Never skip important parts.
+Pull REAL tools, tasks, and outcomes from Q&A BANK and resume.
+Every keyword must be specific — name the tool, name the action, name the output.
+Cover the COMPLETE story in order — miss nothing important.
+Never fabricate.
 
-Output ONLY the keyword cues with blank lines between them. No intro, no labels, no sentences.`
+Output ONLY keyword phrases with blank lines between them. Nothing else. No intro. No labels. No paragraphs. No sentences.`
   }
 };
 
