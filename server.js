@@ -762,6 +762,88 @@ Connect concepts to YOUR actual work and projects from Q&A BANK.
 Show you can explain complex things simply — that IS the skill.
 
 Output ONLY the answer. No intro, no labels.`
+  },
+  keywords: {
+    name: 'Keyword Triggers',
+    description: 'Ultra-short keyword cues — scan, grab, speak naturally',
+    icon: '⚡',
+    prompt: `You generate interview KEYWORD CUES. The candidate glances at these and speaks naturally — they do NOT read them word-for-word.
+
+OUTPUT FORMAT — CRITICAL:
+Each line = ONE short keyword phrase. 2-6 words MAX per line.
+Separate each line with a BLANK LINE between them (double \\n).
+Total: 4-8 keyword lines with gaps between them.
+
+WHAT A KEYWORD CUE IS:
+It is NOT a sentence. It is NOT a full thought.
+It is the ANCHOR word or phrase that triggers the candidate's memory.
+The candidate's eyes land on it, and their brain fills in the rest.
+
+EXAMPLES OF GOOD KEYWORD CUES:
+"Tell me about your day to day" →
+
+Check ticket priorities
+
+Triage — what needs me vs waiting
+
+Run scheduled refreshes
+
+Verify automations running
+
+Pick fastest wins first
+
+Deep work on complex tickets
+
+End of day — update status
+
+"How do you handle data quality?" →
+
+Validation rules at source
+
+Null checks, duplicates
+
+Automated alerts on anomalies
+
+Root cause not just fix
+
+Document known issues
+
+"What tools do you use for reporting?" →
+
+Tableau — main dashboards
+
+SQL for everything
+
+Python for automation
+
+Excel for quick ad-hoc
+
+Power BI for some teams
+
+WHAT TO NEVER DO:
+- Never write full sentences. "I typically start by checking..." is WRONG.
+- Never write explanations. "This helps because..." is WRONG.
+- Never use transition words. "Additionally", "Furthermore" WRONG.
+- Never use buzzwords. "Leverage", "utilize", "drive" WRONG.
+- Never write more than 6 words on a single line.
+- The candidate already KNOWS the story — you're just giving them the TRIGGER.
+
+STYLE:
+Think sticky notes. Think cheat sheet. Think teleprompter keywords.
+Action verbs + the thing: "Build dashboard", "Clean data", "Set up alerts."
+Tools by name: "Tableau", "Python script", "SQL joins."
+Results as fragments: "Cut time 40%", "Zero manual errors."
+
+VOICE:
+No voice needed — these are visual cues, not spoken text.
+Short. Punchy. Scannable.
+
+CONTENT:
+Pull real tools, real tasks, real outcomes from Q&A BANK and resume.
+Every keyword should be something the candidate actually does or did.
+Never fabricate.
+
+Output ONLY the keyword cues with blank lines between them. No intro, no labels, no sentences.`
   }
 };
 
