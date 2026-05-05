@@ -1223,6 +1223,7 @@ var electronProc1 = null, electronProc2 = null;
 var electronSrc1 = null, electronSrc2 = null;
 var electronLive = false;
 var electronUserSpeaking = false;
+var electronUserStoppedAt = 0; // timestamp when user stopped speaking — for echo tail suppression
 
 var audioDebugCounter = 0;
 var ch1HasAudio = false, ch2HasAudio = false;
@@ -1270,8 +1271,23 @@ function processAudioStream(stream, channel) {
       if (loudFrames >= 3) electronUserSpeaking = true;
       if (quietFrames >= 6) electronUserSpeaking = false;
       if (electronUserSpeaking !== wasSpeaking) {
+        if (!electronUserSpeaking) electronUserStoppedAt = Date.now(); // track when user stopped for echo tail
         ws.send(JSON.stringify({ type: 'user_speaking', speaking: electronUserSpeaking }));
       }
+    }
+
+    // ECHO SUPPRESSION: Don't send system audio (Ch1) while user is speaking.
+    // getDisplayMedia captures ALL system audio including the user's own voice
+    // echoing back through the call. This prevents Deepgram from transcribing
+    // the user's echo as "interviewer" speech.
+    if (channel === 1 && electronUserSpeaking) {
+      return; // Drop this Ch1 packet — it's mostly the user's echo
+    }
+
+    // Also suppress Ch1 for a brief window after user stops speaking,
+    // to catch trailing echo that the call app hasn't silenced yet.
+    if (channel === 1 && electronUserStoppedAt > 0 && (Date.now() - electronUserStoppedAt < 1500)) {
+      return; // Still in echo tail zone
     }
 
     // Convert float32 → int16 PCM

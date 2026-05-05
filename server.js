@@ -3164,6 +3164,21 @@ wss.on('connection', (ws) => {
               console.log(`[DIAG-DG] Ch1 transcript: "${text.substring(0,60)}" isFinal=${isFinal} speechFinal=${speechFinal}`);
               if (!text.trim()) return;
 
+              // ECHO GUARD: If user is currently speaking or just stopped,
+              // this Ch1 transcript is likely the user's own voice echoing
+              // through system audio. Drop it entirely.
+              const ECHO_GUARD_MS = 3000; // 3s after user stops speaking
+              if (userIsSpeaking) {
+                console.log('[Echo Guard] Dropping Ch1 transcript — user is speaking:', text.substring(0, 40));
+                if (speechFinal) { interviewerBuffer = ''; questionFiredForBuffer = false; }
+                return;
+              }
+              if (Date.now() - userStoppedSpeakingAt < ECHO_GUARD_MS) {
+                console.log('[Echo Guard] Dropping Ch1 transcript — user just stopped (' + Math.round((Date.now() - userStoppedSpeakingAt)/1000) + 's ago):', text.substring(0, 40));
+                if (speechFinal) { interviewerBuffer = ''; questionFiredForBuffer = false; }
+                return;
+              }
+
               if (isFinal) {
                 resetIdleTimer();
                 interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
