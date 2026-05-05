@@ -1276,18 +1276,12 @@ function processAudioStream(stream, channel) {
       }
     }
 
-    // ECHO SUPPRESSION: Don't send system audio (Ch1) while user is speaking.
+    // ECHO SUPPRESSION: Don't send system audio (Ch1) while user is actively speaking.
     // getDisplayMedia captures ALL system audio including the user's own voice
-    // echoing back through the call. This prevents Deepgram from transcribing
-    // the user's echo as "interviewer" speech.
+    // echoing back through the call. Only suppress while mic is hot — no tail delay,
+    // so interviewer questions right after user stops are captured immediately.
     if (channel === 1 && electronUserSpeaking) {
       return; // Drop this Ch1 packet — it's mostly the user's echo
-    }
-
-    // Also suppress Ch1 for a brief window after user stops speaking,
-    // to catch trailing echo that the call app hasn't silenced yet.
-    if (channel === 1 && electronUserStoppedAt > 0 && (Date.now() - electronUserStoppedAt < 1500)) {
-      return; // Still in echo tail zone
     }
 
     // Convert float32 → int16 PCM
