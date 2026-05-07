@@ -692,7 +692,7 @@ function connect() {
     else if (msg.type === 'copilot_step') {
       addCopilotCard(msg.answer, msg.instruction, msg.stepNumber);
     }
-    else if (msg.type === 'transcript' && msg.isFinal && copilotActive) {
+    else if (msg.type === 'transcript' && msg.isFinal && copilotActive && !msg.isEcho) {
       copilotOnTranscript(msg.text);
     }
     else if (msg.type === 'interviewer_final' && copilotActive) {

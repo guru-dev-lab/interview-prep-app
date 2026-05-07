@@ -3152,6 +3152,34 @@ wss.on('connection', (ws) => {
           }
         }
 
+        // ===== ECHO DETECTION via transcript comparison =====
+        // Ch1 (system audio) captures BOTH interviewer AND user's echo from the call.
+        // Instead of blocking audio, we compare Ch1 transcripts against recent Ch2 (mic)
+        // transcripts. If they match, it's the user's echo — skip question detection.
+        const recentUserUtterances = []; // { text, ts } — rolling buffer of Ch2 transcripts
+        const ECHO_WINDOW_MS = 6000; // Compare against user speech from last 6 seconds
+        const ECHO_SIMILARITY_THRESHOLD = 0.45; // Similarity above this = echo
+
+        function isEchoOfUser(ch1Text) {
+          const now = Date.now();
+          const ch1Lower = ch1Text.toLowerCase().trim();
+          // Check against recent user utterances
+          for (let i = recentUserUtterances.length - 1; i >= 0; i--) {
+            const u = recentUserUtterances[i];
+            if (now - u.ts > ECHO_WINDOW_MS) break; // Too old
+            const sim = stringSimilarity.compareTwoStrings(ch1Lower, u.text.toLowerCase());
+            // Also check if one is a substring of the other (partial echo)
+            const isSubstring = ch1Lower.length > 10 && u.text.toLowerCase().length > 10 &&
+              (ch1Lower.includes(u.text.toLowerCase().substring(0, Math.min(30, u.text.length))) ||
+               u.text.toLowerCase().includes(ch1Lower.substring(0, Math.min(30, ch1Lower.length))));
+            if (sim > ECHO_SIMILARITY_THRESHOLD || isSubstring) {
+              console.log(`[Echo Detect] Ch1 matched Ch2 (sim=${sim.toFixed(2)}): "${ch1Text.substring(0,40)}" ≈ "${u.text.substring(0,40)}"`);
+              return true;
+            }
+          }
+          return false;
+        }
+
         // Deferred Deepgram setup — opened lazily when first audio packet arrives.
         // This prevents Deepgram idle timeout (10s) killing the connection before
         // the user clicks Go Live (which could be minutes after WS connects).
@@ -3179,17 +3207,24 @@ wss.on('connection', (ws) => {
                 const wasFired = questionFiredForBuffer;
                 questionFiredForBuffer = false;
 
-                ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true }));
-                // Broadcast final interviewer transcript to canvas/copilot clients
-                broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
-                transcript.push({ text: fullUtterance, ts: Date.now() });
+                // ECHO CHECK: Compare this Ch1 transcript against recent Ch2 (user mic) transcripts.
+                // If it matches, this is the user's own voice echoing through system audio.
+                // Still send it to the UI as transcript (for display) but SKIP question detection.
+                const isEcho = isEchoOfUser(fullUtterance);
+
+                ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true, isEcho: isEcho }));
+                if (!isEcho) {
+                  // Only broadcast to co-pilot / canvas if it's real interviewer speech
+                  broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
+                }
+                transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
 
-                if (!wasFired) {
+                if (!isEcho && !wasFired) {
                   if (aiExtractTimer) clearTimeout(aiExtractTimer);
                   aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY);
                 }
-                setTimeout(() => recentMatchedIds.clear(), 5000);
+                if (!isEcho) setTimeout(() => recentMatchedIds.clear(), 5000);
               }
             },
             (err) => {
@@ -3231,6 +3266,13 @@ wss.on('connection', (ws) => {
                   broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true }, ws);
                   transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
                   ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+
+                  // Store for echo detection — Ch1 transcripts will be compared against these
+                  recentUserUtterances.push({ text: fullUtterance, ts: Date.now() });
+                  // Prune old entries (keep last 10 seconds worth)
+                  while (recentUserUtterances.length > 0 && Date.now() - recentUserUtterances[0].ts > 10000) {
+                    recentUserUtterances.shift();
+                  }
                 }
               },
               (err) => {
