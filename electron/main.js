@@ -154,14 +154,9 @@ function createOverlay() {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    // NOTE: removed type:'panel' — it causes background rectangle in Electron 42+
-    // Instead we use setAlwaysOnTop('screen-saver') below for same effect
     visibleOnAllWorkspaces: true,
     hiddenInMissionControl: true,
     backgroundColor: '#00000000',
-    roundedCorners: false,
-    titleBarStyle: 'customButtonsOnHover',
-    trafficLightPosition: { x: -20, y: -20 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -172,15 +167,25 @@ function createOverlay() {
     }
   });
 
-  // macOS transparency — vibrancy trick + opacity flash
+  // macOS transparency fix — multiple techniques to eliminate background rectangle
   if (process.platform === 'darwin') {
+    // Step 1: Set vibrancy to force compositor to respect transparency
     mainWindow.setVibrancy('under-window');
+
+    // Step 2: After window is composited, remove vibrancy and flash opacity
     setTimeout(() => {
       mainWindow.setVibrancy(null);
+      mainWindow.setBackgroundColor('#00000000');
       mainWindow.setOpacity(0.99);
       setTimeout(() => mainWindow.setOpacity(1.0), 50);
-    }, 100);
+    }, 150);
   }
+
+  // Ensure webContents has transparent background
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.insertCSS('html,body{background:transparent !important}');
+    mainWindow.setBackgroundColor('#00000000');
+  });
 
   // CRITICAL macOS settings — must be called AFTER window creation
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
