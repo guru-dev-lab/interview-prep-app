@@ -31,7 +31,7 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgba(52,211,153,.5),rgba(16,185,129,.3),rgba(52,211,153,.5),transparent)}
 body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px rgba(16,185,129,.05)}
 
-.tb-inner{height:44px;display:flex;align-items:center;padding:0 10px;gap:5px;overflow:hidden}
+.tb-inner{height:40px;display:flex;align-items:center;padding:0 8px;gap:4px;overflow:hidden}
 .tb-brand{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .brand-orb{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;font:800 9px Inter,sans-serif;color:#fff;letter-spacing:-.5px;flex-shrink:0;box-shadow:0 0 12px rgba(124,58,237,.3);animation:orbPulse 3s ease infinite}
 @keyframes orbPulse{0%,100%{box-shadow:0 0 12px rgba(124,58,237,.3)}50%{box-shadow:0 0 20px rgba(124,58,237,.45),0 0 6px rgba(99,102,241,.2)}}
@@ -47,10 +47,14 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 .hud-status{font:600 8px Inter,sans-serif;color:var(--text3);text-transform:uppercase;letter-spacing:.4px}
 
 /* Toolbar buttons */
-.tb-btn{width:28px;height:26px;border:1px solid rgba(255,255,255,.06);border-radius:6px;background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .12s ease,background .15s ease,color .15s ease;font:600 9px Inter,sans-serif;padding:0;flex-shrink:0}
+.tb-btn{width:26px;height:24px;border:1px solid rgba(255,255,255,.06);border-radius:6px;background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .12s ease,background .15s ease,color .15s ease;font:600 9px Inter,sans-serif;padding:0;flex-shrink:0}
 .tb-btn:hover{background:rgba(255,255,255,.1);color:var(--accent2);transform:scale(1.08)}
 .tb-btn:active{transform:scale(.93)}
 .tb-btn.danger:hover{background:rgba(248,113,113,.12);color:#F87171}
+.tb-btn-live{color:#34D399;border-color:rgba(52,211,153,.2);background:rgba(52,211,153,.1)}
+.tb-btn-live:hover{color:#34D399 !important;background:rgba(52,211,153,.2);box-shadow:0 0 10px rgba(52,211,153,.15)}
+.tb-btn-live.live-active{color:#FCA5A5;border-color:rgba(239,68,68,.2);background:rgba(239,68,68,.1);animation:pulse 1.5s ease infinite}
+.tb-btn-live.live-active:hover{color:#FCA5A5 !important;background:rgba(239,68,68,.2);box-shadow:0 0 10px rgba(239,68,68,.15)}
 .hud-btn{height:26px;padding:0 10px;border:1px solid rgba(255,255,255,.06);border-radius:6px;background:rgba(255,255,255,.04);font:600 9px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:transform .12s ease,background .15s ease,color .15s ease,box-shadow .15s ease;white-space:nowrap;display:flex;align-items:center;gap:3px}
 .hud-btn:hover{background:rgba(255,255,255,.1);color:var(--text2);transform:scale(1.04)}
 .hud-btn:active{transform:scale(.95)}
@@ -227,21 +231,34 @@ body.look-ocean .sc-card-a code{background:rgba(6,182,212,.1);color:#67E8F9;bord
 body.look-ocean .sc-card-a pre::before{background:linear-gradient(180deg,#06B6D4,rgba(6,182,212,.2))}
 body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;border-color:rgba(6,182,212,.3)}
 
-/* ===== BOTTOM BAR — single row like prototype: [Say?] [Assist] [Ask anything... input] ===== */
-.bottom-bar{flex-shrink:0;background:rgba(10,12,22,.45);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border-top:1px solid rgba(255,255,255,.06);padding:8px 12px;-webkit-app-region:no-drag;position:relative;border-radius:0 0 20px 20px}
+/* ===== BOTTOM BAR — Cluely-style: action links row + input row + keybind hints ===== */
+.bottom-bar{flex-shrink:0;background:rgba(10,12,22,.45);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border-top:1px solid rgba(255,255,255,.06);padding:8px 12px 6px;-webkit-app-region:no-drag;position:relative;border-radius:0 0 20px 20px}
 .bottom-bar::before{content:'';position:absolute;top:-1px;left:8%;right:8%;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,.25),transparent);pointer-events:none}
-/* Single unified row */
+/* Action links row — horizontal text buttons like Cluely */
+.action-links{display:flex;align-items:center;gap:4px;padding:0 2px 6px;flex-wrap:nowrap;overflow-x:auto}
+.action-links::-webkit-scrollbar{display:none}
+.action-link{border:none;background:none;padding:0;font:500 11px Inter,sans-serif;color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:color .15s;white-space:nowrap;flex-shrink:0}
+.action-link:hover{color:var(--text)}
+.action-link:active{color:var(--accent2)}
+.action-link.loading{opacity:.4;pointer-events:none}
+.action-link svg{opacity:.7}
+.action-link-sep{color:var(--text4);font-size:10px;user-select:none;flex-shrink:0}
+/* Input row */
 .bottom-row{display:flex;gap:6px;align-items:center}
-.action-btn{flex-shrink:0;height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);font:600 10px Inter,sans-serif;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .15s ease;white-space:nowrap}
-.action-btn:hover{border-color:rgba(124,58,237,.25);color:var(--text2);background:rgba(124,58,237,.08);transform:scale(1.02)}
-.action-btn:active{transform:scale(.97)}
-.action-btn.primary{border:none;color:#fff;background:linear-gradient(135deg,#7c3aed,#6d28d9);box-shadow:0 2px 8px rgba(124,58,237,.25)}
-.action-btn.primary:hover{box-shadow:0 3px 12px rgba(124,58,237,.35);transform:translateY(-1px) scale(1.02)}
+.bottom-row input{flex:1;min-width:0;height:34px;padding:0 12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;font:400 11.5px Inter,sans-serif;color:var(--text);background:rgba(255,255,255,.04);outline:none;transition:.2s}
+.bottom-row input:focus{border-color:var(--accent);background:rgba(255,255,255,.06)}
+.bottom-row input::placeholder{color:var(--text4);font-size:10.5px}
+.send-btn{width:34px;height:34px;border:none;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s ease}
+.send-btn:hover{background:#6d28d9;transform:scale(1.06);box-shadow:0 2px 10px rgba(124,58,237,.35)}
+.send-btn:active{transform:scale(.94)}
+/* Keyboard shortcut hints — like Cluely's keybind display */
+.keybind-hint{display:flex;align-items:center;gap:8px;padding:4px 2px 0;font:400 9px Inter,sans-serif;color:var(--text4)}
+.kbd-pill{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:4px;padding:1px 5px;font:500 8.5px Inter,sans-serif;color:var(--text3);letter-spacing:.3px}
+/* Legacy action-btn for Record/Switch secondary row */
+.action-btn{flex-shrink:0;height:28px;padding:0 10px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);font:600 10px Inter,sans-serif;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .15s ease;white-space:nowrap}
+.action-btn:hover{border-color:rgba(124,58,237,.25);color:var(--text2);background:rgba(124,58,237,.08)}
 .action-btn.loading{opacity:.5;pointer-events:none}
 .action-btn.recording{border-color:#F87171;background:rgba(248,113,113,.1);color:#fca5a5;animation:pulse 1.5s ease infinite}
-.action-btn .kbd{font:500 8px Inter,sans-serif;background:rgba(255,255,255,.08);padding:2px 5px;border-radius:4px;color:var(--text4);margin-left:2px}
-.bottom-row input{flex:1;min-width:0;height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.08);border-radius:8px;font:400 11.5px Inter,sans-serif;color:var(--text);background:rgba(255,255,255,.04);outline:none;transition:.2s}
-.bottom-row input:focus{border-color:var(--accent);background:rgba(255,255,255,.06)}
 /* Hidden action row for Record/Switch — only visible when needed */
 .action-row-secondary{display:none;gap:5px;margin-bottom:6px}
 .action-row-secondary.show{display:flex}
@@ -307,11 +324,17 @@ body.light-mode .hud-dot.wait{background:#D97706;box-shadow:0 0 6px rgba(217,119
 body.light-mode .hud-status{color:#6b7280}
 body.light-mode .action-btn{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
 body.light-mode .action-btn:hover{border-color:rgba(109,40,217,.2);background:rgba(109,40,217,.04);color:#374151}
-body.light-mode .action-btn.primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}
 body.light-mode .bottom-bar{background:rgba(235,237,242,.6);backdrop-filter:blur(16px) saturate(1.2);border-color:rgba(0,0,0,.06)}
 body.light-mode .bottom-bar::before{background:linear-gradient(90deg,transparent,rgba(109,40,217,.12),transparent)}
 body.light-mode .bottom-row input{background:#fff;border-color:rgba(0,0,0,.1);color:#111827}
-body.light-mode .action-btn .kbd{background:rgba(0,0,0,.06);color:#6b7280}
+body.light-mode .action-link{color:#6b7280}
+body.light-mode .action-link:hover{color:#1f2937}
+body.light-mode .action-link-sep{color:#d1d5db}
+body.light-mode .send-btn{background:#7c3aed}
+body.light-mode .send-btn:hover{background:#6d28d9}
+body.light-mode .keybind-hint{color:#9ca3af}
+body.light-mode .kbd-pill{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.08);color:#6b7280}
+body.light-mode .tb-btn-live{color:#059669;border-color:rgba(5,150,105,.15);background:rgba(5,150,105,.08)}
 body.light-mode .filter-btn{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.06)}
 body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9;border-color:rgba(109,40,217,.2)}
 body.light-mode .config-float{background:rgba(255,255,255,.92);border-color:rgba(109,40,217,.12);box-shadow:0 4px 20px rgba(0,0,0,.1),0 0 10px rgba(109,40,217,.04)}
@@ -353,44 +376,45 @@ document.documentElement.style.background='transparent';
 document.body.style.background='transparent';
 </script>
 
-<!-- TOOLBAR — separate floating glass panel -->
+<!-- TOOLBAR — compact floating glass bar (Cluely-style) -->
 <div class="toolbar" id="hud">
   <div class="tb-inner">
-    <!-- Left: Brand -->
+    <!-- Left: Brand + status -->
     <div class="tb-brand">
       <div class="brand-orb">Xh</div>
       <span class="brand-name">Pilot</span>
     </div>
     <div class="tb-sep"></div>
-
-    <!-- Status dot + label -->
     <span class="hud-dot off" id="hud-dot"></span>
     <span class="hud-status" id="hud-status">Offline</span>
-    <div class="tb-sep"></div>
 
-    <!-- Live button (Electron only, hidden by default) -->
-    <button class="hud-btn live" id="btn-live-tb" style="display:none" data-tip="Start live audio capture" onclick="toggleElectronLive()">&#9679; Live</button>
-    <button class="hud-btn" id="btn-stealth" style="display:none" data-tip="Stealth mode" onclick="toggleStealth()">&#128737;</button>
+    <!-- Electron-only: Live + Stealth (icon-only to save space) -->
     <div class="tb-sep" id="sep-after-live" style="display:none"></div>
+    <button class="tb-btn tb-btn-live" id="btn-live-tb" style="display:none" data-tip="Go Live" onclick="toggleElectronLive()">
+      <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>
+    </button>
+    <button class="tb-btn" id="btn-stealth" style="display:none" data-tip="Stealth" onclick="toggleStealth()">
+      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+
+    <!-- Spacer pushes right-side items -->
+    <div style="flex:1;min-width:4px"></div>
 
     <!-- Mode toggle -->
     <div class="mode-toggle">
-      <button class="mode-btn active" id="mode-qa" data-tip="Interview Q&A mode" onclick="setMode('qa')">Q&A</button>
-      <button class="mode-btn" id="mode-copilot" data-tip="Live task assistant" onclick="setMode('copilot')">Co-pilot</button>
+      <button class="mode-btn active" id="mode-qa" data-tip="Q&A" onclick="setMode('qa')">Q&A</button>
+      <button class="mode-btn" id="mode-copilot" data-tip="Co-pilot" onclick="setMode('copilot')">Co-pilot</button>
     </div>
-    <div class="tb-sep"></div>
 
-    <!-- Config button -->
-    <button class="hud-btn" id="btn-config" data-tip="Style & theme settings" onclick="toggleConfigPill()">
-      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-    </button>
-
-    <!-- Utility icons (right side) — minimal, the rest in config pill -->
+    <!-- Right-side icons -->
     <div class="tb-utils">
+      <button class="tb-btn" id="btn-config" data-tip="Settings" onclick="toggleConfigPill()">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
       <button class="tb-btn danger tip-left" data-tip="Sign out" onclick="doLogout()">
         <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
-      <button class="tb-btn danger tip-left" id="btn-quit" style="display:none" data-tip="Quit app" onclick="quitApp()">
+      <button class="tb-btn danger tip-left" id="btn-quit" style="display:none" data-tip="Quit" onclick="quitApp()">
         <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -483,7 +507,7 @@ document.body.style.background='transparent';
     </div>
   </div>
 
-  <!-- Bottom bar — single row: [Say?] [Assist] [Ask anything...] -->
+  <!-- Bottom bar — Cluely-style: action links + input row -->
   <div class="bottom-bar">
     <!-- Secondary row for Record/Switch — hidden until needed -->
     <div class="action-row-secondary" id="action-row-secondary">
@@ -495,17 +519,34 @@ document.body.style.background='transparent';
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>
       </button>
     </div>
-    <!-- Main row: Say? + Assist + input -->
-    <div class="bottom-row">
-      <button class="action-btn primary" id="btn-wsay" data-tip="AI suggests what to say next" onclick="whatShouldISay()">
-        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        Say?<span class="kbd">&#8984;&#8629;</span>
-      </button>
-      <button class="action-btn" id="btn-assist" data-tip="Capture & analyze your screen" onclick="screenAssist()">
+    <!-- Action links row — like Cluely's "Assist · What should I say? · Follow-up questions" -->
+    <div class="action-links">
+      <button class="action-link" id="btn-assist" onclick="screenAssist()">
         <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         Assist
       </button>
-      <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
+      <span class="action-link-sep">&middot;</span>
+      <button class="action-link" id="btn-wsay" onclick="whatShouldISay()">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        What should I say?
+      </button>
+      <span class="action-link-sep">&middot;</span>
+      <button class="action-link" id="btn-followup" onclick="sendFollowUp()">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+        Follow-up
+      </button>
+    </div>
+    <!-- Input row with send button -->
+    <div class="bottom-row">
+      <input type="text" id="q-input" placeholder="Ask about your screen or conversation, or &#8984; &#8629; for Assist" onkeydown="if(event.key==='Enter')sendQuestion()">
+      <button class="send-btn" onclick="sendQuestion()" data-tip="Send">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
+    <!-- Keyboard shortcut hint -->
+    <div class="keybind-hint">
+      <span class="kbd-pill">&#8984;&#8629;</span> Assist
+      <span class="kbd-pill">&#8984;R</span> Clear
     </div>
   </div>
   <!-- Resize handle -->
@@ -883,7 +924,7 @@ function setFilter(filter) {
 }
 
 // ===== ACTIONS =====
-var wsayDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Say?';
+var wsayDefaultHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> What should I say?';
 
 function whatShouldISay() {
   var btn = $('btn-wsay');
@@ -902,6 +943,14 @@ function whatShouldISay() {
     btn.classList.remove('loading');
     btn.innerHTML = wsayDefaultHTML;
     setStatus('Not live', 'off');
+  }
+}
+
+function sendFollowUp() {
+  // Send a follow-up request based on last card in feed
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    pendingManualScroll = true;
+    ws.send(JSON.stringify({ type: 'canvas_question', text: 'Follow-up: Can you elaborate on the previous answer with more specific details?' }));
   }
 }
 
@@ -925,7 +974,7 @@ var recordingInterval = null;
 var isRecording = false;
 var RECORD_INTERVAL_MS = 8000;
 
-var assistDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Assist';
+var assistDefaultHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Assist';
 var recordDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg> Record';
 
 async function getScreenStream() {
@@ -1205,8 +1254,8 @@ function toggleStealth() {
   stealthOn = !stealthOn;
   var btn = $('btn-stealth');
   if (btn) {
-    btn.textContent = stealthOn ? '🛡 On' : '🛡 Off';
-    btn.style.color = stealthOn ? '#34D399' : '#F87171';
+    btn.style.color = stealthOn ? '#34D399' : '';
+    btn.setAttribute('data-tip', stealthOn ? 'Stealth: On' : 'Stealth: Off');
   }
   if (window.electronAPI && window.electronAPI.setStealth) {
     window.electronAPI.setStealth(stealthOn);
@@ -1361,13 +1410,13 @@ function updateLiveUI(isLive) {
   var tb = $('btn-live-tb');
   if (tb) {
     if (isLive) {
-      tb.textContent = '■ Stop';
-      tb.className = 'hud-btn live-stop';
-      tb.setAttribute('data-tip', 'Stop live audio');
+      tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor"/></svg>';
+      tb.className = 'tb-btn tb-btn-live live-active';
+      tb.setAttribute('data-tip', 'Stop');
     } else {
-      tb.textContent = '● Live';
-      tb.className = 'hud-btn live';
-      tb.setAttribute('data-tip', 'Start live audio capture');
+      tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>';
+      tb.className = 'tb-btn tb-btn-live';
+      tb.setAttribute('data-tip', 'Go Live');
     }
   }
   // Glow border shifts green when live
@@ -1392,7 +1441,7 @@ async function toggleElectronLive() {
 
 async function goLiveElectron() {
   var tb = $('btn-live-tb');
-  if (tb) { tb.textContent = 'Starting...'; tb.className = 'hud-btn'; }
+  if (tb) { tb.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span>'; tb.className = 'tb-btn'; }
 
   try {
     // Step 1: Capture system audio via getDisplayMedia
@@ -1402,7 +1451,7 @@ async function goLiveElectron() {
     });
 
     if (systemAudioStream.getAudioTracks().length === 0) {
-      if (tb) { tb.textContent = '● Go Live'; tb.className = 'hud-btn live'; }
+      if (tb) { tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>'; tb.className = 'tb-btn tb-btn-live'; }
       setStatus('No audio track', 'off');
       return;
     }
@@ -1432,7 +1481,7 @@ async function goLiveElectron() {
 
   } catch(e) {
     console.error('[Electron] Audio capture error:', e);
-    if (tb) { tb.textContent = '● Go Live'; tb.className = 'hud-btn live'; }
+    if (tb) { tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>'; tb.className = 'tb-btn tb-btn-live'; }
     setStatus('Audio error', 'off');
     stopElectronAudio();
   }
