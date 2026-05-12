@@ -900,8 +900,8 @@ function dismissCard(id) {
 
 function setFilter(filter) {
   activeFilter = filter;
-  $('filter-all').className = 'filter-btn' + (filter === 'all' ? ' active' : '');
-  $('filter-generated').className = 'filter-btn' + (filter === 'generated' ? ' active' : '');
+  var fAll = $('filter-all'); if (fAll) fAll.className = 'filter-btn' + (filter === 'all' ? ' active' : '');
+  var fGen = $('filter-generated'); if (fGen) fGen.className = 'filter-btn' + (filter === 'generated' ? ' active' : '');
   // Show/hide cards based on filter
   cards.forEach(function(c) {
     var el = document.getElementById('card-' + c.id);
