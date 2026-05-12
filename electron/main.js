@@ -1,6 +1,10 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences } = require('electron');
 const path = require('path');
 
+// CRITICAL: Disable GPU acceleration for true transparent window on macOS
+app.commandLine.appendSwitch('disable-gpu');
+app.disableHardwareAcceleration();
+
 // ===== CONFIG =====
 const SERVER_URL = process.env.XHIRE_SERVER || 'https://xhire.app';
 let mainWindow = null;
@@ -154,6 +158,7 @@ function createOverlay() {
     hiddenInMissionControl: true,
     paintWhenInitiallyHidden: true,
     backgroundColor: '#00000000',
+    roundedCorners: false,        // No OS-level rounded corners
     minWidth: 320,
     minHeight: 400,
     maxWidth: 700,
@@ -165,6 +170,13 @@ function createOverlay() {
       webSecurity: false,         // Allow fetch from file:// to https://
     }
   });
+
+  // CRITICAL macOS trick: set vibrancy then remove it to get TRUE transparency
+  // Without this, macOS renders a faint window background even with transparent:true
+  if (process.platform === 'darwin') {
+    mainWindow.setVibrancy('under-window');
+    setTimeout(() => mainWindow.setVibrancy(null), 50);
+  }
 
   // CRITICAL macOS settings — must be called AFTER window creation
   mainWindow.setAlwaysOnTop(true, 'screen-saver');

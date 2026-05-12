@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#06080f;--surface:#0c1019;--accent:#7c3aed;--accent2:#a78bfa;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--text4:#475569;--glass-border:rgba(255,255,255,.06);--glow:rgba(124,58,237,.35);--glass-bg:rgba(16,20,35,0.72);--glass-blur:blur(48px) saturate(1.4);--glass-border-color:rgba(255,255,255,0.12)}
+:root{--bg:transparent;--surface:#0c1019;--accent:#7c3aed;--accent2:#a78bfa;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--text4:#475569;--glass-border:rgba(255,255,255,.06);--glow:rgba(124,58,237,.35);--glass-bg:rgba(16,20,35,0.55);--glass-blur:blur(48px) saturate(1.4);--glass-border-color:rgba(255,255,255,0.12)}
 html{height:100%;overflow:hidden;background:transparent !important;color:var(--text);font-family:Inter,sans-serif}
 body{height:100%;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0 14px;background:transparent !important;color:var(--text);font-family:Inter,sans-serif}
 
@@ -31,7 +31,7 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgba(52,211,153,.5),rgba(16,185,129,.3),rgba(52,211,153,.5),transparent)}
 body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px rgba(16,185,129,.05)}
 
-.tb-inner{height:44px;display:flex;align-items:center;padding:0 12px;gap:8px}
+.tb-inner{height:44px;display:flex;align-items:center;padding:0 10px;gap:5px;overflow:hidden}
 .tb-brand{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .brand-orb{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;font:800 9px Inter,sans-serif;color:#fff;letter-spacing:-.5px;flex-shrink:0;box-shadow:0 0 12px rgba(124,58,237,.3);animation:orbPulse 3s ease infinite}
 @keyframes orbPulse{0%,100%{box-shadow:0 0 12px rgba(124,58,237,.3)}50%{box-shadow:0 0 20px rgba(124,58,237,.45),0 0 6px rgba(99,102,241,.2)}}
@@ -266,7 +266,7 @@ body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;
 .spinner{display:inline-block;border:2px solid rgba(124,58,237,.2);border-top-color:var(--accent2);border-radius:50%;animation:spin .6s linear infinite}
 
 /* ===== LIGHT MODE ===== */
-body.light-mode,html.light-mode{--bg:transparent;--surface:#ebedf2;--text:#111827;--text2:#1f2937;--text3:#4b5563;--text4:#9ca3af;--glass-border:rgba(0,0,0,.08);--accent2:#6d28d9;--glass-bg:rgba(255,255,255,0.82);--glass-border-color:rgba(0,0,0,.1)}
+body.light-mode,html.light-mode{--bg:transparent;--surface:#ebedf2;--text:#111827;--text2:#1f2937;--text3:#4b5563;--text4:#9ca3af;--glass-border:rgba(0,0,0,.08);--accent2:#6d28d9;--glass-bg:rgba(255,255,255,0.6);--glass-border-color:rgba(0,0,0,.1)}
 body.light-mode{background:transparent !important}
 body.light-mode .toolbar{box-shadow:0 4px 24px rgba(0,0,0,.08),0 0 15px rgba(109,40,217,.04),inset 0 1px 0 rgba(255,255,255,.5)}
 body.light-mode .toolbar::after{box-shadow:0 0 12px rgba(109,40,217,.06),0 0 30px rgba(99,102,241,.02)}
@@ -383,13 +383,8 @@ document.body.style.background='transparent';
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     </button>
 
-    <!-- Utility icons (right side) -->
+    <!-- Utility icons (right side) — minimal, the rest in config pill -->
     <div class="tb-utils">
-      <button class="tb-btn" data-tip="Smaller text" onclick="changeFontSize(-1)">A&#8722;</button>
-      <button class="tb-btn" data-tip="Larger text" onclick="changeFontSize(1)">A+</button>
-      <button class="tb-btn" id="light-toggle" data-tip="Toggle light / dark" onclick="toggleLightMode()">
-        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-      </button>
       <button class="tb-btn danger tip-left" data-tip="Sign out" onclick="doLogout()">
         <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
@@ -400,7 +395,7 @@ document.body.style.background='transparent';
   </div>
 </div>
 
-<!-- Floating Config Pill — style + theme -->
+<!-- Floating Config Pill — style + theme + font + light toggle -->
 <div class="config-float" id="config-float">
   <span class="config-float-label">Style</span>
   <select class="hud-select" id="answer-style-picker" onchange="changeAnswerStyle(this.value)">
@@ -421,6 +416,12 @@ document.body.style.background='transparent';
   <select class="hud-select" id="look-picker" onchange="setTheme(this.value)">
     <option value="glass">Glass</option><option value="minimal">Mini</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
   </select>
+  <div class="cfg-sep"></div>
+  <button class="tb-btn" data-tip="Smaller text" onclick="changeFontSize(-1)">A&#8722;</button>
+  <button class="tb-btn" data-tip="Larger text" onclick="changeFontSize(1)">A+</button>
+  <button class="tb-btn" id="light-toggle" data-tip="Toggle light / dark" onclick="toggleLightMode()">
+    <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+  </button>
 </div>
 
 <!-- Floating Co-pilot Pill -->
