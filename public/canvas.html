@@ -456,7 +456,7 @@ body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9
   <!-- Bottom bar — all action buttons in one row + input -->
   <div class="bottom-bar">
     <div class="action-row">
-      <button class="action-btn primary" id="btn-wsay" data-tip="AI suggests what to say next" onclick="whatShouldISay()">
+      <button class="action-btn primary" id="btn-wsay" data-tip="AI suggests what to say next (⌘⇧S)" onclick="whatShouldISay()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         Say?
       </button>
@@ -520,6 +520,29 @@ if (isElectronMode) {
     if (sepLive) sepLive.style.display = '';
   }, 100);
 }
+
+// ===== KEYBOARD SHORTCUTS =====
+// Cmd+Shift+S (Mac) / Ctrl+Shift+S (Windows) → "What should I say?"
+// Cmd+Shift+A (Mac) / Ctrl+Shift+A (Windows) → Screen Assist capture
+document.addEventListener('keydown', function(e) {
+  // Don't trigger if user is typing in the input field
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  var mod = e.metaKey || e.ctrlKey;
+
+  // Cmd/Ctrl + Shift + S → What should I say?
+  if (mod && e.shiftKey && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    whatShouldISay();
+  }
+
+  // Cmd/Ctrl + Shift + A → Screen Assist
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'a') {
+    e.preventDefault();
+    var assistBtn = $('btn-assist');
+    if (assistBtn) assistBtn.click();
+  }
+});
 
 function quitApp() {
   if (window.electronAPI && window.electronAPI.quitApp) {
