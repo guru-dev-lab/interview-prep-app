@@ -1,12 +1,14 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences } = require('electron');
 const path = require('path');
 
-// CRITICAL: Disable GPU acceleration for true transparent window on macOS
-app.commandLine.appendSwitch('disable-gpu');
-app.disableHardwareAcceleration();
+// Safe logging — prevents EIO crash when stdout pipe is broken
+const _log = (...args) => { try { console.log(...args); } catch(e) {} };
 
-// Safe _log — prevents EIO crash when stdout pipe is broken
-const _log = (...args) => { try { _log(...args); } catch(e) {} };
+// Transparent window on macOS — try GPU first, fall back if needed
+// NOTE: In Electron 42+, GPU acceleration may be REQUIRED for transparency
+// Only disable if transparency doesn't work with GPU enabled
+// app.commandLine.appendSwitch('disable-gpu');
+// app.disableHardwareAcceleration();
 
 // ===== CONFIG =====
 const SERVER_URL = process.env.XHIRE_SERVER || 'https://xhire.app';
@@ -170,18 +172,14 @@ function createOverlay() {
     }
   });
 
-  // macOS transparency fix — multiple techniques to eliminate background rectangle
+  // macOS transparency fix — force the window to have NO visible background
   if (process.platform === 'darwin') {
-    // Step 1: Set vibrancy to force compositor to respect transparency
-    mainWindow.setVibrancy('under-window');
-
-    // Step 2: After window is composited, remove vibrancy and flash opacity
+    // Flash opacity to force macOS compositor to re-render with transparency
+    mainWindow.setOpacity(0);
     setTimeout(() => {
-      mainWindow.setVibrancy(null);
       mainWindow.setBackgroundColor('#00000000');
-      mainWindow.setOpacity(0.99);
-      setTimeout(() => mainWindow.setOpacity(1.0), 50);
-    }, 150);
+      mainWindow.setOpacity(1.0);
+    }, 100);
   }
 
   // Ensure webContents has transparent background
