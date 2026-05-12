@@ -162,6 +162,8 @@ function createOverlay() {
     visibleOnAllWorkspaces: true,
     hiddenInMissionControl: true,
     backgroundColor: '#00000000',
+    vibrancy: 'under-window',
+    visualEffectState: 'active',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -170,22 +172,6 @@ function createOverlay() {
       webSecurity: false,
       backgroundThrottling: false,
     }
-  });
-
-  // macOS transparency fix — force the window to have NO visible background
-  if (process.platform === 'darwin') {
-    // Flash opacity to force macOS compositor to re-render with transparency
-    mainWindow.setOpacity(0);
-    setTimeout(() => {
-      mainWindow.setBackgroundColor('#00000000');
-      mainWindow.setOpacity(1.0);
-    }, 100);
-  }
-
-  // Ensure webContents has transparent background
-  mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.insertCSS('html,body{background:transparent !important}');
-    mainWindow.setBackgroundColor('#00000000');
   });
 
   // CRITICAL macOS settings — must be called AFTER window creation
