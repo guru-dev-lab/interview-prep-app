@@ -151,7 +151,7 @@ function createOverlay() {
     transparent: true,
     frame: false,
     hasShadow: false,
-    resizable: false,
+    resizable: true,
     movable: true,
     minimizable: false,
     maximizable: false,
