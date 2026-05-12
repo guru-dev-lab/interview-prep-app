@@ -230,34 +230,22 @@ body.look-ocean .sc-card-a code{background:rgba(6,182,212,.1);color:#67E8F9;bord
 body.look-ocean .sc-card-a pre::before{background:linear-gradient(180deg,#06B6D4,rgba(6,182,212,.2))}
 body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;border-color:rgba(6,182,212,.3)}
 
-/* ===== BOTTOM BAR — Cluely-style: action links row + input row + keybind hints ===== */
-.bottom-bar{flex-shrink:0;background:rgba(10,12,22,.45);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border-top:1px solid rgba(255,255,255,.06);padding:8px 12px 6px;-webkit-app-region:no-drag;position:relative;border-radius:0 0 20px 20px}
-.bottom-bar::before{content:'';position:absolute;top:-1px;left:8%;right:8%;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,.25),transparent);pointer-events:none}
-/* Action links row — horizontal text buttons like Cluely */
-.action-links{display:flex;align-items:center;gap:4px;padding:0 2px 6px;flex-wrap:nowrap;overflow-x:auto}
-.action-links::-webkit-scrollbar{display:none}
-.action-link{border:none;background:none;padding:0;font:500 11px Inter,sans-serif;color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:color .15s;white-space:nowrap;flex-shrink:0}
-.action-link:hover{color:var(--text)}
-.action-link:active{color:var(--accent2)}
-.action-link.loading{opacity:.4;pointer-events:none}
-.action-link svg{opacity:.7}
-.action-link-sep{color:var(--text4);font-size:10px;user-select:none;flex-shrink:0}
-/* Input row */
-.bottom-row{display:flex;gap:6px;align-items:center}
-.bottom-row input{flex:1;min-width:0;height:34px;padding:0 12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;font:400 11.5px Inter,sans-serif;color:var(--text);background:rgba(255,255,255,.04);outline:none;transition:.2s}
-.bottom-row input:focus{border-color:var(--accent);background:rgba(255,255,255,.06)}
-.bottom-row input::placeholder{color:var(--text4);font-size:10.5px}
-.send-btn{width:34px;height:34px;border:none;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s ease}
-.send-btn:hover{background:#6d28d9;transform:scale(1.06);box-shadow:0 2px 10px rgba(124,58,237,.35)}
-.send-btn:active{transform:scale(.94)}
-/* Keyboard shortcut hints — like Cluely's keybind display */
-.keybind-hint{display:flex;align-items:center;gap:8px;padding:4px 2px 0;font:400 9px Inter,sans-serif;color:var(--text4)}
-.kbd-pill{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:4px;padding:1px 5px;font:500 8.5px Inter,sans-serif;color:var(--text3);letter-spacing:.3px}
-/* Legacy action-btn for Record/Switch secondary row */
-.action-btn{flex-shrink:0;height:28px;padding:0 10px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);font:600 10px Inter,sans-serif;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .15s ease;white-space:nowrap}
-.action-btn:hover{border-color:rgba(124,58,237,.25);color:var(--text2);background:rgba(124,58,237,.08)}
-.action-btn.loading{opacity:.5;pointer-events:none}
+/* ===== BOTTOM BAR — Xhire original: single row [Say? ⌘↵] [Assist] [Ask anything...] ===== */
+.bottom-bar{flex-shrink:0;background:rgba(10,12,22,.5);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);border-top:1px solid rgba(255,255,255,.06);padding:8px 10px;-webkit-app-region:no-drag;position:relative;border-radius:0 0 20px 20px}
+.bottom-bar::before{content:'';position:absolute;top:-1px;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,.2),transparent);pointer-events:none}
+/* Single unified row — prototype design */
+.bottom-row{display:flex;gap:5px;align-items:center}
+.action-btn{flex-shrink:0;height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);font:600 10px Inter,sans-serif;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .15s ease;white-space:nowrap}
+.action-btn:hover{border-color:rgba(124,58,237,.3);color:#fff;background:rgba(124,58,237,.1);transform:translateY(-1px)}
+.action-btn:active{transform:scale(.96)}
+.action-btn.primary{border:none;color:#fff;background:linear-gradient(135deg,#7c3aed,#6d28d9);box-shadow:0 2px 8px rgba(124,58,237,.3)}
+.action-btn.primary:hover{box-shadow:0 4px 14px rgba(124,58,237,.4);transform:translateY(-1px)}
+.action-btn.loading{opacity:.4;pointer-events:none}
 .action-btn.recording{border-color:#F87171;background:rgba(248,113,113,.1);color:#fca5a5;animation:pulse 1.5s ease infinite}
+.action-btn .kbd{font:500 8px Inter,sans-serif;background:rgba(255,255,255,.1);padding:2px 5px;border-radius:4px;color:rgba(255,255,255,.5);margin-left:2px}
+.bottom-row input{flex:1;min-width:0;height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.08);border-radius:8px;font:400 11px Inter,sans-serif;color:var(--text);background:rgba(255,255,255,.04);outline:none;transition:.2s}
+.bottom-row input:focus{border-color:var(--accent);background:rgba(255,255,255,.06);box-shadow:0 0 0 2px rgba(124,58,237,.1)}
+.bottom-row input::placeholder{color:var(--text4);font-size:10px}
 /* Hidden action row for Record/Switch — only visible when needed */
 .action-row-secondary{display:none;gap:5px;margin-bottom:6px}
 .action-row-secondary.show{display:flex}
@@ -321,18 +309,13 @@ body.light-mode .hud-dot.off{background:#EF4444;box-shadow:0 0 6px rgba(239,68,6
 body.light-mode .hud-dot.on{background:#10B981;box-shadow:0 0 8px rgba(16,185,129,.35)}
 body.light-mode .hud-dot.wait{background:#D97706;box-shadow:0 0 6px rgba(217,119,6,.3)}
 body.light-mode .hud-status{color:#6b7280}
-body.light-mode .action-btn{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#4b5563}
-body.light-mode .action-btn:hover{border-color:rgba(109,40,217,.2);background:rgba(109,40,217,.04);color:#374151}
+body.light-mode .action-btn{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#374151}
+body.light-mode .action-btn:hover{border-color:rgba(109,40,217,.2);background:rgba(109,40,217,.04);color:#1f2937}
+body.light-mode .action-btn.primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}
+body.light-mode .action-btn .kbd{background:rgba(0,0,0,.06);color:#6b7280}
 body.light-mode .bottom-bar{background:rgba(235,237,242,.6);backdrop-filter:blur(16px) saturate(1.2);border-color:rgba(0,0,0,.06)}
 body.light-mode .bottom-bar::before{background:linear-gradient(90deg,transparent,rgba(109,40,217,.12),transparent)}
 body.light-mode .bottom-row input{background:#fff;border-color:rgba(0,0,0,.1);color:#111827}
-body.light-mode .action-link{color:#6b7280}
-body.light-mode .action-link:hover{color:#1f2937}
-body.light-mode .action-link-sep{color:#d1d5db}
-body.light-mode .send-btn{background:#7c3aed}
-body.light-mode .send-btn:hover{background:#6d28d9}
-body.light-mode .keybind-hint{color:#9ca3af}
-body.light-mode .kbd-pill{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.08);color:#6b7280}
 body.light-mode .tb-btn-live{color:#059669;border-color:rgba(5,150,105,.15);background:rgba(5,150,105,.08)}
 body.light-mode .filter-btn{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.06)}
 body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9;border-color:rgba(109,40,217,.2)}
@@ -506,7 +489,7 @@ document.body.style.background='transparent';
     </div>
   </div>
 
-  <!-- Bottom bar — Cluely-style: action links + input row -->
+  <!-- Bottom bar — single row: [Say? ⌘↵] [Assist] [Ask anything...] -->
   <div class="bottom-bar">
     <!-- Secondary row for Record/Switch — hidden until needed -->
     <div class="action-row-secondary" id="action-row-secondary">
@@ -518,34 +501,11 @@ document.body.style.background='transparent';
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>
       </button>
     </div>
-    <!-- Action links row — like Cluely's "Assist · What should I say? · Follow-up questions" -->
-    <div class="action-links">
-      <button class="action-link" id="btn-assist" onclick="screenAssist()">
-        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        Assist
-      </button>
-      <span class="action-link-sep">&middot;</span>
-      <button class="action-link" id="btn-wsay" onclick="whatShouldISay()">
-        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        What should I say?
-      </button>
-      <span class="action-link-sep">&middot;</span>
-      <button class="action-link" id="btn-followup" onclick="sendFollowUp()">
-        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
-        Follow-up
-      </button>
-    </div>
-    <!-- Input row with send button -->
+    <!-- Main row: Say? + Assist + input — YOUR prototype design -->
     <div class="bottom-row">
-      <input type="text" id="q-input" placeholder="Ask about your screen or conversation, or &#8984; &#8629; for Assist" onkeydown="if(event.key==='Enter')sendQuestion()">
-      <button class="send-btn" onclick="sendQuestion()" data-tip="Send">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-      </button>
-    </div>
-    <!-- Keyboard shortcut hint -->
-    <div class="keybind-hint">
-      <span class="kbd-pill">&#8984;&#8629;</span> Assist
-      <span class="kbd-pill">&#8984;R</span> Clear
+      <button class="action-btn primary" id="btn-wsay" data-tip="AI suggests what to say" onclick="whatShouldISay()">Say?<span class="kbd">&#8984;&#8629;</span></button>
+      <button class="action-btn" id="btn-assist" data-tip="Capture & analyze screen" onclick="screenAssist()">Assist</button>
+      <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
     </div>
   </div>
   <!-- Resize handle -->
@@ -923,7 +883,7 @@ function setFilter(filter) {
 }
 
 // ===== ACTIONS =====
-var wsayDefaultHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> What should I say?';
+var wsayDefaultHTML = 'Say?<span class="kbd">⌘↵</span>';
 
 function whatShouldISay() {
   var btn = $('btn-wsay');
@@ -942,14 +902,6 @@ function whatShouldISay() {
     btn.classList.remove('loading');
     btn.innerHTML = wsayDefaultHTML;
     setStatus('Not live', 'off');
-  }
-}
-
-function sendFollowUp() {
-  // Send a follow-up request based on last card in feed
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    pendingManualScroll = true;
-    ws.send(JSON.stringify({ type: 'canvas_question', text: 'Follow-up: Can you elaborate on the previous answer with more specific details?' }));
   }
 }
 
@@ -973,7 +925,7 @@ var recordingInterval = null;
 var isRecording = false;
 var RECORD_INTERVAL_MS = 8000;
 
-var assistDefaultHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Assist';
+var assistDefaultHTML = 'Assist';
 var recordDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg> Record';
 
 async function getScreenStream() {
