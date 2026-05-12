@@ -9,8 +9,8 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#06080f;--surface:#0c1019;--accent:#7c3aed;--accent2:#a78bfa;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--text4:#475569;--glass-border:rgba(255,255,255,.06);--glow:rgba(124,58,237,.35);--glass-bg:rgba(16,20,35,0.72);--glass-blur:blur(48px) saturate(1.4);--glass-border-color:rgba(255,255,255,0.12)}
-html,body{height:100%;overflow:hidden;background:transparent;color:var(--text);font-family:Inter,sans-serif}
-body{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0 14px;background:transparent}
+html{height:100%;overflow:hidden;background:transparent !important;color:var(--text);font-family:Inter,sans-serif}
+body{height:100%;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0 14px;background:transparent !important;color:var(--text);font-family:Inter,sans-serif}
 
 button,input,select{-webkit-app-region:no-drag;cursor:pointer}
 input[type=text],input[type=email],input[type=password]{cursor:text}
@@ -267,7 +267,7 @@ body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;
 
 /* ===== LIGHT MODE ===== */
 body.light-mode,html.light-mode{--bg:transparent;--surface:#ebedf2;--text:#111827;--text2:#1f2937;--text3:#4b5563;--text4:#9ca3af;--glass-border:rgba(0,0,0,.08);--accent2:#6d28d9;--glass-bg:rgba(255,255,255,0.82);--glass-border-color:rgba(0,0,0,.1)}
-body.light-mode{background:transparent}
+body.light-mode{background:transparent !important}
 body.light-mode .toolbar{box-shadow:0 4px 24px rgba(0,0,0,.08),0 0 15px rgba(109,40,217,.04),inset 0 1px 0 rgba(255,255,255,.5)}
 body.light-mode .toolbar::after{box-shadow:0 0 12px rgba(109,40,217,.06),0 0 30px rgba(99,102,241,.02)}
 body.light-mode .panel{box-shadow:0 8px 32px rgba(0,0,0,.08),0 0 20px rgba(109,40,217,.03),inset 0 1px 0 rgba(255,255,255,.5)}
@@ -344,7 +344,12 @@ body.light-mode .resize-handle{color:#9ca3af}
 body.light-mode .resize-handle:hover{color:#6d28d9}
 </style>
 </head>
-<body>
+<body style="background:transparent !important">
+<script>
+// Force transparent background immediately — before any paint
+document.documentElement.style.background='transparent';
+document.body.style.background='transparent';
+</script>
 
 <!-- TOOLBAR — separate floating glass panel -->
 <div class="toolbar" id="hud">

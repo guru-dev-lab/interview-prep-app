@@ -23,6 +23,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'interview-prep-secret-change-me';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.use(express.json({ limit: '20mb' }));
+
+// No-cache for canvas.html and launcher.html — Electron must always get latest
+app.use('/canvas.html', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+app.use('/launcher', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============ DATABASE ============
