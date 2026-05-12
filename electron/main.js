@@ -148,7 +148,7 @@ function createOverlay() {
     transparent: true,
     frame: false,
     hasShadow: false,
-    resizable: true,
+    resizable: false,            // CRITICAL: resizable:true breaks transparency on macOS
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -159,23 +159,29 @@ function createOverlay() {
     paintWhenInitiallyHidden: true,
     backgroundColor: '#00000000',
     roundedCorners: false,        // No OS-level rounded corners
-    minWidth: 320,
-    minHeight: 400,
-    maxWidth: 700,
+    titleBarStyle: 'customButtonsOnHover',
+    trafficLightPosition: { x: -20, y: -20 }, // Hide traffic lights offscreen
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,             // Needed for audio capture APIs
       webSecurity: false,         // Allow fetch from file:// to https://
+      backgroundThrottling: false,
     }
   });
 
-  // CRITICAL macOS trick: set vibrancy then remove it to get TRUE transparency
-  // Without this, macOS renders a faint window background even with transparent:true
+  // CRITICAL macOS transparency fix — multiple techniques stacked:
+  // 1. Vibrancy trick: set then remove to flush compositor
+  // 2. Opacity flash: briefly change opacity to force re-render
   if (process.platform === 'darwin') {
     mainWindow.setVibrancy('under-window');
-    setTimeout(() => mainWindow.setVibrancy(null), 50);
+    setTimeout(() => {
+      mainWindow.setVibrancy(null);
+      // Opacity flash forces macOS to re-composite the window as truly transparent
+      mainWindow.setOpacity(0.99);
+      setTimeout(() => mainWindow.setOpacity(1.0), 50);
+    }, 100);
   }
 
   // CRITICAL macOS settings — must be called AFTER window creation
