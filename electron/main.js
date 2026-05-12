@@ -4,11 +4,9 @@ const path = require('path');
 // Safe logging — prevents EIO crash when stdout pipe is broken
 const _log = (...args) => { try { console.log(...args); } catch(e) {} };
 
-// Transparent window on macOS — try GPU first, fall back if needed
-// NOTE: In Electron 42+, GPU acceleration may be REQUIRED for transparency
-// Only disable if transparency doesn't work with GPU enabled
-// app.commandLine.appendSwitch('disable-gpu');
-// app.disableHardwareAcceleration();
+// macOS transparency fix — disable hardware acceleration + Chromium's RoundedWindowMac
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
 
 // ===== CONFIG =====
 const SERVER_URL = process.env.XHIRE_SERVER || 'https://xhire.app';
@@ -162,8 +160,6 @@ function createOverlay() {
     visibleOnAllWorkspaces: true,
     hiddenInMissionControl: true,
     backgroundColor: '#00000000',
-    vibrancy: 'under-window',
-    visualEffectState: 'active',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
