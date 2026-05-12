@@ -150,26 +150,22 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .filter-btn:hover{border-color:var(--accent);background:rgba(124,58,237,.08)}
 .filter-btn.active{background:rgba(124,58,237,.2);color:#e0d5ff;border-color:rgba(124,58,237,.4)}
 
-/* ===== WAVEFORM BAR — live audio indicator ===== */
-.wave-bar{display:flex;align-items:center;gap:8px;padding:6px 16px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
-.wave-bars{display:flex;align-items:center;gap:2px;height:18px}
-.wave-line{width:2px;border-radius:2px;background:var(--accent2);animation:wave-pulse 1.2s ease-in-out infinite;transform-origin:center}
-.wave-line:nth-child(1){height:4px;animation-delay:0s}
-.wave-line:nth-child(2){height:8px;animation-delay:.1s}
-.wave-line:nth-child(3){height:14px;animation-delay:.2s}
-.wave-line:nth-child(4){height:10px;animation-delay:.3s}
-.wave-line:nth-child(5){height:16px;animation-delay:.15s}
-.wave-line:nth-child(6){height:6px;animation-delay:.25s}
-.wave-line:nth-child(7){height:12px;animation-delay:.35s}
-.wave-line:nth-child(8){height:8px;animation-delay:.05s}
-.wave-line:nth-child(9){height:14px;animation-delay:.4s}
-.wave-line:nth-child(10){height:4px;animation-delay:.2s}
-.wave-line:nth-child(11){height:10px;animation-delay:.3s}
-.wave-line:nth-child(12){height:6px;animation-delay:.1s}
+/* ===== WAVE STATUS — compact live audio indicator ===== */
+.wave-bar{display:flex;align-items:center;gap:6px;padding:4px 16px;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;-webkit-app-region:no-drag}
+.wave-bars{display:flex;align-items:center;gap:2px;height:14px}
+.wave-line{width:2px;border-radius:2px;background:#34D399;animation:wave-pulse 1.2s ease-in-out infinite;transform-origin:center}
+.wave-line:nth-child(1){height:3px;animation-delay:0s}
+.wave-line:nth-child(2){height:6px;animation-delay:.1s}
+.wave-line:nth-child(3){height:10px;animation-delay:.2s}
+.wave-line:nth-child(4){height:7px;animation-delay:.3s}
+.wave-line:nth-child(5){height:12px;animation-delay:.15s}
+.wave-line:nth-child(6){height:5px;animation-delay:.25s}
+.wave-line:nth-child(7){height:9px;animation-delay:.35s}
+.wave-line:nth-child(8){height:6px;animation-delay:.05s}
 @keyframes wave-pulse{0%,100%{transform:scaleY(.3);opacity:.4}50%{transform:scaleY(1);opacity:1}}
-.wave-label{font:600 9px Inter,sans-serif;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px}
-body.glow-live .wave-line{background:#34D399}
-body.glow-live .wave-label{color:#34D399}
+.wave-label{font:600 8px Inter,sans-serif;color:#34D399;text-transform:uppercase;letter-spacing:.5px}
+.wave-right{margin-left:auto;display:flex;align-items:center;gap:2px}
+.wave-right .wave-line{background:#34D399;opacity:.5}
 
 /* Feed — scrollable */
 .feed-wrap{flex:1;overflow-y:auto;padding:10px 16px;scroll-behavior:smooth;background:radial-gradient(ellipse at 50% 0%,rgba(124,58,237,.03) 0%,transparent 70%);min-height:0;-webkit-app-region:drag}
@@ -502,15 +498,15 @@ document.body.style.background='transparent';
 
 <!-- CONTENT PANEL — separate floating glass panel, resizable -->
 <div class="panel">
-  <!-- Live waveform bar — shows when capturing audio -->
+  <!-- Live status bar — shows when capturing audio -->
   <div class="wave-bar" id="wave-bar" style="display:none">
-    <div class="wave-bars">
-      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
-      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
-      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
-      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
+    <span style="width:6px;height:6px;border-radius:50%;background:#34D399;box-shadow:0 0 8px rgba(52,211,153,.5);flex-shrink:0"></span>
+    <span class="wave-label" id="wave-label">LISTENING & ASSISTING</span>
+    <div class="wave-right">
+      <span class="wave-line" style="height:3px"></span><span class="wave-line" style="height:7px"></span>
+      <span class="wave-line" style="height:10px"></span><span class="wave-line" style="height:5px"></span>
+      <span class="wave-line" style="height:8px"></span><span class="wave-line" style="height:4px"></span>
     </div>
-    <span class="wave-label" id="wave-label">Listening...</span>
   </div>
   <!-- Answer feed — scrollable -->
   <div class="feed-wrap" id="feed">
@@ -1091,6 +1087,8 @@ async function sendScreenCapture(base64) {
 async function screenAssist() {
   var btn = $('btn-assist');
   if (btn.classList.contains('loading')) return;
+  if (!SESSION_ID) { showToast('Select a session first', '', 2500); return; }
+  if (!TOKEN) { showToast('Not logged in', '', 2500); return; }
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>';
   try {
@@ -1101,6 +1099,7 @@ async function screenAssist() {
     await sendScreenCapture(base64);
   } catch(e) {
     console.warn('Screen assist error:', e);
+    showToast('Screen capture failed', '', 2500);
   }
   btn.classList.remove('loading');
   btn.innerHTML = assistDefaultHTML;
@@ -1430,7 +1429,7 @@ function updateLiveUI(isLive) {
   var waveBar = $('wave-bar');
   if (waveBar) waveBar.style.display = isLive ? 'flex' : 'none';
   var waveLabel = $('wave-label');
-  if (waveLabel) waveLabel.textContent = isLive ? 'Listening...' : '';
+  if (waveLabel) waveLabel.textContent = isLive ? 'LISTENING & ASSISTING' : '';
   // Show/hide co-pilot listening dot when live + copilot mode
   var cpDot = $('copilot-dot-live');
   if (cpDot) cpDot.style.display = (isLive && copilotActive) ? '' : 'none';
