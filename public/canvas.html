@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:transparent;--surface:#0c1019;--accent:#7c3aed;--accent2:#c4b5fd;--text:#f8fafc;--text2:#e2e8f0;--text3:#94a3b8;--text4:#64748b;--glass-border:rgba(255,255,255,.08);--glow:rgba(124,58,237,.35);--glass-bg:rgba(10,12,24,0.82);--glass-blur:blur(48px) saturate(1.4);--glass-border-color:rgba(255,255,255,0.14)}
+:root{--bg:transparent;--surface:#0c1019;--accent:#7c3aed;--accent2:#c4b5fd;--text:#f8fafc;--text2:#e2e8f0;--text3:#94a3b8;--text4:#64748b;--glass-border:rgba(255,255,255,.08);--glow:rgba(124,58,237,.35);--glass-bg:rgba(10,12,24,0.65);--glass-blur:blur(48px) saturate(1.4);--glass-border-color:rgba(255,255,255,0.14)}
 html{height:100%;overflow:hidden;background:transparent !important;color:var(--text);font-family:Inter,sans-serif}
 body{height:100%;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0 14px;background:transparent !important;color:var(--text);font-family:Inter,sans-serif}
 
@@ -144,11 +144,32 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 body.glow-live .panel::before{background:linear-gradient(90deg,transparent,rgba(52,211,153,.4),rgba(16,185,129,.25),rgba(52,211,153,.4),transparent)}
 body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rgba(16,185,129,.04)}
 
-/* Filters */
-.filter-bar{display:flex;gap:6px;padding:10px 16px 0;flex-shrink:0}
+/* Filters — hidden, kept for JS compatibility */
+.filter-bar{display:none}
 .filter-btn{padding:5px 12px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.05);font:600 10px Inter,sans-serif;color:var(--text2);cursor:pointer;transition:.2s;text-transform:uppercase;letter-spacing:.3px}
 .filter-btn:hover{border-color:var(--accent);background:rgba(124,58,237,.08)}
 .filter-btn.active{background:rgba(124,58,237,.2);color:#e0d5ff;border-color:rgba(124,58,237,.4)}
+
+/* ===== WAVEFORM BAR — live audio indicator ===== */
+.wave-bar{display:flex;align-items:center;gap:8px;padding:6px 16px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+.wave-bars{display:flex;align-items:center;gap:2px;height:18px}
+.wave-line{width:2px;border-radius:2px;background:var(--accent2);animation:wave-pulse 1.2s ease-in-out infinite;transform-origin:center}
+.wave-line:nth-child(1){height:4px;animation-delay:0s}
+.wave-line:nth-child(2){height:8px;animation-delay:.1s}
+.wave-line:nth-child(3){height:14px;animation-delay:.2s}
+.wave-line:nth-child(4){height:10px;animation-delay:.3s}
+.wave-line:nth-child(5){height:16px;animation-delay:.15s}
+.wave-line:nth-child(6){height:6px;animation-delay:.25s}
+.wave-line:nth-child(7){height:12px;animation-delay:.35s}
+.wave-line:nth-child(8){height:8px;animation-delay:.05s}
+.wave-line:nth-child(9){height:14px;animation-delay:.4s}
+.wave-line:nth-child(10){height:4px;animation-delay:.2s}
+.wave-line:nth-child(11){height:10px;animation-delay:.3s}
+.wave-line:nth-child(12){height:6px;animation-delay:.1s}
+@keyframes wave-pulse{0%,100%{transform:scaleY(.3);opacity:.4}50%{transform:scaleY(1);opacity:1}}
+.wave-label{font:600 9px Inter,sans-serif;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px}
+body.glow-live .wave-line{background:#34D399}
+body.glow-live .wave-label{color:#34D399}
 
 /* Feed — scrollable */
 .feed-wrap{flex:1;overflow-y:auto;padding:10px 16px;scroll-behavior:smooth;background:radial-gradient(ellipse at 50% 0%,rgba(124,58,237,.03) 0%,transparent 70%);min-height:0}
@@ -231,7 +252,7 @@ body.look-ocean .sc-card-a pre::before{background:linear-gradient(180deg,#06B6D4
 body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;border-color:rgba(6,182,212,.3)}
 
 /* ===== BOTTOM BAR — Xhire original: single row [Say? ⌘↵] [Assist] [Ask anything...] ===== */
-.bottom-bar{flex-shrink:0;background:rgba(8,10,20,.85);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);border-top:1px solid rgba(255,255,255,.08);padding:8px 10px;-webkit-app-region:no-drag;position:relative;border-radius:0 0 20px 20px}
+.bottom-bar{flex-shrink:0;background:rgba(8,10,20,.72);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);border-top:1px solid rgba(255,255,255,.08);padding:8px 10px;-webkit-app-region:no-drag;position:relative;border-radius:0 0 20px 20px}
 .bottom-bar::before{content:'';position:absolute;top:-1px;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,.2),transparent);pointer-events:none}
 /* Single unified row — prototype design */
 .bottom-row{display:flex;gap:5px;align-items:center}
@@ -475,10 +496,15 @@ document.body.style.background='transparent';
 
 <!-- CONTENT PANEL — separate floating glass panel, resizable -->
 <div class="panel">
-  <!-- Filter bar -->
-  <div class="filter-bar">
-    <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
-    <button class="filter-btn" id="filter-generated" onclick="setFilter('generated')">AI Generated</button>
+  <!-- Live waveform bar — shows when capturing audio -->
+  <div class="wave-bar" id="wave-bar" style="display:none">
+    <div class="wave-bars">
+      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
+      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
+      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
+      <span class="wave-line"></span><span class="wave-line"></span><span class="wave-line"></span>
+    </div>
+    <span class="wave-label" id="wave-label">Listening...</span>
   </div>
   <!-- Answer feed — scrollable -->
   <div class="feed-wrap" id="feed">
@@ -489,7 +515,7 @@ document.body.style.background='transparent';
     </div>
   </div>
 
-  <!-- Bottom bar — single row: [Say? ⌘↵] [Assist] [Ask anything...] -->
+  <!-- Smart bottom bar -->
   <div class="bottom-bar">
     <!-- Secondary row for Record/Switch — hidden until needed -->
     <div class="action-row-secondary" id="action-row-secondary">
@@ -501,10 +527,16 @@ document.body.style.background='transparent';
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>
       </button>
     </div>
-    <!-- Main row: Say? + Assist + input — YOUR prototype design -->
+    <!-- Smart input row -->
     <div class="bottom-row">
-      <button class="action-btn primary" id="btn-wsay" data-tip="AI suggests what to say" onclick="whatShouldISay()">Say?<span class="kbd">&#8984;&#8629;</span></button>
-      <button class="action-btn" id="btn-assist" data-tip="Capture & analyze screen" onclick="screenAssist()">Assist</button>
+      <button class="action-btn primary" id="btn-wsay" data-tip="AI suggests what to say" onclick="whatShouldISay()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        Say?<span class="kbd">&#8984;&#8629;</span>
+      </button>
+      <button class="action-btn" id="btn-assist" data-tip="Capture & analyze screen" onclick="screenAssist()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Assist
+      </button>
       <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
     </div>
   </div>
@@ -1372,6 +1404,11 @@ function updateLiveUI(isLive) {
   }
   // Glow border shifts green when live
   document.body.classList.toggle('glow-live', isLive);
+  // Show/hide waveform bar
+  var waveBar = $('wave-bar');
+  if (waveBar) waveBar.style.display = isLive ? 'flex' : 'none';
+  var waveLabel = $('wave-label');
+  if (waveLabel) waveLabel.textContent = isLive ? 'Listening...' : '';
   // Show/hide co-pilot listening dot when live + copilot mode
   var cpDot = $('copilot-dot-live');
   if (cpDot) cpDot.style.display = (isLive && copilotActive) ? '' : 'none';

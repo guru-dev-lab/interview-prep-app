@@ -5,6 +5,9 @@ const path = require('path');
 app.commandLine.appendSwitch('disable-gpu');
 app.disableHardwareAcceleration();
 
+// Safe _log — prevents EIO crash when stdout pipe is broken
+const _log = (...args) => { try { _log(...args); } catch(e) {} };
+
 // ===== CONFIG =====
 const SERVER_URL = process.env.XHIRE_SERVER || 'https://xhire.app';
 let mainWindow = null;
@@ -16,7 +19,7 @@ let isVisible = true;
 // Single instance lock — prevent multiple overlays
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-  console.log('[Xhire] Another instance is running, quitting.');
+  _log('[Xhire] Another instance is running, quitting.');
   app.quit();
 }
 
@@ -57,7 +60,7 @@ app.whenReady().then(() => {
   // Request microphone permission on macOS
   if (process.platform === 'darwin') {
     systemPreferences.askForMediaAccess('microphone').then((granted) => {
-      console.log('[Xhire] Microphone access:', granted ? 'granted' : 'denied');
+      _log('[Xhire] Microphone access:', granted ? 'granted' : 'denied');
     });
   }
 });
@@ -198,7 +201,7 @@ function createOverlay() {
   // Load launcher from the server (same-origin for API calls)
   // Falls back to local file if server is unreachable
   mainWindow.loadURL(SERVER_URL + '/launcher').catch(() => {
-    console.log('[Xhire] Server unreachable, loading local launcher');
+    _log('[Xhire] Server unreachable, loading local launcher');
     mainWindow.loadFile(path.join(__dirname, 'launcher.html'));
   });
 
@@ -221,7 +224,7 @@ function createOverlay() {
     }, 200);
   });
 
-  console.log('[Xhire] Overlay window created');
+  _log('[Xhire] Overlay window created');
 }
 
 // ===== IPC HANDLERS =====
@@ -239,7 +242,7 @@ ipcMain.handle('toggle-overlay', () => {
 // Navigate to canvas URL after user authenticates
 ipcMain.handle('load-canvas', (_, url) => {
   if (mainWindow) {
-    console.log('[Xhire] Loading canvas:', url);
+    _log('[Xhire] Loading canvas:', url);
     mainWindow.loadURL(url);
   }
 });
@@ -259,7 +262,7 @@ ipcMain.handle('quit-app', () => {
 ipcMain.handle('set-stealth', (_, on) => {
   if (mainWindow) {
     mainWindow.setContentProtection(!!on);
-    console.log('[Xhire] Content protection:', on ? 'ON' : 'OFF');
+    _log('[Xhire] Content protection:', on ? 'ON' : 'OFF');
   }
 });
 
