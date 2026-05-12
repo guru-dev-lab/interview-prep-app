@@ -23,7 +23,7 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 [data-tip].tip-left:hover::after{transform:translateX(0) translateY(0)}
 
 /* ===== TOOLBAR — floating frosted glass bar ===== */
-.toolbar{width:92%;max-width:620px;flex-shrink:0;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:16px;-webkit-app-region:drag;position:relative;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.1)}
+.toolbar{width:94%;max-width:620px;flex-shrink:0;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:14px;-webkit-app-region:drag;position:relative;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.1)}
 /* Ambient glow on toolbar */
 .toolbar::before{content:'';position:absolute;top:-1px;left:20%;right:20%;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,.4),rgba(99,102,241,.3),rgba(124,58,237,.4),transparent);pointer-events:none;z-index:1}
 .toolbar::after{content:'';position:absolute;inset:-1px;border-radius:17px;box-shadow:0 0 18px rgba(124,58,237,.1),0 0 40px rgba(99,102,241,.04);pointer-events:none;z-index:-1}
@@ -31,23 +31,22 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgba(52,211,153,.5),rgba(16,185,129,.3),rgba(52,211,153,.5),transparent)}
 body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px rgba(16,185,129,.05)}
 
-.tb-inner{height:40px;display:flex;align-items:center;padding:0 8px;gap:4px;overflow:hidden}
-.tb-brand{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.brand-orb{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;font:800 9px Inter,sans-serif;color:#fff;letter-spacing:-.5px;flex-shrink:0;box-shadow:0 0 12px rgba(124,58,237,.3);animation:orbPulse 3s ease infinite}
-@keyframes orbPulse{0%,100%{box-shadow:0 0 12px rgba(124,58,237,.3)}50%{box-shadow:0 0 20px rgba(124,58,237,.45),0 0 6px rgba(99,102,241,.2)}}
-.brand-name{font:700 12px Inter,sans-serif;background:linear-gradient(135deg,#e0d5ff,#c4b5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.tb-sep{width:1px;height:18px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.1),transparent);flex-shrink:0}
+.tb-inner{height:36px;display:flex;align-items:center;padding:0 6px;gap:3px;overflow:hidden}
+.tb-brand{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.brand-orb{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,#7c3aed,#6366f1);display:flex;align-items:center;justify-content:center;font:800 8px Inter,sans-serif;color:#fff;letter-spacing:-.5px;flex-shrink:0;box-shadow:0 0 10px rgba(124,58,237,.3)}
+.brand-name{font:700 11px Inter,sans-serif;background:linear-gradient(135deg,#e0d5ff,#c4b5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.tb-sep{width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.08),transparent);flex-shrink:0;margin:0 1px}
 
 /* Status dot */
-.hud-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:.3s}
+.hud-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;transition:.3s}
 .hud-dot.off{background:#F87171;box-shadow:0 0 6px rgba(248,113,113,.4)}
 .hud-dot.on{background:#34D399;box-shadow:0 0 8px rgba(52,211,153,.5),0 0 18px rgba(52,211,153,.12);animation:dot-breathe 2.5s ease infinite}
 .hud-dot.wait{background:#FBBF24;box-shadow:0 0 6px rgba(251,191,36,.4);animation:dot-breathe 1.5s ease infinite}
 @keyframes dot-breathe{0%,100%{box-shadow:0 0 6px currentColor;opacity:1}50%{box-shadow:0 0 14px currentColor,0 0 22px currentColor;opacity:.7}}
-.hud-status{font:600 8px Inter,sans-serif;color:var(--text3);text-transform:uppercase;letter-spacing:.4px}
+.hud-status{font:600 7px Inter,sans-serif;color:var(--text3);text-transform:uppercase;letter-spacing:.3px;max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Toolbar buttons */
-.tb-btn{width:26px;height:24px;border:1px solid rgba(255,255,255,.06);border-radius:6px;background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .12s ease,background .15s ease,color .15s ease;font:600 9px Inter,sans-serif;padding:0;flex-shrink:0}
+.tb-btn{width:22px;height:22px;border:1px solid rgba(255,255,255,.06);border-radius:5px;background:rgba(255,255,255,.04);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .12s ease,background .15s ease,color .15s ease;font:600 9px Inter,sans-serif;padding:0;flex-shrink:0}
 .tb-btn:hover{background:rgba(255,255,255,.1);color:var(--accent2);transform:scale(1.08)}
 .tb-btn:active{transform:scale(.93)}
 .tb-btn.danger:hover{background:rgba(248,113,113,.12);color:#F87171}
@@ -67,8 +66,8 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 .hud-select option{background:#0c1019;color:#e2e8f0}
 
 /* Mode pill toggle */
-.mode-toggle{display:flex;background:rgba(255,255,255,.05);border-radius:7px;overflow:hidden;height:26px;border:1px solid rgba(255,255,255,.06)}
-.mode-btn{padding:0 12px;border:none;background:transparent;font:600 9.5px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:all .18s ease;white-space:nowrap}
+.mode-toggle{display:flex;background:rgba(255,255,255,.05);border-radius:6px;overflow:hidden;height:22px;border:1px solid rgba(255,255,255,.06);flex-shrink:0}
+.mode-btn{padding:0 8px;border:none;background:transparent;font:600 8.5px Inter,sans-serif;color:var(--text3);cursor:pointer;transition:all .18s ease;white-space:nowrap}
 .mode-btn:hover{color:var(--text2);background:rgba(255,255,255,.05)}
 .mode-btn.active{background:rgba(124,58,237,.22);color:#C7D2FE;box-shadow:inset 0 0 10px rgba(124,58,237,.08)}
 .mode-btn.active.copilot-mode{background:rgba(99,102,241,.22);color:#A5B4FC;box-shadow:inset 0 0 10px rgba(99,102,241,.08)}
@@ -77,7 +76,7 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 .tb-inner .hud-btn svg{flex-shrink:0}
 
 /* Toolbar utils — right side */
-.tb-utils{display:flex;gap:3px;align-items:center;flex-shrink:0;margin-left:auto;-webkit-app-region:no-drag}
+.tb-utils{display:flex;gap:2px;align-items:center;flex-shrink:0;-webkit-app-region:no-drag}
 
 /* ===== FLOATING CONFIG PILL ===== */
 .config-float{position:fixed;top:66px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:6px;padding:6px 12px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(124,58,237,.15);border-radius:14px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1)}

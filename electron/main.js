@@ -143,42 +143,40 @@ function createOverlay() {
   mainWindow = new BrowserWindow({
     width: 420,
     height: 650,
-    x: screenW - 440,           // Right side of screen
-    y: Math.round(screenH * 0.05), // Near top
+    x: screenW - 440,
+    y: Math.round(screenH * 0.05),
     transparent: true,
     frame: false,
     hasShadow: false,
-    resizable: false,            // CRITICAL: resizable:true breaks transparency on macOS
+    resizable: false,
+    movable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    type: 'panel',               // CRITICAL for macOS — NSPanel floats over fullscreen
+    // NOTE: removed type:'panel' — it causes background rectangle in Electron 42+
+    // Instead we use setAlwaysOnTop('screen-saver') below for same effect
     visibleOnAllWorkspaces: true,
     hiddenInMissionControl: true,
-    paintWhenInitiallyHidden: true,
     backgroundColor: '#00000000',
-    roundedCorners: false,        // No OS-level rounded corners
+    roundedCorners: false,
     titleBarStyle: 'customButtonsOnHover',
-    trafficLightPosition: { x: -20, y: -20 }, // Hide traffic lights offscreen
+    trafficLightPosition: { x: -20, y: -20 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,             // Needed for audio capture APIs
-      webSecurity: false,         // Allow fetch from file:// to https://
+      sandbox: false,
+      webSecurity: false,
       backgroundThrottling: false,
     }
   });
 
-  // CRITICAL macOS transparency fix — multiple techniques stacked:
-  // 1. Vibrancy trick: set then remove to flush compositor
-  // 2. Opacity flash: briefly change opacity to force re-render
+  // macOS transparency — vibrancy trick + opacity flash
   if (process.platform === 'darwin') {
     mainWindow.setVibrancy('under-window');
     setTimeout(() => {
       mainWindow.setVibrancy(null);
-      // Opacity flash forces macOS to re-composite the window as truly transparent
       mainWindow.setOpacity(0.99);
       setTimeout(() => mainWindow.setOpacity(1.0), 50);
     }, 100);
