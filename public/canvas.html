@@ -227,7 +227,7 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .metric-hl{color:#34D399;font-weight:700}
 
 /* Question & answer text */
-.sc-q-text{font:600 11.5px/1.4 Inter,sans-serif;color:#ffffff;flex:1;min-width:0}
+.sc-q-text{font:500 9.5px/1.3 Inter,sans-serif;color:rgba(255,255,255,.7);flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}
 .sc-card-a{padding:8px 10px;font:400 11.5px/1.7 Inter,sans-serif;color:#e8edf5}
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
@@ -298,6 +298,11 @@ body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;
 .bottom-row input{flex:1;min-width:0;height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.1);border-radius:8px;font:400 11px Inter,sans-serif;color:#fff;background:rgba(255,255,255,.06);outline:none;transition:.2s}
 .bottom-row input:focus{border-color:var(--accent);background:rgba(255,255,255,.08);box-shadow:0 0 0 2px rgba(124,58,237,.15)}
 .bottom-row input::placeholder{color:var(--text3);font-size:10px}
+.q-input-wrap{flex:1;min-width:0;position:relative;display:flex;align-items:center}
+.q-input-wrap input{width:100%;padding-right:28px}
+.q-send-btn{position:absolute;right:3px;width:22px;height:22px;border:none;border-radius:5px;background:rgba(124,58,237,.15);color:var(--accent2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;padding:0}
+.q-send-btn:hover{background:rgba(124,58,237,.35);color:#fff;transform:scale(1.08)}
+.q-send-btn:active{transform:scale(.92)}
 /* Hidden action row for Record/Switch — only visible when needed */
 .action-row-secondary{display:none;gap:5px;margin-bottom:6px}
 .action-row-secondary.show{display:flex}
@@ -343,7 +348,7 @@ body.light-mode .sc-card-a pre{background:#0d1117;color:#e6edf3;border-color:#21
 body.light-mode .sc-card-a pre code{color:#e6edf3;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.06);color:#6d28d9;border-color:rgba(109,40,217,.1)}
 body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.02)}
-body.light-mode .sc-q-text{color:#111827}
+body.light-mode .sc-q-text{color:rgba(17,24,39,.6)}
 body.light-mode .card-num{background:linear-gradient(135deg,#059669,#10B981);box-shadow:0 2px 6px rgba(16,185,129,.2)}
 body.light-mode .cat-tag.behavioral{background:rgba(16,185,129,.1);color:#059669;border-color:rgba(16,185,129,.15)}
 body.light-mode .cat-tag.star{background:rgba(217,119,6,.1);color:#D97706;border-color:rgba(217,119,6,.15)}
@@ -398,6 +403,8 @@ body.light-mode .action-btn .kbd{background:rgba(0,0,0,.06);color:#6b7280}
 body.light-mode .bottom-bar{background:rgba(235,237,242,.6);backdrop-filter:blur(16px) saturate(1.2);border-color:rgba(0,0,0,.06)}
 body.light-mode .bottom-bar::before{background:linear-gradient(90deg,transparent,rgba(109,40,217,.12),transparent)}
 body.light-mode .bottom-row input{background:#fff;border-color:rgba(0,0,0,.1);color:#111827}
+body.light-mode .q-send-btn{background:rgba(109,40,217,.08);color:#7c3aed}
+body.light-mode .q-send-btn:hover{background:rgba(109,40,217,.18);color:#6d28d9}
 body.light-mode .tb-btn-live{color:#059669;border-color:rgba(5,150,105,.15);background:rgba(5,150,105,.08)}
 body.light-mode .filter-btn{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.06)}
 body.light-mode .filter-btn.active{background:rgba(109,40,217,.08);color:#6d28d9;border-color:rgba(109,40,217,.2)}
@@ -598,7 +605,12 @@ document.body.style.background='transparent';
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         Assist
       </button>
-      <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
+      <div class="q-input-wrap">
+        <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
+        <button class="q-send-btn" onclick="sendQuestion()" data-tip="Send">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
     </div>
   </div>
   <!-- Resize handle -->
