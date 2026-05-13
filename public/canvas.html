@@ -201,6 +201,31 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 @keyframes cardOut{from{opacity:1;max-height:500px;transform:scale(1)}to{opacity:0;max-height:0;margin-bottom:0;padding:0;border-width:0;transform:scale(.96)}}
 .sc-card.fade-out{animation:cardOut .4s ease forwards;pointer-events:none}
 
+/* ===== CARD NUMBER BADGE (Co-pilot mode) ===== */
+.card-num{position:absolute;top:10px;left:-1px;width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#059669,#34D399);display:flex;align-items:center;justify-content:center;font:700 11px Inter,sans-serif;color:#fff;z-index:2;box-shadow:0 2px 8px rgba(52,211,153,.3)}
+
+/* ===== CATEGORY TAGS (Behavioral, STAR, Technical, etc.) ===== */
+.card-cats{display:flex;gap:5px;padding:0 14px;padding-top:8px;flex-wrap:wrap;align-items:center}
+.cat-tag{font:700 8px Inter,sans-serif;padding:4px 10px;border-radius:6px;text-transform:uppercase;letter-spacing:.8px}
+.cat-tag.behavioral{background:rgba(52,211,153,.15);color:#34D399;border:1px solid rgba(52,211,153,.2)}
+.cat-tag.star{background:rgba(251,191,36,.15);color:#FBBF24;border:1px solid rgba(251,191,36,.2)}
+.cat-tag.technical{background:rgba(56,189,248,.15);color:#38BDF8;border:1px solid rgba(56,189,248,.2)}
+.cat-tag.situational{background:rgba(168,85,247,.15);color:#C084FC;border:1px solid rgba(168,85,247,.2)}
+.cat-tag.system-design{background:rgba(251,146,60,.15);color:#FB923C;border:1px solid rgba(251,146,60,.2)}
+.cat-tag.coding{background:rgba(129,140,248,.15);color:#A5B4FC;border:1px solid rgba(129,140,248,.2)}
+.card-cats-spacer{flex:1}
+
+/* ===== STAR SECTION LABELS ===== */
+.star-label{display:inline-block;font:700 9px Inter,sans-serif;padding:2px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.8px;margin-right:6px;vertical-align:middle}
+.star-label.situation{background:rgba(52,211,153,.12);color:#34D399}
+.star-label.action{background:rgba(251,191,36,.12);color:#FBBF24}
+.star-label.result{background:rgba(56,189,248,.12);color:#38BDF8}
+.star-label.context{background:rgba(168,85,247,.12);color:#C084FC}
+.star-label.task{background:rgba(251,146,60,.12);color:#FB923C}
+
+/* ===== GREEN METRIC HIGHLIGHTS ===== */
+.metric-hl{color:#34D399;font-weight:700}
+
 /* Question & answer text */
 .sc-q-text{font:600 13px/1.5 Inter,sans-serif;color:#ffffff}
 .sc-card-a{padding:12px 14px;font:400 12.5px/1.85 Inter,sans-serif;color:#e8edf5}
@@ -215,6 +240,15 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .sc-line:nth-child(odd){background:rgba(255,255,255,.015)}
 .sc-blank{height:6px}
 .sc-card-loading{padding:14px;display:flex;align-items:center;gap:8px;color:var(--accent2);font:500 12px Inter,sans-serif}
+
+/* ===== CARD FOOTER — actions + meta ===== */
+.card-footer{display:flex;align-items:center;gap:4px;padding:6px 14px;border-top:1px solid rgba(255,255,255,.04)}
+.card-footer-btn{width:24px;height:24px;border:1px solid rgba(255,255,255,.06);border-radius:5px;background:rgba(255,255,255,.03);color:var(--text4);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;padding:0}
+.card-footer-btn:hover{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.15)}
+.card-footer-btn.copied{color:#34D399;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08)}
+.card-footer-spacer{flex:1}
+.card-source{font:500 10px Inter,sans-serif;color:var(--text4);font-style:italic}
+.card-time{font:400 9px Inter,sans-serif;color:var(--text4)}
 
 /* ===== LOOK: Glass ===== */
 body.look-glass .sc-card{background:linear-gradient(135deg,rgba(124,58,237,.04),rgba(99,102,241,.02));border-color:rgba(124,58,237,.1);border-left-width:3px;box-shadow:0 2px 12px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
@@ -805,6 +839,32 @@ function connect() {
 }
 
 // ===== CARD RENDERING =====
+var cardCounter = 0; // For numbered badges
+
+// Detect question category
+function detectCategory(question) {
+  var q = (question || '').toLowerCase();
+  var cats = [];
+  if (/tell me about a time|describe a situation|give me an example|walk me through.*experience|difficult|challenge|conflict|mistake|failure|proud|success|lead|manage|disagree|pressure|deadline/i.test(q)) cats.push('behavioral');
+  if (/design.*system|architect|scale|load balanc|database.*design|microservice|distributed/i.test(q)) cats.push('system-design');
+  if (/code|algorithm|implement|function|class|data structure|complexity|big.?o|leetcode|write.*program/i.test(q)) cats.push('coding');
+  if (/what would you do|how would you handle|imagine|scenario|hypothetical/i.test(q)) cats.push('situational');
+  if (/technical|explain.*concept|difference between|how does.*work|what is/i.test(q)) cats.push('technical');
+  // Auto-add STAR if behavioral
+  if (cats.indexOf('behavioral') >= 0 && cats.indexOf('star') < 0) cats.push('star');
+  return cats;
+}
+
+// Highlight metrics/percentages in green
+function highlightMetrics(text) {
+  // Highlight percentages, dollar amounts, and key numbers with context
+  return text
+    .replace(/(\d+[\.,]?\d*\s*%)/g, '<span class="metric-hl">$1</span>')
+    .replace(/(\$\d+[\.,\d]*[KMBkmb]?)/g, '<span class="metric-hl">$1</span>')
+    .replace(/(\d+x\s+(?:faster|slower|more|less|better|improvement|reduction|increase))/gi, '<span class="metric-hl">$1</span>');
+}
+
+// Detect and render STAR sections
 function formatAnswer(text) {
   if (!text) return '<div class="sc-card-loading"><span class="spinner" style="width:14px;height:14px"></span> Generating answer...</div>';
   var html = '';
@@ -819,12 +879,55 @@ function formatAnswer(text) {
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
-    var processed = esc(line).replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Detect STAR section labels
+    var starMatch = line.match(/^\*?\*?(Situation|Action|Result|Context|Task)\s*[:—\-]\s*/i);
+    if (starMatch) {
+      var labelType = starMatch[1].toLowerCase();
+      var rest = line.substring(starMatch[0].length);
+      var processed = highlightMetrics(esc(rest).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>'));
+      html += '<div class="sc-line"><span class="star-label ' + labelType + '">' + starMatch[1].toUpperCase() + '</span> ' + processed + '</div>';
+      continue;
+    }
+
+    var processed = esc(line)
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+    processed = highlightMetrics(processed);
+
     if (line.trim() === '') { html += '<div class="sc-blank"></div>'; }
     else { html += '<div class="sc-line">' + processed + '</div>'; }
   }
   if (inCode && codeLines.length) { html += '<pre><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>'; }
   return html;
+}
+
+// Copy answer text to clipboard
+function copyCard(id) {
+  var c = cards.find(function(x) { return x.id === id; });
+  if (!c) return;
+  var text = c.answer || '';
+  navigator.clipboard.writeText(text).then(function() {
+    var btn = document.querySelector('#card-' + id + ' .card-copy');
+    if (btn) {
+      btn.classList.add('copied');
+      btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+      setTimeout(function() {
+        btn.classList.remove('copied');
+        btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+      }, 1500);
+    }
+    showToast('Copied to clipboard', 'info', 1500);
+  });
+}
+
+// Time ago helper
+function timeAgo(ts) {
+  var diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 10) return 'Just now';
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff / 60) + ' min ago';
+  return Math.floor(diff / 3600) + 'h ago';
 }
 
 function addCard(id, question, answer, source, similarity, isGenerated, shouldScroll) {
@@ -836,6 +939,9 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
     if (el) {
       var aEl = el.querySelector('.sc-card-a');
       if (aEl) aEl.innerHTML = formatAnswer(answer);
+      // Update footer time
+      var timeEl = el.querySelector('.card-time');
+      if (timeEl) timeEl.textContent = 'Just now';
       // Scroll to updated card if user hasn't scrolled up
       if (!userScrolledUp) {
         setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
@@ -844,7 +950,9 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
     return;
   }
 
-  cards.push({ id: id, question: question, answer: answer, source: source, similarity: similarity, generated: !!isGenerated, ts: Date.now() });
+  cardCounter++;
+  var ts = Date.now();
+  cards.push({ id: id, question: question, answer: answer, source: source, similarity: similarity, generated: !!isGenerated, ts: ts });
 
   var tagClass, tagText;
   if (source === 'screen') {
@@ -855,7 +963,7 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
     tagText = 'AI Generated';
   } else if (source === 'matched') {
     tagClass = 'matched';
-    tagText = 'Prepped ' + (similarity || '') + '%';
+    tagText = 'Detected';
   } else if (source === 'manual') {
     tagClass = 'manual';
     tagText = 'Asked';
@@ -864,17 +972,56 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
     tagText = 'New';
   }
 
+  // Detect categories from question
+  var cats = detectCategory(question);
+  var catHtml = '';
+  if (cats.length) {
+    catHtml = '<div class="card-cats">';
+    cats.forEach(function(c) {
+      var label = c === 'system-design' ? 'System Design' : c.charAt(0).toUpperCase() + c.slice(1);
+      catHtml += '<span class="cat-tag ' + c + '">' + label + '</span>';
+    });
+    catHtml += '</div>';
+  }
+
+  // Source label
+  var sourceLabel = '';
+  if (source === 'matched') sourceLabel = 'From your prep bank';
+  else if (isGenerated) sourceLabel = 'AI generated';
+  else if (source === 'screen') sourceLabel = 'Screen capture';
+
+  // Similarity badge for matched
+  var simBadge = '';
+  if (source === 'matched' && similarity) simBadge = '<span style="font:700 11px Inter,sans-serif;color:#34D399;margin-left:auto;flex-shrink:0">' + similarity + '%</span>';
+
   var card = document.createElement('div');
   card.className = 'sc-card card-new tag-' + tagClass;
   card.id = 'card-' + id;
   card.dataset.source = isGenerated ? 'generated' : source;
+  card.dataset.ts = ts;
   // Remove glow class after animation completes
   setTimeout(function() { card.classList.remove('card-new'); }, 1600);
 
-  // Dismiss button for generated cards; matched cards auto-remove
-  var dismissHtml = isGenerated ? '<button class="card-dismiss" onclick="dismissCard(\'' + id + '\')" title="Dismiss">&times;</button>' : '';
+  // Numbered badge
+  var numBadge = '<span class="card-num">' + cardCounter + '</span>';
 
-  card.innerHTML = dismissHtml + '<div class="sc-card-q"><span class="sc-tag ' + tagClass + '">' + tagText + '</span><div class="sc-q-text">' + esc(question) + '</div></div><div class="sc-card-a">' + formatAnswer(answer) + '</div>';
+  // Dismiss button
+  var dismissHtml = '<button class="card-dismiss" onclick="dismissCard(\'' + id + '\')" title="Dismiss">&times;</button>';
+
+  // Card footer with action buttons
+  var footerHtml = '<div class="card-footer">'
+    + '<button class="card-footer-btn card-copy" onclick="copyCard(\'' + id + '\')" title="Copy answer"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>'
+    + '<button class="card-footer-btn" onclick="readAloud(\'' + id + '\')" title="Read aloud"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>'
+    + '<button class="card-footer-btn" onclick="regenerateCard(\'' + id + '\')" title="Regenerate"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>'
+    + '<span class="card-footer-spacer"></span>'
+    + (sourceLabel ? '<span class="card-source">' + sourceLabel + '</span>' : '')
+    + '</div>';
+
+  card.innerHTML = numBadge + dismissHtml
+    + '<div class="sc-card-q"><span class="sc-tag ' + tagClass + '">' + tagText + '</span><div class="sc-q-text">' + esc(question) + '</div>' + simBadge + '</div>'
+    + catHtml
+    + '<div class="sc-card-a">' + formatAnswer(answer) + '</div>'
+    + footerHtml;
 
   // Apply current filter visibility
   if (activeFilter === 'generated' && !isGenerated) {
@@ -903,6 +1050,31 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
       // Remove from cards array too
       cards = cards.filter(function(c) { return c.id !== id; });
     }, CARD_CLEANUP_MS);
+  }
+}
+
+// Read answer aloud using speech synthesis
+function readAloud(id) {
+  var c = cards.find(function(x) { return x.id === id; });
+  if (!c || !c.answer) return;
+  if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); return; }
+  var u = new SpeechSynthesisUtterance(c.answer.replace(/[`*#]/g, '').replace(/\n/g, '. '));
+  u.rate = 1.1;
+  u.pitch = 1;
+  window.speechSynthesis.speak(u);
+  showToast('Reading aloud...', 'info', 2000);
+}
+
+// Regenerate answer for a card
+function regenerateCard(id) {
+  var c = cards.find(function(x) { return x.id === id; });
+  if (!c) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    pendingManualScroll = true;
+    ws.send(JSON.stringify({ type: 'canvas_question', text: c.question }));
+    showToast('Regenerating...', 'info', 1500);
+  } else {
+    showToast('Not connected', '', 2000);
   }
 }
 
