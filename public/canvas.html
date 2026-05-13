@@ -65,6 +65,13 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 .hud-select:hover{background:rgba(255,255,255,.1);color:var(--text2)}
 .hud-select option{background:#0c1019;color:#e2e8f0}
 
+/* Board toggle — standalone mini pill below toolbar */
+.board-toggle-pill{width:28px;height:18px;display:flex;align-items:center;justify-content:center;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:0 0 8px 8px;cursor:pointer;transition:all .2s ease;flex-shrink:0;margin-top:-2px;color:var(--text3);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.board-toggle-pill:hover{background:rgba(124,58,237,.12);color:#fff;border-color:rgba(124,58,237,.3)}
+.board-toggle-pill:active{transform:scale(.92)}
+.board-toggle-pill svg{transition:transform .3s cubic-bezier(.22,1,.36,1)}
+.board-toggle-pill.flipped svg{transform:rotate(180deg)}
+
 /* Mode pill toggle */
 .mode-toggle{display:flex;background:rgba(255,255,255,.05);border-radius:6px;overflow:hidden;height:22px;border:1px solid rgba(255,255,255,.06);flex-shrink:0}
 .mode-btn{padding:0 8px;border:none;background:transparent;font:600 9px Inter,sans-serif;color:var(--text2);cursor:pointer;transition:all .18s ease;white-space:nowrap}
@@ -483,12 +490,13 @@ document.body.style.background='transparent';
       <button class="tb-btn danger tip-left" id="btn-quit" style="display:none" data-tip="Quit" onclick="quitApp()">
         <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
-      <div style="width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.08),transparent);flex-shrink:0;margin:0 1px"></div>
-      <button class="tb-btn tip-left" id="btn-board-toggle" data-tip="Hide board" onclick="toggleBoard()">
-        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
     </div>
   </div>
+</div>
+
+<!-- Board toggle — standalone mini pill -->
+<div class="board-toggle-pill" id="board-toggle-pill" onclick="toggleBoard()">
+  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" id="board-toggle-svg"><path d="M6 9l6 6 6-6"/></svg>
 </div>
 
 <!-- Floating Config Pill — style + theme + font + light toggle -->
@@ -1560,21 +1568,15 @@ var stealthOn = true; // Default: content protection ON
 var boardVisible = true; // default: visible
 function toggleBoard() {
   var panel = document.querySelector('.panel');
-  var btn = $('btn-board-toggle');
+  var pill = $('board-toggle-pill');
   if (!panel) return;
   boardVisible = !boardVisible;
   if (boardVisible) {
     panel.classList.remove('board-hidden');
-    if (btn) {
-      btn.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';
-      btn.setAttribute('data-tip', 'Hide board');
-    }
+    if (pill) pill.classList.remove('flipped');
   } else {
     panel.classList.add('board-hidden');
-    if (btn) {
-      btn.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg>';
-      btn.setAttribute('data-tip', 'Show board');
-    }
+    if (pill) pill.classList.add('flipped');
   }
 }
 
