@@ -485,6 +485,21 @@ When the question asks you to write code, explain code, or walk through a techni
 - If they ask "how would you do X" — show the code or steps, then one line on why.
 - Keep it like you're pair programming: direct, clean, no fluff.`;
 
+// Display formatting addendum — adds visual formatting markers for the overlay UI
+const DISPLAY_FORMAT_ADDENDUM = `
+
+VISUAL DISPLAY FORMATTING — IMPORTANT:
+The candidate sees your answer on a screen overlay during the interview. Add formatting:
+- Use **bold** around key terms, frameworks, tools, and important concepts (e.g. **dimensional modeling**, **Tableau**, **Power BI**)
+- When the answer includes metrics or results, keep the numbers plain — the UI will highlight percentages automatically
+- For behavioral/STAR questions, prefix sections with labels:
+  Situation: [scene-setting text]
+  Action: [what you did]
+  Result: [outcome with numbers]
+  These labels will render as colored badges in the UI.
+- For technical questions, use \`backticks\` around code terms, function names, SQL keywords
+- Keep each sentence on its own line as before — the formatting is IN ADDITION to the line-per-sentence rule`;
+
 // ============ ANSWER STYLE TEMPLATES ============
 const ANSWER_STYLES = {
   conversational: {
@@ -571,8 +586,8 @@ Line 3: TASK — what was your specific responsibility.
 Line 4-6: ACTION — what YOU did, step by step. Be specific.
 Line 7-8: RESULT — quantified outcome with real numbers.
 
-Do NOT write labels like "Situation:" or "Action:" — just flow naturally.
-The STAR structure should be invisible to the interviewer but clear in the logic.
+Use section labels: "Situation:", "Action:", "Result:" at the start of each section.
+These render as colored badges in the UI and help the candidate scan quickly.
 
 VOICE:
 Narrative and clear. Use "I" for ownership.
@@ -918,7 +933,7 @@ The JD and resume are context — not things to parrot into every answer.`;
 
 // Get style prompt by key — fallback to conversational, always append code rules + anti-stuffing
 function getStylePrompt(styleKey) {
-  return (ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).prompt + CODE_ANSWER_ADDENDUM + NO_ROLE_STUFFING;
+  return (ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).prompt + CODE_ANSWER_ADDENDUM + NO_ROLE_STUFFING + DISPLAY_FORMAT_ADDENDUM;
 }
 
 const BATCH_PREAMBLE = `You will receive MULTIPLE interview questions. You MUST generate a separate, complete, high-quality answer for EACH question.

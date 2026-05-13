@@ -1078,16 +1078,44 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
   }
 }
 
-// Read answer aloud using speech synthesis
+// Read answer aloud using speech synthesis — pick best available voice
 function readAloud(id) {
   var c = cards.find(function(x) { return x.id === id; });
   if (!c || !c.answer) return;
-  if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); return; }
-  var u = new SpeechSynthesisUtterance(c.answer.replace(/[`*#]/g, '').replace(/\n/g, '. '));
-  u.rate = 1.1;
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    showToast('Stopped', 'info', 1000);
+    return;
+  }
+  // Clean text for speech — remove markdown, labels, code
+  var text = c.answer
+    .replace(/```[\s\S]*?```/g, 'Code block omitted.')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^(Situation|Action|Result|Context|Task)\s*[:—-]\s*/gim, '$1: ')
+    .replace(/\n/g, '. ')
+    .replace(/\.\s*\./g, '.');
+  var u = new SpeechSynthesisUtterance(text);
+  // Pick best voice — prefer Samantha, Karen, Daniel, or any high-quality en voice
+  var voices = window.speechSynthesis.getVoices();
+  var preferred = ['Samantha', 'Karen', 'Daniel', 'Moira', 'Tessa', 'Google US English', 'Google UK English Female', 'Microsoft Zira'];
+  var picked = null;
+  for (var i = 0; i < preferred.length; i++) {
+    picked = voices.find(function(v) { return v.name.indexOf(preferred[i]) >= 0; });
+    if (picked) break;
+  }
+  if (!picked) picked = voices.find(function(v) { return v.lang.startsWith('en') && !v.name.toLowerCase().includes('compact'); });
+  if (picked) u.voice = picked;
+  u.rate = 1.05;
   u.pitch = 1;
+  u.onend = function() { showToast('Done', 'info', 800); };
   window.speechSynthesis.speak(u);
   showToast('Reading aloud...', 'info', 2000);
+}
+// Pre-load voices (they load async on some browsers)
+if (window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = function() { window.speechSynthesis.getVoices(); };
 }
 
 // Regenerate answer for a card
