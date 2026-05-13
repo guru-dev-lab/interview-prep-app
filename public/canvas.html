@@ -218,7 +218,7 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 
 /* ===== STAR SECTION LABELS ===== */
 .star-label{display:none}
-.star-inline{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;font:700 8px Inter,sans-serif;color:#34D399;background:rgba(52,211,153,.12);margin-right:5px;flex-shrink:0;vertical-align:middle}
+.star-inline{display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;height:15px;border-radius:3px;font:700 8px Inter,sans-serif;color:#34D399;background:rgba(52,211,153,.12);margin-right:5px;flex-shrink:0;vertical-align:middle;letter-spacing:.3px;text-transform:uppercase}
 
 /* ===== GREEN METRIC HIGHLIGHTS ===== */
 .metric-hl{color:#34D399;font-weight:700}
@@ -466,11 +466,6 @@ document.body.style.background='transparent';
     <!-- Spacer pushes right-side items -->
     <div style="flex:1;min-width:4px"></div>
 
-    <!-- Board toggle — show/hide answer panel -->
-    <button class="tb-btn" id="btn-board-toggle" data-tip="Toggle board" onclick="toggleBoard()" style="margin-right:2px">
-      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-    </button>
-
     <!-- Mode toggle -->
     <div class="mode-toggle">
       <button class="mode-btn active" id="mode-qa" data-tip="Q&A" onclick="setMode('qa')">Q&A</button>
@@ -487,6 +482,10 @@ document.body.style.background='transparent';
       </button>
       <button class="tb-btn danger tip-left" id="btn-quit" style="display:none" data-tip="Quit" onclick="quitApp()">
         <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div style="width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.08),transparent);flex-shrink:0;margin:0 1px"></div>
+      <button class="tb-btn tip-left" id="btn-board-toggle" data-tip="Hide board" onclick="toggleBoard()">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </button>
     </div>
   </div>
@@ -1008,7 +1007,7 @@ function formatAnswer(text) {
     if (starMatch) {
       var rest = line.substring(starMatch[0].length);
       var processed = highlightMetrics(esc(rest).replace(/\*\*([^*]+)\*\*/g, '<span class="hl-key">$1</span>').replace(/`([^`]+)`/g, '<code>$1</code>'));
-      html += '<div class="sc-line"><span class="star-inline">' + starMatch[1].charAt(0).toUpperCase() + '</span>' + processed + '</div>';
+      html += '<div class="sc-line"><span class="star-inline">' + starMatch[1].toUpperCase() + '</span>' + processed + '</div>';
       continue;
     }
 
