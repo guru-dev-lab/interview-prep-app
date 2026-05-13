@@ -86,21 +86,21 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 .config-float .hud-select{height:26px;font:500 10px Inter,sans-serif;padding:0 6px;border-radius:6px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:var(--text2);cursor:pointer;outline:none;transition:.15s}
 .config-float .hud-select:hover{background:rgba(255,255,255,.08);color:var(--text)}
 
-/* ===== FLOATING CO-PILOT PILL ===== */
-.copilot-float{position:fixed;top:66px;right:10px;display:none;align-items:center;gap:6px;padding:6px 12px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(99,102,241,.2);border-radius:14px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1)}
+/* ===== FLOATING CO-PILOT PILL — vertical strip on right edge ===== */
+.copilot-float{position:fixed;top:50%;right:2px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1)}
 .copilot-float.show{display:flex}
-@keyframes floatIn{from{opacity:0;transform:translateY(-6px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
-.copilot-float-label{font:700 8px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.5px}
-.copilot-float .cpf-sep{width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(99,102,241,.2),transparent);flex-shrink:0}
-.copilot-capture-btn{height:28px;padding:0 12px;border:1px solid rgba(99,102,241,.2);border-radius:7px;background:rgba(99,102,241,.1);font:600 10px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:all .15s ease;display:flex;align-items:center;gap:4px}
-.copilot-capture-btn:hover{background:rgba(99,102,241,.22);border-color:rgba(99,102,241,.4);transform:scale(1.03);box-shadow:0 0 12px rgba(99,102,241,.15)}
-.copilot-capture-btn:active{transform:scale(.97)}
+@keyframes floatIn{from{opacity:0;transform:translateY(-50%) scale(.96)}to{opacity:1;transform:translateY(-50%) scale(1)}}
+.copilot-float-label{font:700 7px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.3px;writing-mode:vertical-rl;text-orientation:mixed}
+.copilot-float .cpf-sep{height:1px;width:18px;background:linear-gradient(90deg,transparent,rgba(99,102,241,.2),transparent);flex-shrink:0}
+.copilot-capture-btn{width:26px;height:26px;padding:0;border:1px solid rgba(99,102,241,.2);border-radius:6px;background:rgba(99,102,241,.1);font:600 12px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:all .15s ease;display:flex;align-items:center;justify-content:center}
+.copilot-capture-btn:hover{background:rgba(99,102,241,.22);border-color:rgba(99,102,241,.4);transform:scale(1.08);box-shadow:0 0 12px rgba(99,102,241,.15)}
+.copilot-capture-btn:active{transform:scale(.93)}
 .copilot-capture-btn.loading{opacity:.5;pointer-events:none}
-.copilot-gear-btn{height:28px;width:28px;border:1px solid rgba(99,102,241,.15);border-radius:7px;background:transparent;color:#818CF8;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0}
+.copilot-gear-btn{width:26px;height:26px;border:1px solid rgba(99,102,241,.15);border-radius:6px;background:transparent;color:#818CF8;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0}
 .copilot-gear-btn:hover{background:rgba(99,102,241,.14);transform:scale(1.08)}
 .copilot-gear-btn:active{transform:scale(.94)}
 .copilot-gear-btn.has-data{border-color:rgba(52,211,153,.3);color:#34D399;box-shadow:0 0 8px rgba(52,211,153,.12)}
-.copilot-dot-live{width:7px;height:7px;border-radius:50%;background:#818CF8;box-shadow:0 0 8px rgba(129,140,248,.5);animation:copilot-blink 1.5s ease infinite;flex-shrink:0}
+.copilot-dot-live{width:6px;height:6px;border-radius:50%;background:#818CF8;box-shadow:0 0 8px rgba(129,140,248,.5);animation:copilot-blink 1.5s ease infinite;flex-shrink:0}
 @keyframes copilot-blink{0%,100%{opacity:1;box-shadow:0 0 8px rgba(129,140,248,.5)}50%{opacity:.3;box-shadow:0 0 3px rgba(129,140,248,.15)}}
 
 /* Co-pilot tag */
@@ -526,8 +526,8 @@ document.body.style.background='transparent';
   <span class="copilot-dot-live" id="copilot-dot-live" style="display:none"></span>
   <span class="copilot-float-label">Co-pilot</span>
   <div class="cpf-sep"></div>
-  <button class="copilot-capture-btn" id="btn-copilot-capture" data-tip="Capture screen for AI analysis" onclick="copilotCapture()">&#128248; Capture</button>
-  <button class="copilot-gear-btn" id="btn-copilot-gear" data-tip="Upload files & instructions" onclick="showCopilotGear()">&#9881;</button>
+  <button class="copilot-capture-btn" id="btn-copilot-capture" data-tip="Capture" onclick="copilotCapture()">&#128248;</button>
+  <button class="copilot-gear-btn" id="btn-copilot-gear" data-tip="Files" onclick="showCopilotGear()">&#9881;</button>
 </div>
 
 <!-- Co-pilot Gear Modal -->
@@ -1765,7 +1765,7 @@ function copilotOnTranscript(text) {
 async function copilotCapture() {
   var btn = $('btn-copilot-capture');
   btn.className = 'copilot-capture-btn loading';
-  btn.textContent = '📸 Capturing...';
+  btn.textContent = '⏳';
 
   var transcript = copilotTranscriptBuffer.trim();
   copilotTranscriptBuffer = '';
@@ -1774,7 +1774,7 @@ async function copilotCapture() {
   await copilotSend(transcript, 'check');
 
   btn.className = 'copilot-capture-btn';
-  btn.textContent = '📸 Capture';
+  btn.textContent = '📸';
 }
 
 async function copilotSend(transcript, mode) {
@@ -1785,15 +1785,24 @@ async function copilotSend(transcript, mode) {
     // Try to capture screen if we have a stream
     if (screenStream && screenStream.active) {
       image = await captureFrame(screenStream);
+      console.log('[Co-pilot] Captured from existing stream, size:', image ? (image.length / 1024).toFixed(0) + 'KB' : 'null');
     } else {
       // Try to get a screen stream
+      console.log('[Co-pilot] No active stream, requesting new one...');
       var stream = await getScreenStream();
       if (stream) {
         image = await captureFrame(stream);
+        console.log('[Co-pilot] Captured from new stream, size:', image ? (image.length / 1024).toFixed(0) + 'KB' : 'null');
+      } else {
+        console.warn('[Co-pilot] Could not get screen stream');
       }
     }
   } catch(e) {
     console.warn('[Co-pilot] Screen capture failed:', e);
+  }
+
+  if (!image) {
+    showToast('No screen capture — click Assist first to share screen', '', 3000);
   }
 
   // Show loading card
