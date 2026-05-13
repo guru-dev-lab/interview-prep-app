@@ -2224,7 +2224,7 @@ app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => 
 const copilotMemory = new Map(); // sessionId → { steps: [], lastInstruction: '', context: '' }
 const COPILOT_MAX_STEPS = 30;
 
-const COPILOT_PROMPT = `You are a LIVE TASK CO-PILOT. The candidate is in a live interview where they are being asked to perform tasks on screen (Excel, SQL, Tableau, Python, Power BI, etc.). You see their screen and hear what the interviewer said.
+const COPILOT_PROMPT = `You are a LIVE TASK CO-PILOT. The candidate is in a live interview where they are being asked to perform tasks on screen — this could be any application, website, document, coding challenge, assessment platform, or tool. You see their screen and hear what the interviewer said.
 
 YOUR JOB: Give the candidate the EXACT next step to do. One step at a time. Short. Specific. Actionable.
 
@@ -2273,6 +2273,19 @@ HAVING COUNT(*) > 1
 \`\`\`
 
 Run the query
+
+---
+
+Interviewer says: "Can you find the average response time from that dataset?"
+Screen shows: A web-based assessment platform with a table of data
+
+Look at the data table — columns are: Request ID, Timestamp, Response Time (ms), Status
+
+Click the "Response Time (ms)" column header to sort
+
+Calculate average: sum visible values / count of rows
+
+If there's a formula bar or calculation tool, use it — otherwise state the answer verbally
 
 RULES:
 - ACTUALLY LOOK AT THE SCREEN IMAGE. Describe what you see FIRST (app name, data visible, current state) before giving steps
@@ -2786,6 +2799,23 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
   const elapsed = Date.now() - startMs;
   console.log(`[FastMatch] NO MATCH in ${elapsed}ms: "${q.substring(0,50)}..." — creating new question`);
 
+  // DEDUP: Check if a very similar live question was created in the last 60 seconds
+  // This prevents duplicate cards when the interviewer's question arrives in fragments
+  const recentLiveQ = sessionQuestions.filter(sq => sq.source === 'live' && sq._createdAt && (Date.now() - sq._createdAt) < 60000);
+  for (const rlq of recentLiveQ) {
+    const sim = stringSimilarity.compareTwoStrings(q.toLowerCase(), rlq.text.toLowerCase());
+    if (sim > 0.4 || rlq.text.toLowerCase().includes(q.toLowerCase().substring(0, 20)) || q.toLowerCase().includes(rlq.text.toLowerCase().substring(0, 20))) {
+      console.log(`[FastMatch] DEDUP: "${q.substring(0,40)}" matches recent "${rlq.text.substring(0,40)}" (sim=${sim.toFixed(2)}) — updating instead`);
+      // Update the existing question with the fuller text
+      const betterText = q.length > rlq.text.length ? q : rlq.text;
+      rlq.text = betterText;
+      pool.query('UPDATE questions SET text = $1 WHERE id = $2', [betterText, rlq.id]).catch(e => console.error('[Dedup update error]', e.message));
+      // Regenerate answer with the fuller question
+      generateLiveAnswer(betterText, sessionId, userId, ws, rlq.id, !!forceNavigate).catch(e => console.error('[Dedup regen error]', e.message));
+      return lastMatchedQId;
+    }
+  }
+
   try {
     const newQ = await pool.query(
       'INSERT INTO questions (session_id, text, type, answer, source) VALUES ($1, $2, $3, $4, $5) RETURNING id',
@@ -2806,6 +2836,8 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
     broadcastToSession(sessionId, newQMsg, ws);
 
     sessionQuestions.push({ id: qId, text: q, type: classifyQuestion(q), answer: '' });
+    sessionQuestions[sessionQuestions.length - 1]._createdAt = Date.now();
+    sessionQuestions[sessionQuestions.length - 1].source = 'live';
     if (onIndexRebuild) onIndexRebuild();
 
     // Fire answer generation in background
@@ -3633,8 +3665,8 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Use the full ANSWER_PROMPT for strategic framing — not a watered-down version
     // Add a speed note for live context + technical override when needed
     const liveAddendum = isTechnical
-      ? `\n\nLIVE MODE — TECHNICAL QUESTION: If code is needed, use a markdown code block with the language tag. Lead with the code/solution, then 2-3 lines explaining. Keep it simple and direct.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is CONTEXT ONLY — use it to understand the conversation flow, NOT as content for the answer. Answers come from your knowledge and the Q&A bank.`
-      : `\n\nLIVE MODE: Answer simply and directly. If the question is "what is X" just explain it — no need to tie it to personal experience unless the question asks about experience.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is CONTEXT ONLY — use it to understand the conversation flow and avoid repeating what they said, NOT as content for the answer. Answers come from your knowledge and the Q&A bank.`;
+      ? `\n\nLIVE MODE — TECHNICAL QUESTION: If code is needed, use a markdown code block with the language tag. Lead with the code/solution, then 2-3 lines explaining. Keep it simple and direct.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`
+      : `\n\nLIVE MODE: Answer simply and directly. If the question is "what is X" just explain it — no need to tie it to personal experience unless the question asks about experience.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`;
 
     const basePrompt = getStylePrompt(session.answer_style);
     const system = basePrompt + liveAddendum;
