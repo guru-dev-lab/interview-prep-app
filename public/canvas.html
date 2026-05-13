@@ -927,33 +927,20 @@ function connect() {
       setTimeout(function() { btn.style.borderColor = ''; }, 1000);
     }
     else if (msg.type === 'screen_assist') {
-      // Avoid double card — sendScreenCapture already created a local card
-      // Find a recent screen card from the last 15s and update it instead
-      var recentScreen = cards.filter(function(c) { return c.source === 'screen' && (Date.now() - c.ts) < 15000; });
-      if (recentScreen.length > 0) {
-        var rc = recentScreen[recentScreen.length - 1];
-        rc.id = msg.questionId; // Update to server ID
-        rc.answer = msg.answer || '';
-        if (msg.questionText) rc.question = msg.questionText;
-        var rcEl = document.getElementById('card-' + rc.id);
-        // The element might still have the old ID, find by iterating
-        if (!rcEl) {
-          var screenCards = document.querySelectorAll('.sc-card[data-source="screen"]');
-          rcEl = screenCards.length ? screenCards[screenCards.length - 1] : null;
-        }
-        if (rcEl) {
-          rcEl.id = 'card-' + msg.questionId;
-          var aEl = rcEl.querySelector('.sc-card-a');
-          if (aEl && msg.answer) aEl.innerHTML = formatAnswer(msg.answer);
-          var qEl = rcEl.querySelector('.sc-q-text');
-          if (qEl && msg.questionText) qEl.textContent = msg.questionText;
-        }
+      // Skip if this client just sent a screen assist request — it already has the card
+      if (screenAssistPending) {
+        screenAssistPending = false;
       } else {
         addCard(msg.questionId, msg.questionText || 'Screen Assist', msg.answer || '', 'screen', 0, false, true);
       }
     }
     else if (msg.type === 'copilot_step') {
-      addCopilotCard(msg.answer, msg.instruction, msg.stepNumber);
+      // Skip if this client just sent a copilot request — it already has the card from the fetch response
+      if (copilotPendingLocal) {
+        copilotPendingLocal = false;
+      } else {
+        addCopilotCard(msg.answer, msg.instruction, msg.stepNumber);
+      }
     }
     else if (msg.type === 'transcript' && msg.isFinal && copilotActive && !msg.isEcho) {
       copilotOnTranscript(msg.text);
@@ -1385,8 +1372,10 @@ function captureFrame(stream) {
   });
 }
 
+var screenAssistPending = false;
 async function sendScreenCapture(base64) {
   if (!TOKEN || !SESSION_ID) return;
+  screenAssistPending = true;
   var cardId = 'screen-' + Date.now();
   addCard(cardId, 'Analyzing screen...', '', 'screen', 0, false, true);
   try {
@@ -1831,6 +1820,7 @@ async function goLiveElectron() {
 
 // ===== CO-PILOT MODE =====
 var copilotActive = false;
+var copilotPendingLocal = false; // Flag to prevent WS broadcast from doubling copilot cards
 var copilotTranscriptBuffer = ''; // Buffer interviewer speech during co-pilot
 var copilotAutoTimer = null;
 var COPILOT_AUTO_DELAY = 3000; // 3s after interviewer stops talking → auto-capture
@@ -1876,6 +1866,7 @@ async function copilotCapture() {
 
 async function copilotSend(transcript, mode) {
   if (!SESSION_ID || !TOKEN) return;
+  copilotPendingLocal = true; // Prevent WS broadcast from creating duplicate card
 
   var image = null;
   try {
