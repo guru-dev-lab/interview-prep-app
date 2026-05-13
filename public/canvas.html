@@ -1017,17 +1017,8 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
     tagText = 'New';
   }
 
-  // Detect categories from question
-  var cats = detectCategory(question);
+  // Category tags removed — reclaim space
   var catHtml = '';
-  if (cats.length) {
-    catHtml = '<div class="card-cats">';
-    cats.forEach(function(c) {
-      var label = c === 'system-design' ? 'System Design' : c.charAt(0).toUpperCase() + c.slice(1);
-      catHtml += '<span class="cat-tag ' + c + '">' + label + '</span>';
-    });
-    catHtml += '</div>';
-  }
 
   // Source label
   var sourceLabel = '';
