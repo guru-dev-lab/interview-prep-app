@@ -1943,6 +1943,32 @@ app.put('/api/sessions/:id/answer-style', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Regenerate answer for a specific question via REST (when WS not available)
+app.post('/api/sessions/:id/regenerate', authMiddleware, async (req, res) => {
+  try {
+    const { questionId, text } = req.body;
+    if (!text || !questionId) return res.status(400).json({ error: 'Missing text or questionId' });
+    const session = await pool.query('SELECT resume, jd, company, role, answer_style FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+    if (!session.rows.length) return res.status(404).json({ error: 'Session not found' });
+    const s = session.rows[0];
+
+    const isTechnical = /sql|query|code|write|function|script|algorithm|regex|api|join|window function|python|javascript|html|css|excel|vba|dax|power query|etl|pipeline/i.test(text);
+    const stylePrompt = getStylePrompt(s.answer_style);
+    const qaRows = await pool.query('SELECT text, answer FROM questions WHERE session_id = $1 AND answer IS NOT NULL AND answer != \'\' LIMIT 15', [req.params.id]);
+    const bankContext = qaRows.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
+
+    const answer = await callClaude(
+      stylePrompt + `\n\nLIVE MODE: Answer simply and directly.`,
+      `RESUME:\n${s.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${s.jd || 'N/A'}\n\nQ&A BANK:\n${bankContext}\n\nQUESTION:\n${text}\n\nAnswer:`,
+      isTechnical ? 1200 : 600, MODEL_HAIKU
+    );
+
+    // Update in DB
+    await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, questionId]);
+    res.json({ answer, questionId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Config endpoint — passes public env vars to frontend
 app.get('/api/config', (req, res) => {
   res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || '' });
@@ -3395,6 +3421,18 @@ wss.on('connection', (ws) => {
             if (newLastId) lastMatchedQId = newLastId;
           });
         }
+      }
+
+      else if (msg.type === 'regenerate_answer') {
+        // Force-regenerate an answer — bypass matching, go straight to AI generation
+        const text = msg.text;
+        const questionId = msg.questionId;
+        if (!text || text.length < 3) return;
+        console.log('[Regenerate] Force regenerating:', text.substring(0, 60));
+        generateLiveAnswer(text, sessionId, userId, ws, questionId, true).catch(e => {
+          console.error('[Regenerate Error]', e.message);
+          ws.send(JSON.stringify({ type: 'error', message: 'Failed to regenerate' }));
+        });
       }
 
       else if (msg.type === 'canvas_question') {

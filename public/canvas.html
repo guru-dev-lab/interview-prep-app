@@ -229,7 +229,7 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 
 /* ===== GREEN METRIC HIGHLIGHTS ===== */
 .metric-hl{color:#34D399;font-weight:700}
-.hl-key{color:#fff;font-weight:600}
+.hl-key{color:#FBBF24;font-weight:600}
 
 /* Question & answer text */
 .sc-q-text{font:500 9.5px/1.3 Inter,sans-serif;color:rgba(255,255,255,.7);flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}
@@ -363,7 +363,7 @@ body.light-mode .cat-tag.system-design{background:rgba(234,88,12,.1);color:#EA58
 body.light-mode .cat-tag.coding{background:rgba(79,70,229,.1);color:#4F46E5;border-color:rgba(79,70,229,.15)}
 body.light-mode .star-inline{color:#059669;background:rgba(16,185,129,.1)}
 body.light-mode .metric-hl{color:#059669}
-body.light-mode .hl-key{color:#111827}
+body.light-mode .hl-key{color:#B45309}
 body.light-mode .card-footer{border-color:rgba(0,0,0,.05)}
 body.light-mode .card-footer-btn{border-color:rgba(0,0,0,.06);background:rgba(0,0,0,.02);color:#9ca3af}
 body.light-mode .card-footer-btn:hover{background:rgba(109,40,217,.06);color:#6d28d9;border-color:rgba(109,40,217,.15)}
@@ -1223,10 +1223,28 @@ if (window.speechSynthesis) {
 function regenerateCard(id) {
   var c = cards.find(function(x) { return x.id === id; });
   if (!c) return;
+  // Show loading state on the card
+  var el = document.getElementById('card-' + id);
+  if (el) {
+    var aEl = el.querySelector('.sc-card-a');
+    if (aEl) aEl.innerHTML = '<div style="display:flex;align-items:center;gap:6px;padding:8px;color:var(--text3);font:500 10px Inter,sans-serif"><span class="spinner" style="width:12px;height:12px"></span>Regenerating...</div>';
+  }
   if (ws && ws.readyState === WebSocket.OPEN) {
     pendingManualScroll = true;
-    ws.send(JSON.stringify({ type: 'canvas_question', text: c.question }));
-    showToast('Regenerating...', 'info', 1500);
+    ws.send(JSON.stringify({ type: 'regenerate_answer', questionId: id, text: c.question }));
+  } else if (SESSION_ID && TOKEN) {
+    // Fallback: use REST API if WS not connected
+    fetch('/api/sessions/' + SESSION_ID + '/regenerate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify({ questionId: id, text: c.question })
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.answer) {
+        c.answer = data.answer;
+        if (el) { var a2 = el.querySelector('.sc-card-a'); if (a2) a2.innerHTML = formatAnswer(data.answer); }
+        showToast('Regenerated', 'info', 1200);
+      }
+    }).catch(function(e) { showToast('Failed: ' + e.message, '', 2000); });
   } else {
     showToast('Not connected', '', 2000);
   }
