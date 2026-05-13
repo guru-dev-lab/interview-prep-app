@@ -44,10 +44,8 @@ app.whenReady().then(() => {
   createOverlay();
 
   // Handle getDisplayMedia from renderer — required for audio/screen capture in Electron
-  // Track which screen to use — cycles on each new request (e.g. Switch Screen button)
-  let screenSourceIndex = 0;
-  let screenSourceCount = 0;
-
+  // Auto-detect which screen the overlay window is on and capture THAT screen.
+  // This way Co-Pilot always sees what's behind the overlay, even if you move monitors.
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       const screenSources = sources.filter(s => s.id.startsWith('screen:'));
@@ -56,17 +54,39 @@ app.whenReady().then(() => {
         return;
       }
 
-      // If we already have a count and this is a NEW request (Switch Screen), advance index
-      if (screenSourceCount > 0) {
-        screenSourceIndex = (screenSourceIndex + 1) % screenSources.length;
-        _log('[Xhire] Switching to screen source', screenSourceIndex, 'of', screenSources.length, ':', screenSources[screenSourceIndex].name);
+      // Single monitor — just use it
+      if (screenSources.length === 1) {
+        _log('[Xhire] Single screen:', screenSources[0].name);
+        callback({ video: screenSources[0], audio: 'loopback' });
+        return;
       }
-      screenSourceCount = screenSources.length;
 
-      const chosen = screenSources[screenSourceIndex % screenSources.length];
-      _log('[Xhire] Using screen source:', chosen.name, '(' + chosen.id + ')');
+      // Multi-monitor: find which display the overlay window is on
+      let chosenIndex = 0;
+      if (mainWindow) {
+        const winBounds = mainWindow.getBounds();
+        const winCenterX = winBounds.x + Math.round(winBounds.width / 2);
+        const winCenterY = winBounds.y + Math.round(winBounds.height / 2);
+        const currentDisplay = screen.getDisplayNearestPoint({ x: winCenterX, y: winCenterY });
+        const allDisplays = screen.getAllDisplays();
+
+        // Match current display to its index in allDisplays (same order as desktopCapturer)
+        for (let i = 0; i < allDisplays.length; i++) {
+          if (allDisplays[i].id === currentDisplay.id) {
+            chosenIndex = i;
+            break;
+          }
+        }
+        _log('[Xhire] Window is on display', chosenIndex, '(id:', currentDisplay.id, ') —', allDisplays.length, 'displays total');
+      }
+
+      // Clamp to available sources
+      chosenIndex = Math.min(chosenIndex, screenSources.length - 1);
+      const chosen = screenSources[chosenIndex];
+      _log('[Xhire] Capturing screen:', chosen.name, '(' + chosen.id + ')');
       callback({ video: chosen, audio: 'loopback' });
-    }).catch(() => {
+    }).catch((e) => {
+      _log('[Xhire] desktopCapturer error:', e);
       callback({});
     });
   });
@@ -216,6 +236,20 @@ function createOverlay() {
     setTimeout(() => {
       mainWindow.blur();
     }, 200);
+  });
+
+  // Track which display the window is on — notify renderer when it changes
+  // so screen capture stream can be refreshed to the correct monitor
+  let lastDisplayId = null;
+  mainWindow.on('moved', () => {
+    if (!mainWindow) return;
+    const bounds = mainWindow.getBounds();
+    const display = screen.getDisplayNearestPoint({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
+    if (lastDisplayId !== null && display.id !== lastDisplayId) {
+      _log('[Xhire] Window moved to display', display.id, '— notifying renderer to refresh screen stream');
+      mainWindow.webContents.send('display-changed', display.id);
+    }
+    lastDisplayId = display.id;
   });
 
   _log('[Xhire] Overlay window created');

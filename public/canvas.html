@@ -678,6 +678,19 @@ if (isElectronMode) {
   }, 100);
 }
 
+// Listen for display changes in Electron — refresh screen stream when overlay moves monitors
+if (window.electronAPI && window.electronAPI.onDisplayChanged) {
+  window.electronAPI.onDisplayChanged(function(displayId) {
+    console.log('[Display] Overlay moved to display', displayId, '— refreshing screen stream');
+    // Kill current stream so next capture gets the new screen
+    if (screenStream) {
+      screenStream.getTracks().forEach(function(t) { t.stop(); });
+      screenStream = null;
+    }
+    showToast('Screen updated', 'info', 1500);
+  });
+}
+
 // ===== KEYBOARD SHORTCUTS =====
 // Cmd+Enter (Mac) / Ctrl+Enter (Windows) → Screen Assist (capture & analyze)
 // Cmd+Shift+Enter → "What should I say?"
