@@ -599,11 +599,11 @@ document.body.style.background='transparent';
     <div class="bottom-row">
       <button class="action-btn primary" id="btn-wsay" data-tip="AI suggests what to say" onclick="whatShouldISay()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        Say?<span class="kbd">&#8984;&#8629;</span>
+        Say?<span class="kbd">&#8984;&#8679;&#8629;</span>
       </button>
       <button class="action-btn" id="btn-assist" data-tip="Capture & analyze screen" onclick="screenAssist()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        Assist<span class="kbd">&#8984;&#8679;&#8629;</span>
+        Assist<span class="kbd">&#8984;&#8629;</span>
       </button>
       <div class="q-input-wrap">
         <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
@@ -675,15 +675,15 @@ if (isElectronMode) {
 }
 
 // ===== KEYBOARD SHORTCUTS =====
-// Cmd+Enter (Mac) / Ctrl+Enter (Windows) → "What should I say?"
-// Cmd+Shift+Enter → Screen Assist (capture & analyze)
+// Cmd+Enter (Mac) / Ctrl+Enter (Windows) → Screen Assist (capture & analyze)
+// Cmd+Shift+Enter → "What should I say?"
 document.addEventListener('keydown', function(e) {
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Enter') {
     e.preventDefault();
-    screenAssist();
+    whatShouldISay();
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault();
-    whatShouldISay();
+    screenAssist();
   }
 });
 
