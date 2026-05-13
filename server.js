@@ -2528,6 +2528,8 @@ const MATCH_THRESHOLD = 0.45; // Raised from 0.30 — prevents weak keyword over
 // Quick regex cleanup — fast, runs on every text. AI cleanup runs after for detected questions.
 function cleanQuestionText(text) {
   var t = text.trim();
+  // Strip [You] / [Echo] markers if they leaked through
+  t = t.replace(/^\[(You|Echo)\]\s*/i, '').trim();
   // Basic leading filler strip
   t = t.replace(/^(okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|um[,:]?\s*|uh[,:]?\s*|well[,:]?\s*|and[,:]?\s*|but[,:]?\s*|the next question is[,:]?\s*|let me ask you[,:]?\s*|here's (?:a|another) question[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*)/i, '').trim();
   if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
@@ -3173,7 +3175,10 @@ wss.on('connection', (ws) => {
             return;
           }
 
-          const recent = transcript.slice(-4);
+          // CRITICAL: Only use INTERVIEWER utterances for question detection.
+          // Filter out [You] (user's own voice) and [Echo] (user voice echoing through system audio).
+          const interviewerOnly = transcript.filter(t => !t.isUser && !t.isEcho);
+          const recent = interviewerOnly.slice(-4);
           if (recent.length < 1) return;
 
           // PRE-FILTER: Check if the most recent utterance could even be a question.
@@ -3195,7 +3200,7 @@ wss.on('connection', (ws) => {
             return;
           }
 
-          const recentText = recent.slice(-3).map(t => t.text).join('\n');
+          const recentText = recent.slice(-3).map(t => t.text.replace(/^\[(You|Echo)\]\s*/i, '')).join('\n');
           const wsCtx = ws._sessionContext || {};
           const ctxLine = (wsCtx.company || wsCtx.role) ? `Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
 

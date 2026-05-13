@@ -44,14 +44,28 @@ app.whenReady().then(() => {
   createOverlay();
 
   // Handle getDisplayMedia from renderer — required for audio/screen capture in Electron
+  // Track which screen to use — cycles on each new request (e.g. Switch Screen button)
+  let screenSourceIndex = 0;
+  let screenSourceCount = 0;
+
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
-      if (sources.length === 0) {
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      const screenSources = sources.filter(s => s.id.startsWith('screen:'));
+      if (screenSources.length === 0) {
         callback({});
         return;
       }
-      // Grant first screen source + system audio loopback
-      callback({ video: sources[0], audio: 'loopback' });
+
+      // If we already have a count and this is a NEW request (Switch Screen), advance index
+      if (screenSourceCount > 0) {
+        screenSourceIndex = (screenSourceIndex + 1) % screenSources.length;
+        _log('[Xhire] Switching to screen source', screenSourceIndex, 'of', screenSources.length, ':', screenSources[screenSourceIndex].name);
+      }
+      screenSourceCount = screenSources.length;
+
+      const chosen = screenSources[screenSourceIndex % screenSources.length];
+      _log('[Xhire] Using screen source:', chosen.name, '(' + chosen.id + ')');
+      callback({ video: chosen, audio: 'loopback' });
     }).catch(() => {
       callback({});
     });
