@@ -931,9 +931,21 @@ const NO_ROLE_STUFFING = `
 
 CRITICAL — DO NOT FORCE COMPANY/ROLE REFERENCES:
 Never say "At [company]..." or "In my role as [title]..." or "As a [title] at [company]..." UNLESS the question explicitly asks about your experience at a specific place.
-"How do you use SQL?" → "I write queries to pull data, join tables, and build reports." — NO company name.
-"Tell me about a time you used SQL in your role" → NOW you can say "At [company], I built a pipeline that..."
-The JD and resume are context — not things to parrot into every answer.`;
+DEFAULT MODE: Answer questions STRAIGHT. Most interview questions are conceptual or process questions that need a DIRECT answer — not a personal story.
+EXPERIENCE MODE: Only triggered when the question says "tell me about a time", "in your role", "at your company", "describe your experience", "give an example from your work", etc.
+
+EXAMPLES OF DEFAULT (STRAIGHT) ANSWERS:
+"How do you track adoption?" → "I look at active user counts, refresh frequency, and drill-through depth." — NO company, NO story.
+"What is a CTE?" → "A CTE is a temporary named result set you define at the top of a query." — Just explain it.
+"How do you handle stakeholder requests?" → "I ask what decision they're trying to make, then scope the analysis around that." — NO "At R&L..."
+"What tools do you use for ETL?" → "I typically use Python, SQL, and Power Query depending on the source." — NO stories.
+
+EXAMPLES OF EXPERIENCE ANSWERS (ONLY WHEN ASKED):
+"Tell me about a time you improved a process" → NOW use Q&A bank, name the company, tell the story.
+"What's your experience with Tableau?" → NOW reference where you used it.
+"Describe a challenging project" → NOW tell a real story.
+
+The JD and resume are context for what the candidate knows — NOT scripts to recite into every answer.`;
 
 // Get style prompt by key — fallback to conversational, always append code rules + anti-stuffing
 function getStylePrompt(styleKey) {
@@ -3658,15 +3670,32 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Session identity — critical for role-specific answers
     const company = session.company || 'the company';
     const role = session.role || 'this role';
-    const sessionHeader = `THIS INTERVIEW IS FOR: ${role} at ${company}\nThe candidate knows which role and company this is. If asked "why this role" or "why this company", they should reference ${company} and ${role} naturally — but NEVER parrot the JD. Answer from genuine experience.\n`;
+    const sessionHeader = `THIS INTERVIEW IS FOR: ${role} at ${company}\nThe candidate knows which role and company this is. If asked "why this role" or "why this company", reference ${company} and ${role} naturally — but NEVER parrot the JD. Only bring in personal experience when the question asks for it.\n`;
 
     const isTechnical = /sql|query|code|write|function|script|algorithm|regex|api|join|window function|python|javascript|html|css|excel|vba|dax|power query|etl|pipeline/i.test(questionText);
+    const isExperienceQ = /tell me about a time|describe a (time|situation)|give (me )?(an )?example|in your (role|experience|career|previous|current|last)|at your (company|job|work)|how have you (used|done|handled|managed|dealt)|share an experience|walk me through.*(project|experience|time)|what('s| is) your experience/i.test(questionText);
 
     // Use the full ANSWER_PROMPT for strategic framing — not a watered-down version
     // Add a speed note for live context + technical override when needed
-    const liveAddendum = isTechnical
-      ? `\n\nLIVE MODE — TECHNICAL QUESTION: If code is needed, use a markdown code block with the language tag. Lead with the code/solution, then 2-3 lines explaining. Keep it simple and direct.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`
-      : `\n\nLIVE MODE: Answer simply and directly. If the question is "what is X" just explain it — no need to tie it to personal experience unless the question asks about experience.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`;
+    const COMMON_LIVE_RULES = `\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`;
+
+    let liveAddendum;
+    if (isTechnical) {
+      liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: If code is needed, use a markdown code block with the language tag. Lead with the code/solution, then 2-3 lines explaining. Keep it simple and direct.` + COMMON_LIVE_RULES;
+    } else if (isExperienceQ) {
+      liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Use STAR format if it fits.` + COMMON_LIVE_RULES;
+    } else {
+      liveAddendum = `\n\nLIVE MODE — DIRECT ANSWER REQUIRED:
+THIS IS NOT AN EXPERIENCE QUESTION. The interviewer is asking a general/conceptual/process question.
+ANSWER IT DIRECTLY. Do NOT bring in personal stories, company names, or "At [company] I did X" framing.
+WRONG: "At R&L, I tracked adoption by looking at active user counts..."
+RIGHT: "I track adoption by looking at active user counts, dashboard refresh frequency, and drill-through depth."
+WRONG: "When I was at Wells Fargo, I implemented row-level security..."
+RIGHT: "Row-level security works by filtering data based on the user's identity, so each person only sees what's relevant to them."
+Just answer the question plainly. Use "I" naturally but do NOT attach it to a specific company or role.
+The Q&A bank and resume are for CONTEXT about what tools the candidate knows — NOT for injecting stories into every answer.
+Only reference specific companies if the question EXPLICITLY asks "tell me about a time" or "at your previous role" or similar.` + COMMON_LIVE_RULES;
+    }
 
     const basePrompt = getStylePrompt(session.answer_style);
     const system = basePrompt + liveAddendum;

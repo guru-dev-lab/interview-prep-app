@@ -136,7 +136,8 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 .copilot-gear-status{text-align:center;font:400 10px Inter,sans-serif;color:#34D399;margin-top:6px;min-height:14px}
 
 /* ===== CONTENT PANEL — floating frosted glass, resizable ===== */
-.panel{width:92%;max-width:620px;flex:1;min-height:200px;display:flex;flex-direction:column;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:20px;overflow:hidden;position:relative;box-shadow:0 12px 48px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.1);resize:vertical}
+.panel{width:92%;max-width:620px;flex:1;min-height:200px;display:flex;flex-direction:column;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:20px;overflow:hidden;position:relative;box-shadow:0 12px 48px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.1);resize:vertical;transition:max-height .35s cubic-bezier(.22,1,.36,1),opacity .25s ease,margin .3s ease,padding .3s ease,transform .35s cubic-bezier(.22,1,.36,1);transform-origin:top center}
+.panel.board-hidden{max-height:0 !important;min-height:0 !important;opacity:0;margin:0;padding:0;border:none;flex:0;pointer-events:none;overflow:hidden;transform:scaleY(0);box-shadow:none}
 /* Top accent line on panel */
 .panel::before{content:'';position:absolute;top:-1px;left:15%;right:15%;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,.35),rgba(99,102,241,.25),rgba(124,58,237,.35),transparent);pointer-events:none;z-index:2}
 /* Ambient glow around panel */
@@ -464,6 +465,11 @@ document.body.style.background='transparent';
 
     <!-- Spacer pushes right-side items -->
     <div style="flex:1;min-width:4px"></div>
+
+    <!-- Board toggle — show/hide answer panel -->
+    <button class="tb-btn" id="btn-board-toggle" data-tip="Toggle board" onclick="toggleBoard()" style="margin-right:2px">
+      <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
 
     <!-- Mode toggle -->
     <div class="mode-toggle">
@@ -1051,6 +1057,8 @@ function timeAgo(ts) {
 }
 
 function addCard(id, question, answer, source, similarity, isGenerated, shouldScroll) {
+  // Auto-show board if hidden when a new card arrives
+  if (!boardVisible) { toggleBoard(); }
   // Update existing card if already shown
   var existing = cards.find(function(c) { return c.id === id; });
   if (existing) {
@@ -1549,6 +1557,28 @@ function toggleLightMode() {
 // ===== STEALTH MODE (content protection toggle) =====
 var stealthOn = true; // Default: content protection ON
 // ===== CONFIG PILL TOGGLE =====
+// ===== BOARD TOGGLE — show/hide the answer panel =====
+var boardVisible = true; // default: visible
+function toggleBoard() {
+  var panel = document.querySelector('.panel');
+  var btn = $('btn-board-toggle');
+  if (!panel) return;
+  boardVisible = !boardVisible;
+  if (boardVisible) {
+    panel.classList.remove('board-hidden');
+    if (btn) {
+      btn.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';
+      btn.setAttribute('data-tip', 'Hide board');
+    }
+  } else {
+    panel.classList.add('board-hidden');
+    if (btn) {
+      btn.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg>';
+      btn.setAttribute('data-tip', 'Show board');
+    }
+  }
+}
+
 function toggleConfigPill() {
   var pill = $('config-float');
   pill.classList.toggle('show');
