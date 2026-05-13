@@ -919,6 +919,10 @@ function formatAnswer(text) {
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/`([^`]+)`/g, '<code>$1</code>');
     processed = highlightMetrics(processed);
+    // Client-side fallback: auto-bold common tool/framework names if not already bolded
+    if (processed.indexOf('<strong>') < 0 && processed.indexOf('<code>') < 0) {
+      processed = processed.replace(/\b(Tableau|Power BI|Snowflake|SQL|Python|DAX|ETL|KPI|API|AWS|Azure|GCP|Excel|Looker|dbt|Airflow|Spark|Kubernetes|Docker|React|Node\.js|JavaScript|TypeScript|Git|CI\/CD|Jira|Agile|Scrum)\b/g, '<strong>$1</strong>');
+    }
 
     if (line.trim() === '') { html += '<div class="sc-blank"></div>'; }
     else { html += '<div class="sc-line">' + processed + '</div>'; }

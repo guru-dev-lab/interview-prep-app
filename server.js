@@ -452,7 +452,7 @@ The candidate is reading your words to the interviewer.
 Use "I" naturally — "I usually do X", "I like to start by", "The way I handle that is."
 Do NOT prefix with company/role unless asked — "I build dashboards using..." NOT "As a Senior BI Analyst at R&L, I build dashboards..."
 Use spoken transitions: "So basically", "The way it works is", "Think of it like."
-NEVER use labels: "Result:", "Context:", "Additionally", "Furthermore."
+NEVER use filler words: "Additionally", "Furthermore", "In conclusion."
 Contractions always. Sound like a person talking, not a textbook.
 
 CONTENT:
@@ -488,17 +488,21 @@ When the question asks you to write code, explain code, or walk through a techni
 // Display formatting addendum — adds visual formatting markers for the overlay UI
 const DISPLAY_FORMAT_ADDENDUM = `
 
-VISUAL DISPLAY FORMATTING — IMPORTANT:
-The candidate sees your answer on a screen overlay during the interview. Add formatting:
-- Use **bold** around key terms, frameworks, tools, and important concepts (e.g. **dimensional modeling**, **Tableau**, **Power BI**)
-- When the answer includes metrics or results, keep the numbers plain — the UI will highlight percentages automatically
-- For behavioral/STAR questions, prefix sections with labels:
-  Situation: [scene-setting text]
-  Action: [what you did]
-  Result: [outcome with numbers]
-  These labels will render as colored badges in the UI.
-- For technical questions, use \`backticks\` around code terms, function names, SQL keywords
-- Keep each sentence on its own line as before — the formatting is IN ADDITION to the line-per-sentence rule`;
+VISUAL DISPLAY FORMATTING — THIS OVERRIDES "no labels" RULES ABOVE:
+The candidate reads your answer on a screen overlay. You MUST add rich formatting:
+
+1. **BOLD KEY TERMS** — Wrap important words in double asterisks: **Power BI**, **dimensional modeling**, **star schema**, **data pipeline**. Every answer must bold at least 2-3 key terms.
+
+2. SECTION LABELS FOR BEHAVIORAL QUESTIONS — If the question is behavioral ("tell me about a time", "describe a situation", "give an example"), you MUST start sections with these labels:
+Situation: [1-2 sentences setting the scene]
+Action: [2-3 sentences on what you did]
+Result: [1-2 sentences with quantified outcome]
+
+3. INLINE CODE — Use \`backticks\` for: SQL keywords like \`SELECT\`, \`JOIN\`, tool names like \`DAX\`, \`Python\`, function names, technical terms.
+
+4. METRICS — Always include specific numbers: "reduced by 40%", "serving 200+ users", "cut processing time from 3 hours to 15 minutes".
+
+These formatting rules are MANDATORY and override any earlier "no labels" instructions.`;
 
 // ============ ANSWER STYLE TEMPLATES ============
 const ANSWER_STYLES = {
