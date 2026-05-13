@@ -216,16 +216,12 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .card-cats-spacer{flex:1}
 
 /* ===== STAR SECTION LABELS ===== */
-.star-label{display:inline-block;font:700 7px Inter,sans-serif;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.6px;margin-right:4px;vertical-align:middle}
-.star-label.situation{background:rgba(52,211,153,.12);color:#34D399}
-.star-label.action{background:rgba(251,191,36,.12);color:#FBBF24}
-.star-label.result{background:rgba(56,189,248,.12);color:#38BDF8}
-.star-label.context{background:rgba(168,85,247,.12);color:#C084FC}
-.star-label.task{background:rgba(251,146,60,.12);color:#FB923C}
+.star-label{display:none}
+.star-inline{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:3px;font:700 8px Inter,sans-serif;color:#34D399;background:rgba(52,211,153,.12);margin-right:5px;flex-shrink:0;vertical-align:middle}
 
 /* ===== GREEN METRIC HIGHLIGHTS ===== */
 .metric-hl{color:#34D399;font-weight:700}
-.hl-key{color:#c4b5fd;font-weight:600}
+.hl-key{color:#fff;font-weight:600}
 
 /* Question & answer text */
 .sc-q-text{font:500 9.5px/1.3 Inter,sans-serif;color:rgba(255,255,255,.7);flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}
@@ -357,13 +353,9 @@ body.light-mode .cat-tag.technical{background:rgba(14,165,233,.1);color:#0284C7;
 body.light-mode .cat-tag.situational{background:rgba(147,51,234,.1);color:#7C3AED;border-color:rgba(147,51,234,.15)}
 body.light-mode .cat-tag.system-design{background:rgba(234,88,12,.1);color:#EA580C;border-color:rgba(234,88,12,.15)}
 body.light-mode .cat-tag.coding{background:rgba(79,70,229,.1);color:#4F46E5;border-color:rgba(79,70,229,.15)}
-body.light-mode .star-label.situation{background:rgba(16,185,129,.1);color:#059669}
-body.light-mode .star-label.action{background:rgba(217,119,6,.1);color:#D97706}
-body.light-mode .star-label.result{background:rgba(14,165,233,.1);color:#0284C7}
-body.light-mode .star-label.context{background:rgba(147,51,234,.1);color:#7C3AED}
-body.light-mode .star-label.task{background:rgba(234,88,12,.1);color:#EA580C}
+body.light-mode .star-inline{color:#059669;background:rgba(16,185,129,.1)}
 body.light-mode .metric-hl{color:#059669}
-body.light-mode .hl-key{color:#6d28d9}
+body.light-mode .hl-key{color:#111827}
 body.light-mode .card-footer{border-color:rgba(0,0,0,.05)}
 body.light-mode .card-footer-btn{border-color:rgba(0,0,0,.06);background:rgba(0,0,0,.02);color:#9ca3af}
 body.light-mode .card-footer-btn:hover{background:rgba(109,40,217,.06);color:#6d28d9;border-color:rgba(109,40,217,.15)}
@@ -1005,13 +997,12 @@ function formatAnswer(text) {
     }
     if (inCode) { codeLines.push(line); continue; }
 
-    // Detect STAR section labels
+    // Compact STAR section labels — inline prefix, no badge taking up space
     var starMatch = line.match(/^\*?\*?(Situation|Action|Result|Context|Task)\s*[:—\-]\s*/i);
     if (starMatch) {
-      var labelType = starMatch[1].toLowerCase();
       var rest = line.substring(starMatch[0].length);
       var processed = highlightMetrics(esc(rest).replace(/\*\*([^*]+)\*\*/g, '<span class="hl-key">$1</span>').replace(/`([^`]+)`/g, '<code>$1</code>'));
-      html += '<div class="sc-line"><span class="star-label ' + labelType + '">' + starMatch[1].toUpperCase() + '</span> ' + processed + '</div>';
+      html += '<div class="sc-line"><span class="star-inline">' + starMatch[1].charAt(0).toUpperCase() + '</span>' + processed + '</div>';
       continue;
     }
 
