@@ -262,6 +262,34 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .card-source{font:500 9px Inter,sans-serif;color:var(--text4);font-style:italic}
 .card-time{font:400 8px Inter,sans-serif;color:var(--text4)}
 
+/* ===== FOLLOW-UP PREDICTION CHIPS ===== */
+.followup-wrap{padding:4px 10px 6px;display:flex;flex-wrap:wrap;gap:4px;animation:chipIn .3s ease}
+@keyframes chipIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.followup-label{font:600 8px Inter,sans-serif;color:var(--text4);text-transform:uppercase;letter-spacing:.3px;width:100%;margin-bottom:1px}
+.followup-chip{padding:3px 8px;border-radius:6px;border:1px solid rgba(124,58,237,.15);background:rgba(124,58,237,.06);font:500 9.5px/1.3 Inter,sans-serif;color:#c4b5fd;cursor:pointer;transition:all .15s ease;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.followup-chip:hover{background:rgba(124,58,237,.15);border-color:rgba(124,58,237,.35);color:#e0d5ff;transform:translateY(-1px)}
+.followup-chip:active{transform:scale(.97)}
+body.light-mode .followup-chip{border-color:rgba(109,40,217,.12);background:rgba(109,40,217,.04);color:#6d28d9}
+body.light-mode .followup-chip:hover{background:rgba(109,40,217,.1);border-color:rgba(109,40,217,.25);color:#5b21b6}
+body.light-mode .followup-label{color:#9ca3af}
+
+/* ===== RECAP CARD ===== */
+.recap-card{margin-bottom:8px;border-radius:8px;border:1px solid rgba(251,191,36,.15);border-left:3px solid #FBBF24;background:rgba(251,191,36,.04);overflow:hidden;animation:cardIn .35s cubic-bezier(.22,1,.36,1);position:relative;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.recap-header{padding:6px 10px;background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(245,158,11,.03));border-bottom:1px solid rgba(251,191,36,.08);display:flex;align-items:center;gap:6px;font:600 11px Inter,sans-serif;color:#FBBF24}
+.recap-body{padding:8px 10px;font:400 11px/1.7 Inter,sans-serif;color:#e8edf5}
+.recap-body strong{color:#FBBF24;font-weight:600}
+.recap-body ul{margin:4px 0;padding-left:16px}
+.recap-body li{margin:2px 0}
+body.light-mode .recap-card{background:#fffbeb;border-color:rgba(245,158,11,.15)}
+body.light-mode .recap-header{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.1);color:#B45309}
+body.light-mode .recap-body{color:#1f2937}
+body.light-mode .recap-body strong{color:#B45309}
+
+/* ===== INTERVIEW ELAPSED TIMER ===== */
+.interview-timer{font:600 9px Inter,sans-serif;color:var(--text4);display:flex;align-items:center;gap:3px;flex-shrink:0}
+.interview-timer .timer-dot{width:5px;height:5px;border-radius:50%;background:#34D399;animation:dot-breathe 2s ease infinite}
+body.light-mode .interview-timer{color:#9ca3af}
+
 /* ===== LOOK: Glass ===== */
 body.look-glass .sc-card{background:linear-gradient(135deg,rgba(124,58,237,.04),rgba(99,102,241,.02));border-color:rgba(124,58,237,.1);border-left-width:3px;box-shadow:0 2px 12px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.04)}
 body.look-glass .sc-card-q{background:linear-gradient(135deg,rgba(124,58,237,.07),rgba(99,102,241,.02));border-color:rgba(124,58,237,.08)}
@@ -619,6 +647,10 @@ document.body.style.background='transparent';
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         Assist<span class="kbd">&#8984;&#8629;</span>
       </button>
+      <button class="action-btn" id="btn-recap" data-tip="AI summary of interview so far" onclick="requestRecap()" style="display:none">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Recap
+      </button>
       <div class="q-input-wrap">
         <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
         <button class="q-send-btn" onclick="sendQuestion()" data-tip="Send">
@@ -711,6 +743,13 @@ document.addEventListener('keydown', function(e) {
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault();
     screenAssist();
+  } else if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
+    // Cmd+R / Ctrl+R → Interview Recap (only when recap button visible)
+    var recapBtn = $('btn-recap');
+    if (recapBtn && recapBtn.style.display !== 'none') {
+      e.preventDefault();
+      requestRecap();
+    }
   }
 });
 
@@ -985,6 +1024,14 @@ function connect() {
       addCard('kicked-' + Date.now(), '⚠️ Live session ended', msg.message || 'Live started on another device. Only one live session allowed at a time.', 'system', 0, false, true);
       setStatus('Kicked — live on another device', 'off');
     }
+    else if (msg.type === 'follow_up_predictions') {
+      // Show predicted follow-up questions as chips below the answer card
+      showFollowUpChips(msg.questionId, msg.predictions);
+    }
+    else if (msg.type === 'interview_recap') {
+      // Show recap card at the top of the feed
+      showRecapCard(msg.recap, msg.questionCount);
+    }
   };
 }
 
@@ -1184,6 +1231,7 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
     + '<button class="card-footer-btn" onclick="regenerateCard(\'' + id + '\')" title="Regenerate"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>'
     + '<span class="card-footer-spacer"></span>'
     + (sourceLabel ? '<span class="card-source">' + sourceLabel + '</span>' : '')
+    + '<span class="card-time">Just now</span>'
     + '</div>';
 
   card.innerHTML = numBadge + dismissHtml
@@ -2142,8 +2190,137 @@ function getCopilotContext() {
   return ctx;
 }
 
+// ===== FOLLOW-UP PREDICTIONS =====
+function showFollowUpChips(questionId, predictions) {
+  if (!predictions || predictions.length === 0) return;
+  var cardEl = document.getElementById('card-' + questionId);
+  if (!cardEl) return;
+  // Don't add duplicate chips
+  if (cardEl.querySelector('.followup-wrap')) return;
+
+  var wrap = document.createElement('div');
+  wrap.className = 'followup-wrap';
+  wrap.innerHTML = '<span class="followup-label">Likely follow-ups</span>'
+    + predictions.map(function(p) {
+      return '<span class="followup-chip" onclick="askFollowUp(this)" title="' + esc(p) + '">' + esc(p) + '</span>';
+    }).join('');
+
+  // Insert before footer
+  var footer = cardEl.querySelector('.card-footer');
+  if (footer) {
+    cardEl.insertBefore(wrap, footer);
+  } else {
+    cardEl.appendChild(wrap);
+  }
+}
+
+function askFollowUp(chipEl) {
+  var text = chipEl.textContent || chipEl.innerText;
+  if (!text) return;
+  // Send as manual question
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    pendingManualScroll = true;
+    ws.send(JSON.stringify({ type: 'canvas_question', text: text }));
+    chipEl.style.opacity = '0.4';
+    chipEl.style.pointerEvents = 'none';
+    showToast('Preparing answer...', 'info', 1500);
+  } else {
+    showToast('Not connected', '', 2000);
+  }
+}
+
+// ===== INTERVIEW RECAP =====
+function requestRecap() {
+  var btn = $('btn-recap');
+  if (!btn || btn.classList.contains('loading')) return;
+  btn.classList.add('loading');
+  btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>';
+  setTimeout(function() {
+    btn.classList.remove('loading');
+    btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Recap';
+  }, 5000);
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'interview_recap' }));
+  } else {
+    btn.classList.remove('loading');
+    btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Recap';
+    showToast('Not live — tap Go Live first', '', 2500);
+  }
+}
+
+function showRecapCard(recap, questionCount) {
+  // Remove existing recap card if any
+  var old = document.getElementById('recap-card');
+  if (old) old.remove();
+
+  var feed = $('feed');
+  if (!feed) return;
+
+  var card = document.createElement('div');
+  card.className = 'recap-card';
+  card.id = 'recap-card';
+  card.innerHTML = '<div class="recap-header">'
+    + '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+    + ' Interview Recap — ' + questionCount + ' questions'
+    + '<button class="card-dismiss" onclick="this.closest(\'.recap-card\').remove()" title="Dismiss" style="position:absolute;top:4px;right:6px">&times;</button>'
+    + '</div>'
+    + '<div class="recap-body">' + formatAnswer(recap) + '</div>';
+
+  feed.appendChild(card);
+  setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+
+  // Reset recap button
+  var btn = $('btn-recap');
+  if (btn) {
+    btn.classList.remove('loading');
+    btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Recap';
+  }
+  showToast('Recap ready', 'info', 1500);
+}
+
+// ===== LIVE ELAPSED TIME UPDATER =====
+// Updates all card timestamps every 30s so they show "2m ago", "5m ago" etc.
+var elapsedTimerInterval = null;
+
+function startElapsedTimer() {
+  if (elapsedTimerInterval) return;
+  elapsedTimerInterval = setInterval(function() {
+    cards.forEach(function(c) {
+      var el = document.getElementById('card-' + c.id);
+      if (!el) return;
+      var timeEl = el.querySelector('.card-time');
+      if (timeEl && c.ts) {
+        timeEl.textContent = timeAgo(c.ts);
+      }
+    });
+  }, 30000); // Every 30 seconds
+}
+
+function stopElapsedTimer() {
+  if (elapsedTimerInterval) {
+    clearInterval(elapsedTimerInterval);
+    elapsedTimerInterval = null;
+  }
+}
+
+// ===== SHOW RECAP BUTTON WHEN CARDS EXIST =====
+// Watch for card additions — show recap button after 2+ questions answered
+var recapBtnObserver = new MutationObserver(function() {
+  var answeredCards = cards.filter(function(c) { return c.answer && c.source !== 'copilot'; });
+  var btn = $('btn-recap');
+  if (btn) {
+    btn.style.display = answeredCards.length >= 2 ? '' : 'none';
+  }
+});
+setTimeout(function() {
+  var feed = $('feed');
+  if (feed) recapBtnObserver.observe(feed, { childList: true });
+}, 1000);
+
 // ===== INIT =====
 loadSessions();
+startElapsedTimer();
 </script>
 </body>
 </html>

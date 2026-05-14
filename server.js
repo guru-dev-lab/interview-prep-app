@@ -3581,6 +3581,27 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'status', message: 'Tab switched — listening on new tab' }));
       }
 
+      else if (msg.type === 'interview_recap') {
+        // Generate a concise summary of the interview so far
+        const recapQuestions = (ws._sessionQuestions || sessionQuestions || []).filter(q => q.answer).slice(-20);
+        if (recapQuestions.length === 0) {
+          ws.send(JSON.stringify({ type: 'error', message: 'No questions answered yet' }));
+          return;
+        }
+        const wsCtx = ws._sessionContext || {};
+        const recapSystem = `You are an interview coach. Summarize an ongoing interview concisely. Include: total questions so far, key topics covered, areas where the candidate did well (strong answers), and any gaps or topics not yet covered that the interviewer might bring up. Keep it under 200 words. Use bullet points. Be encouraging but realistic.`;
+        const qaSummary = recapQuestions.map((q, i) => `Q${i+1}: ${q.text}\nA: ${(q.answer || '').substring(0, 200)}`).join('\n\n');
+        const recapUser = `Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n\n${qaSummary}\n\nProvide a concise interview recap:`;
+        callClaude(recapSystem, recapUser, 400, MODEL_HAIKU).then(recap => {
+          const recapMsg = { type: 'interview_recap', recap: recap, questionCount: recapQuestions.length };
+          ws.send(JSON.stringify(recapMsg));
+          broadcastToSession(sessionId, recapMsg, ws);
+        }).catch(e => {
+          console.error('[Recap error]', e.message);
+          ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate recap' }));
+        });
+      }
+
       else if (msg.type === 'stop') {
         clearTimeout(idleTimer);
         // Close Deepgram streams
@@ -3771,9 +3792,44 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     };
     ws.send(JSON.stringify(liveAnswerMsg));
     broadcastToSession(sessionId, liveAnswerMsg, ws); // Broadcast to canvas clients
+
+    // Fire-and-forget: predict likely follow-up questions the interviewer might ask next
+    generateFollowUps(questionText, answer, session, ws, sessionId, questionId).catch(e => {
+      console.error('[Follow-up prediction error]', e.message);
+    });
   } catch (e) {
     console.error('[Live Answer Error]', e.message);
     ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate answer' }));
+  }
+}
+
+// Predict 2-3 follow-up questions the interviewer is likely to ask next
+async function generateFollowUps(questionText, answerText, session, ws, sessionId, questionId) {
+  const company = session.company || 'the company';
+  const role = session.role || 'this role';
+  const system = `You are an expert interviewer for ${role} at ${company}. Given a question that was just asked and the candidate's answer, predict the 2-3 most likely follow-up questions the interviewer would ask next. Consider: drilling deeper into the answer, asking for specifics/metrics, challenging assumptions, or pivoting to a related topic. Return ONLY a JSON array of strings, no explanation. Example: ["Can you walk me through the specific metrics you tracked?","How did you handle pushback from stakeholders?"]`;
+  const userPrompt = `QUESTION JUST ASKED:\n${questionText}\n\nCANDIDATE'S ANSWER:\n${answerText.substring(0, 800)}\n\nPredict the 2-3 most likely follow-up questions:`;
+
+  const tStart = Date.now();
+  const raw = await callClaude(system, userPrompt, 200, MODEL_HAIKU);
+  console.log(`[TIMING] generateFollowUps: ${Date.now() - tStart}ms`);
+
+  // Parse the JSON array from response
+  try {
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return;
+    const followUps = JSON.parse(match[0]);
+    if (!Array.isArray(followUps) || followUps.length === 0) return;
+
+    const followUpMsg = {
+      type: 'follow_up_predictions',
+      questionId: questionId,
+      predictions: followUps.slice(0, 3)
+    };
+    ws.send(JSON.stringify(followUpMsg));
+    broadcastToSession(sessionId, followUpMsg, ws);
+  } catch (parseErr) {
+    console.error('[Follow-up parse error]', parseErr.message);
   }
 }
 
