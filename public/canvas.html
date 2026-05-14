@@ -700,8 +700,15 @@ document.body.style.background='transparent';
       <div class="settings-section">
         <div class="settings-section-title">&#128161; Answers</div>
         <div class="settings-row">
-          <div><div class="settings-label">Answer Length (lines)</div><div class="settings-desc">AI summarizes to this many lines (0 = full)</div></div>
-          <input type="number" class="settings-input" id="s-max-lines" value="0" min="0" max="100" onchange="applyMaxLines(this.value)">
+          <div><div class="settings-label">Response Length</div><div class="settings-desc">How concise should answers be</div></div>
+          <select class="settings-input" id="s-max-lines" onchange="applyMaxLines(this.value)" style="width:auto;min-width:120px;padding:4px 8px">
+            <option value="0">Full (no limit)</option>
+            <option value="3">Ultra-short (2–3 sentences)</option>
+            <option value="5">Short (4–5 sentences)</option>
+            <option value="8" selected>Balanced (5–8 sentences)</option>
+            <option value="12">Detailed (8–12 sentences)</option>
+            <option value="20">Thorough (12–20 sentences)</option>
+          </select>
         </div>
         <div class="settings-row">
           <div><div class="settings-label">Follow-Up Predictions</div><div class="settings-desc">Show predicted next questions</div></div>
@@ -1020,10 +1027,8 @@ function connect() {
     };
     if (isElectronMode) startMsg.dualStream = true;
     ws.send(JSON.stringify(startMsg));
-    // Send current answer length setting to server
-    if (settingsMaxLines > 0) {
-      ws.send(JSON.stringify({ type: 'update_settings', maxLines: settingsMaxLines }));
-    }
+    // Always send response length setting to server on connect
+    ws.send(JSON.stringify({ type: 'update_settings', maxLines: settingsMaxLines }));
     if (isElectronMode) {
       startElectronAudio();
     }
@@ -1883,7 +1888,7 @@ setTimeout(function() {
 // ===== SETTINGS MODAL =====
 var settingsFollowUps = true;
 var settingsAutoScroll = true;
-var settingsMaxLines = 0; // 0 = no limit
+var settingsMaxLines = 8; // default: balanced (5-8 sentences)
 
 function openSettings() {
   // Sync settings values from current state

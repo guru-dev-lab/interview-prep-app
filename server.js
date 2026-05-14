@@ -3762,22 +3762,25 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
 
     const basePrompt = getStylePrompt(session.answer_style);
 
-    // Answer length/summarization control — if user set maxLines, constrain the AI
-    const maxLines = ws._maxAnswerLines || 0;
+    // Response length control — user picks how concise answers should be
+    const maxSentences = ws._maxAnswerLines || 0;
     let lengthConstraint = '';
     let tokenLimit = isTechnical ? 1200 : 600;
-    if (maxLines > 0) {
-      if (maxLines <= 3) {
-        lengthConstraint = `\n\nCRITICAL LENGTH CONSTRAINT: Your answer MUST be ${maxLines} lines or fewer. Be extremely concise — one key point per line. No fluff, no preamble. Summarize ruthlessly.`;
-        tokenLimit = Math.min(tokenLimit, 150);
-      } else if (maxLines <= 6) {
-        lengthConstraint = `\n\nLENGTH CONSTRAINT: Keep your answer to ${maxLines} lines maximum. Be concise and direct — cover the key points only. Each line should be a distinct point or sentence.`;
-        tokenLimit = Math.min(tokenLimit, 300);
-      } else if (maxLines <= 12) {
-        lengthConstraint = `\n\nLENGTH CONSTRAINT: Keep your answer under ${maxLines} lines. Be thorough but not verbose. Each line should add value.`;
-        tokenLimit = Math.min(tokenLimit, 500);
+    if (maxSentences > 0) {
+      if (maxSentences <= 3) {
+        lengthConstraint = `\n\nRESPONSE LENGTH: MAXIMUM ${maxSentences} sentences. This is a HARD limit. Cut everything non-essential. No preamble, no filler, no "additionally." If code is needed, the code block does NOT count toward the sentence limit but keep explanation to 1 sentence after the code. Every word must earn its place.`;
+        tokenLimit = Math.min(tokenLimit, isTechnical ? 800 : 120);
+      } else if (maxSentences <= 5) {
+        lengthConstraint = `\n\nRESPONSE LENGTH: Keep to ${maxSentences} sentences maximum. Be direct — answer the question, give one supporting detail, done. No intro sentences like "That's a great question" or "Here's how I'd approach this." Start with the answer itself. If code is needed, code block + 1 sentence explanation.`;
+        tokenLimit = Math.min(tokenLimit, isTechnical ? 900 : 250);
+      } else if (maxSentences <= 8) {
+        lengthConstraint = `\n\nRESPONSE LENGTH: Stay within ${maxSentences} sentences. Be concise — no unnecessary context, no filler transitions, no restating the question. Lead with the answer. Each sentence should add new information. If code is needed, the code block is separate — keep surrounding text to 2-3 sentences max.`;
+        tokenLimit = Math.min(tokenLimit, isTechnical ? 1000 : 400);
+      } else if (maxSentences <= 12) {
+        lengthConstraint = `\n\nRESPONSE LENGTH: Aim for ${maxSentences} sentences or fewer. You have room for detail but don't pad. No filler intros or conclusions.`;
+        tokenLimit = Math.min(tokenLimit, isTechnical ? 1100 : 500);
       } else {
-        lengthConstraint = `\n\nLENGTH GUIDELINE: Aim for around ${maxLines} lines. You can go slightly over if the answer needs it, but don't pad.`;
+        lengthConstraint = `\n\nRESPONSE LENGTH: Up to ${maxSentences} sentences. Be thorough where needed but don't pad with filler.`;
       }
     }
 
