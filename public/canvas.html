@@ -243,7 +243,7 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .sc-card.card-new{animation:cardIn .35s cubic-bezier(.22,1,.36,1),cardGlow 1.2s ease .3s}
 
 /* Question header */
-.sc-card-q{padding:6px 10px;background:linear-gradient(135deg,rgba(124,58,237,.05),rgba(99,102,241,.02));border-bottom:1px solid rgba(255,255,255,.05);display:flex;gap:6px;align-items:center}
+.sc-card-q{padding:4px 10px;background:linear-gradient(135deg,rgba(124,58,237,.05),rgba(99,102,241,.02));border-bottom:1px solid rgba(255,255,255,.05);display:flex;gap:5px;align-items:center}
 .sc-tag{font:700 7px Inter,sans-serif;padding:2px 6px;border-radius:8px;text-transform:uppercase;flex-shrink:0;letter-spacing:.4px;display:inline-flex;align-items:center;gap:3px}
 .sc-tag::before{content:'';width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0}
 .sc-tag.matched{background:rgba(52,211,153,.1);color:#34D399}
@@ -280,7 +280,7 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .hl-key{color:#FBBF24;font-weight:600}
 
 /* Question & answer text */
-.sc-q-text{font:500 9.5px/1.3 Inter,sans-serif;color:rgba(255,255,255,.7);flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis}
+.sc-q-text{font:500 8px/1.3 Inter,sans-serif;color:rgba(255,255,255,.55);flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em}
 .sc-card-a{padding:8px 10px;font:400 11.5px/1.7 Inter,sans-serif;color:#e8edf5}
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
@@ -698,7 +698,7 @@ document.body.style.background='transparent';
       <div class="settings-section">
         <div class="settings-section-title">&#128161; Answers</div>
         <div class="settings-row">
-          <div><div class="settings-label">Max Answer Lines</div><div class="settings-desc">Truncate long answers (0 = no limit)</div></div>
+          <div><div class="settings-label">Answer Length (lines)</div><div class="settings-desc">AI summarizes to this many lines (0 = full)</div></div>
           <input type="number" class="settings-input" id="s-max-lines" value="0" min="0" max="100" onchange="applyMaxLines(this.value)">
         </div>
         <div class="settings-row">
@@ -1018,6 +1018,10 @@ function connect() {
     };
     if (isElectronMode) startMsg.dualStream = true;
     ws.send(JSON.stringify(startMsg));
+    // Send current answer length setting to server
+    if (settingsMaxLines > 0) {
+      ws.send(JSON.stringify({ type: 'update_settings', maxLines: settingsMaxLines }));
+    }
     if (isElectronMode) {
       startElectronAudio();
     }
@@ -1383,7 +1387,7 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
   card.innerHTML = numBadge + dismissHtml
     + '<div class="sc-card-q"><span class="sc-tag ' + tagClass + '">' + tagText + '</span><div class="sc-q-text">' + esc(question) + '</div>' + simBadge + '</div>'
     + catHtml
-    + '<div class="sc-card-a"' + (settingsMaxLines > 0 ? ' style="max-height:' + (settingsMaxLines * 1.7 * canvasFontSize / 12) + 'em;overflow:hidden"' : '') + '>' + formatAnswer(answer) + '</div>'
+    + '<div class="sc-card-a">' + formatAnswer(answer) + '</div>'
     + footerHtml;
 
   // Apply current filter visibility
@@ -1795,7 +1799,8 @@ function changeFontSize(delta) {
   var codeSz = Math.max(10, canvasFontSize - 1);
   // Inject CSS rule that applies to existing AND future elements
   _fontStyleEl.textContent =
-    '.sc-card-a, .sc-card-q, .sc-card-loading, .feed-wrap { font-size: ' + canvasFontSize + 'px !important; }' +
+    '.sc-card-a, .sc-card-loading, .feed-wrap { font-size: ' + canvasFontSize + 'px !important; }' +
+    '.sc-q-text { font-size: ' + Math.max(8, canvasFontSize - 4) + 'px !important; }' +
     '.sc-card-a pre, .sc-card-a code, .sc-card-a pre code { font-size: ' + codeSz + 'px !important; }';
   // Update settings display
   var sFont = $('s-font-size');
@@ -1922,16 +1927,10 @@ function syncConfigPickers() {
 
 function applyMaxLines(val) {
   settingsMaxLines = parseInt(val) || 0;
-  // Apply truncation to all existing cards
-  document.querySelectorAll('.sc-card-a').forEach(function(el) {
-    if (settingsMaxLines > 0) {
-      el.style.maxHeight = (settingsMaxLines * 1.7 * canvasFontSize / 12) + 'em';
-      el.style.overflow = 'hidden';
-    } else {
-      el.style.maxHeight = '';
-      el.style.overflow = '';
-    }
-  });
+  // Send to server so AI generates shorter/longer answers
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'update_settings', maxLines: settingsMaxLines }));
+  }
 }
 
 function toggleFollowUps(on) {

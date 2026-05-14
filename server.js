@@ -3440,6 +3440,14 @@ wss.on('connection', (ws) => {
         });
       }
 
+      else if (msg.type === 'update_settings') {
+        // Client sends answer length preference — store on ws for use in generateLiveAnswer
+        if (msg.maxLines !== undefined) {
+          ws._maxAnswerLines = parseInt(msg.maxLines) || 0; // 0 = no limit
+          console.log('[Settings] maxAnswerLines set to', ws._maxAnswerLines);
+        }
+      }
+
       else if (msg.type === 'canvas_question') {
         // User typed a question in the Smart Canvas input bar — manual action, no cooldown
         const text = msg.text;
@@ -3762,7 +3770,27 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     }
 
     const basePrompt = getStylePrompt(session.answer_style);
-    const system = basePrompt + liveAddendum;
+
+    // Answer length/summarization control — if user set maxLines, constrain the AI
+    const maxLines = ws._maxAnswerLines || 0;
+    let lengthConstraint = '';
+    let tokenLimit = isTechnical ? 1200 : 600;
+    if (maxLines > 0) {
+      if (maxLines <= 3) {
+        lengthConstraint = `\n\nCRITICAL LENGTH CONSTRAINT: Your answer MUST be ${maxLines} lines or fewer. Be extremely concise — one key point per line. No fluff, no preamble. Summarize ruthlessly.`;
+        tokenLimit = Math.min(tokenLimit, 150);
+      } else if (maxLines <= 6) {
+        lengthConstraint = `\n\nLENGTH CONSTRAINT: Keep your answer to ${maxLines} lines maximum. Be concise and direct — cover the key points only. Each line should be a distinct point or sentence.`;
+        tokenLimit = Math.min(tokenLimit, 300);
+      } else if (maxLines <= 12) {
+        lengthConstraint = `\n\nLENGTH CONSTRAINT: Keep your answer under ${maxLines} lines. Be thorough but not verbose. Each line should add value.`;
+        tokenLimit = Math.min(tokenLimit, 500);
+      } else {
+        lengthConstraint = `\n\nLENGTH GUIDELINE: Aim for around ${maxLines} lines. You can go slightly over if the answer needs it, but don't pad.`;
+      }
+    }
+
+    const system = basePrompt + liveAddendum + lengthConstraint;
     // Include recent transcript so AI sees the full buildup, not just the tail-end question
     const recentLines = ws._recentTranscript || [];
     const transcriptContext = recentLines.length > 0
@@ -3772,7 +3800,7 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     const userPrompt = `${sessionHeader}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}${userContext}${transcriptContext}\n\nQUESTION (detected from speech — may be just the tail end, use RECENT CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
 
     const tGen = Date.now();
-    const answer = await callClaude(system, userPrompt, isTechnical ? 1200 : 600, MODEL_HAIKU);
+    const answer = await callClaude(system, userPrompt, tokenLimit, MODEL_HAIKU);
     console.log(`[TIMING] generateLiveAnswer: ${Date.now() - tGen}ms`);
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT
