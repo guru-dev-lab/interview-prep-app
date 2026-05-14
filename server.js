@@ -474,35 +474,26 @@ Output ONLY the answer. No intro, no labels, no "Here's my answer."`;
 // Universal addendum for ALL styles — keeps code answers clean
 const CODE_ANSWER_ADDENDUM = `
 
-TECHNICAL/CODE QUESTIONS — SPECIAL RULES:
-When the question asks you to write code, explain code, or walk through a technical implementation:
-- Give the code FIRST, then a 1-2 line explanation AFTER if needed.
-- Code must be clean, minimal, and ready to read aloud or copy.
-- NO jargon filler around the code. No "Let me walk you through this" or "Here's what I'd do."
-- NO explaining what the code does line-by-line unless asked.
-- NO buzzwords like "elegant solution", "robust implementation", "leveraging the power of."
-- If they ask "what's the difference between X and Y" — state the difference plainly. 2-4 lines max.
-- If they ask "how would you do X" — show the code or steps, then one line on why.
-- Keep it like you're pair programming: direct, clean, no fluff.`;
+TECHNICAL/CODE QUESTIONS — STRICT RULES:
+When the question involves code, SQL, technical concepts, or implementation:
+- CODE FIRST. No preamble. No "Here's how I'd approach this." No "That's a great question." Just the code block immediately.
+- After the code: ONE sentence max saying what it does. Not a paragraph. One sentence.
+- NEVER write "What this does:" sections. NEVER explain line by line. NEVER add a walkthrough.
+- NEVER say "Here's a practical example" or "Let me demonstrate" — just give the answer.
+- If they ask a conceptual question (not code): 2-4 sentences, plain and direct. No stories.
+- NO intro text before code. NO "I would use CTEs and window functions to..." — just write the code.
+- The candidate reads this on a TINY overlay screen. Every extra word is wasted space.`;
 
 // Display formatting addendum — adds visual formatting markers for the overlay UI
 const DISPLAY_FORMAT_ADDENDUM = `
 
-VISUAL DISPLAY FORMATTING — THIS OVERRIDES "no labels" RULES ABOVE:
-The candidate reads your answer on a screen overlay. You MUST add rich formatting:
-
-1. **BOLD KEY TERMS** — Wrap important words in double asterisks: **Power BI**, **dimensional modeling**, **star schema**, **data pipeline**. Every answer must bold at least 2-3 key terms.
-
-2. SECTION LABELS FOR BEHAVIORAL QUESTIONS — If the question is behavioral ("tell me about a time", "describe a situation", "give an example"), you MUST start sections with these labels:
-Situation: [1-2 sentences setting the scene]
-Action: [2-3 sentences on what you did]
-Result: [1-2 sentences with quantified outcome]
-
-3. INLINE CODE — Use \`backticks\` for: SQL keywords like \`SELECT\`, \`JOIN\`, tool names like \`DAX\`, \`Python\`, function names, technical terms.
-
-4. METRICS — Always include specific numbers: "reduced by 40%", "serving 200+ users", "cut processing time from 3 hours to 15 minutes".
-
-These formatting rules are MANDATORY and override any earlier "no labels" instructions.`;
+FORMATTING (read on a tiny overlay — be concise):
+- **Bold** key terms (2-3 per answer max)
+- \`Backticks\` for technical terms, SQL keywords, tool names
+- STAR labels (Situation/Action/Result) ONLY for behavioral questions
+- Include real metrics when relevant
+- For technical: code first, minimal explanation after
+- For non-technical: direct answer, no stories unless asked`;
 
 // ============ ANSWER STYLE TEMPLATES ============
 const ANSWER_STYLES = {
@@ -3753,7 +3744,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
 
     let liveAddendum;
     if (isTechnical) {
-      liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: If code is needed, use a markdown code block with the language tag. Lead with the code/solution, then 2-3 lines explaining. Keep it simple and direct.` + COMMON_LIVE_RULES;
+      liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: Code block FIRST with language tag. NO intro text before the code. After the code, ONE sentence max. The candidate is reading this on a tiny overlay — every extra word wastes space. If the question is conceptual (no code needed), answer in 2-4 direct sentences.` + COMMON_LIVE_RULES;
     } else if (isExperienceQ) {
       liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Use STAR format if it fits.` + COMMON_LIVE_RULES;
     } else {
