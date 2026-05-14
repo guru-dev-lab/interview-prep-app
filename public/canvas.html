@@ -142,6 +142,54 @@ body.glow-live .toolbar::after{box-shadow:0 0 18px rgba(52,211,153,.12),0 0 40px
 .copilot-gear-save:hover{background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(124,58,237,.4))}
 .copilot-gear-status{text-align:center;font:400 10px Inter,sans-serif;color:#34D399;margin-top:6px;min-height:14px}
 
+/* ===== SETTINGS MODAL ===== */
+.settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.settings-modal{background:#12131f;border:1px solid rgba(124,58,237,.2);border-radius:16px;width:92%;max-width:380px;max-height:85vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 40px rgba(124,58,237,.08);animation:modalIn .25s cubic-bezier(.22,1,.36,1)}
+@keyframes modalIn{from{opacity:0;transform:scale(.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.settings-modal::-webkit-scrollbar{width:4px}
+.settings-modal::-webkit-scrollbar-thumb{background:rgba(124,58,237,.25);border-radius:3px}
+.settings-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);position:sticky;top:0;background:#12131f;z-index:1;border-radius:16px 16px 0 0}
+.settings-title{font:700 14px Inter,sans-serif;color:#E0D5FF;display:flex;align-items:center;gap:6px}
+.settings-close{background:none;border:none;color:var(--text4);font-size:16px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:.15s}
+.settings-close:hover{background:rgba(255,255,255,.06);color:#fff}
+.settings-body{padding:12px 18px 18px}
+.settings-section{margin-bottom:14px}
+.settings-section-title{font:700 9px Inter,sans-serif;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:4px}
+.settings-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.settings-row:last-child{border-bottom:none}
+.settings-label{font:500 11px Inter,sans-serif;color:var(--text2)}
+.settings-desc{font:400 9px Inter,sans-serif;color:var(--text4);margin-top:1px}
+.settings-control{flex-shrink:0;display:flex;align-items:center;gap:6px}
+.settings-select{height:26px;font:500 10px Inter,sans-serif;padding:0 8px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text2);cursor:pointer;outline:none;transition:.15s}
+.settings-select:hover{background:rgba(255,255,255,.1);border-color:rgba(124,58,237,.3)}
+.settings-select option{background:#12131f;color:#e2e8f0}
+.settings-input{width:55px;height:26px;font:500 10px Inter,sans-serif;padding:0 8px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text2);outline:none;text-align:center;transition:.15s}
+.settings-input:focus{border-color:rgba(124,58,237,.4)}
+/* Toggle switch */
+.toggle-switch{position:relative;width:34px;height:18px;cursor:pointer}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:rgba(255,255,255,.1);border-radius:18px;transition:.2s;border:1px solid rgba(255,255,255,.08)}
+.toggle-slider::before{content:'';position:absolute;left:2px;top:2px;width:12px;height:12px;background:#64748b;border-radius:50%;transition:.2s}
+.toggle-switch input:checked + .toggle-slider{background:rgba(124,58,237,.3);border-color:rgba(124,58,237,.4)}
+.toggle-switch input:checked + .toggle-slider::before{transform:translateX(16px);background:#c4b5fd}
+.settings-shortcut{font:500 8px 'Fira Code',Consolas,monospace;color:var(--text4);padding:2px 5px;background:rgba(255,255,255,.05);border-radius:4px;border:1px solid rgba(255,255,255,.06)}
+body.light-mode .settings-overlay{background:rgba(255,255,255,.5)}
+body.light-mode .settings-modal{background:#fff;border-color:rgba(109,40,217,.12);box-shadow:0 24px 80px rgba(0,0,0,.15)}
+body.light-mode .settings-header{background:#fff;border-color:rgba(0,0,0,.06)}
+body.light-mode .settings-title{color:#1e1b4b}
+body.light-mode .settings-section-title{color:#7c3aed}
+body.light-mode .settings-row{border-color:rgba(0,0,0,.04)}
+body.light-mode .settings-label{color:#374151}
+body.light-mode .settings-desc{color:#9ca3af}
+body.light-mode .settings-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#374151}
+body.light-mode .settings-select option{background:#fff;color:#374151}
+body.light-mode .settings-input{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08);color:#374151}
+body.light-mode .toggle-slider{background:rgba(0,0,0,.08);border-color:rgba(0,0,0,.1)}
+body.light-mode .toggle-slider::before{background:#9ca3af}
+body.light-mode .toggle-switch input:checked + .toggle-slider{background:rgba(109,40,217,.2);border-color:rgba(109,40,217,.3)}
+body.light-mode .toggle-switch input:checked + .toggle-slider::before{background:#7c3aed}
+
 /* ===== CONTENT PANEL — floating frosted glass, resizable ===== */
 .panel{width:92%;max-width:620px;flex:1;min-height:200px;display:flex;flex-direction:column;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:20px;overflow:hidden;position:relative;box-shadow:0 12px 48px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(0,0,0,.1);resize:vertical;transition:max-height .35s cubic-bezier(.22,1,.36,1),opacity .25s ease,margin .3s ease,padding .3s ease,transform .35s cubic-bezier(.22,1,.36,1);transform-origin:top center}
 .panel.board-hidden{max-height:0 !important;min-height:0 !important;opacity:0;margin:0;padding:0;border:none;flex:0;pointer-events:none;overflow:hidden;transform:scaleY(0);box-shadow:none}
@@ -236,18 +284,18 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .sc-card-a{padding:8px 10px;font:400 11.5px/1.7 Inter,sans-serif;color:#e8edf5}
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
-.sc-card-a pre{background:transparent;border:none;border-radius:0;padding:6px 0;margin:2px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 10.5px/1.6 'Fira Code',Consolas,'Courier New',monospace;color:#e6edf3;position:relative}
+.sc-card-a pre{background:transparent;border:none;border-radius:0;padding:6px 0;margin:2px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 10.5px/1.6 'Fira Code',Consolas,'Courier New',monospace;color:#F8F8F2;position:relative}
 .sc-card-a pre::before{display:none}
 .code-copy-btn{position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:4px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0;z-index:1;opacity:0}
 .sc-card-a pre:hover .code-copy-btn{opacity:1}
 .code-copy-btn:hover{background:rgba(255,255,255,.12);color:#fff}
 .code-copy-btn.copied{color:#34D399;background:rgba(52,211,153,.1);opacity:1}
 .code-line{display:flex;gap:0;min-height:17px}
-.code-ln{min-width:24px;padding-right:10px;text-align:right;color:rgba(255,255,255,.2);font:400 10px 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0;line-height:1.6}
-.code-content{flex:1;color:#e6edf3}
+.code-ln{min-width:24px;padding-right:10px;text-align:right;color:rgba(255,255,255,.28);font:400 10px 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0;line-height:1.6}
+.code-content{flex:1;color:#F8F8F2}
 .sc-card-a pre code{background:none !important;padding:0;font-size:10.5px;color:inherit;border:none !important;display:block}
 .sc-card-a code{background:rgba(124,58,237,.1);padding:1px 5px;border-radius:4px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c4b5fd;border:1px solid rgba(124,58,237,.12)}
-.sh-kw{color:#FF6B8A;font-weight:500}.sh-str{color:#A8E6A1}.sh-cmt{color:#6B7394;font-style:italic}.sh-num{color:#D4A0FF}.sh-fn{color:#7DD3FC}.sh-dec{color:#FFD280}
+.sh-kw{color:#FF79C6;font-weight:600;text-shadow:0 0 8px rgba(255,121,198,.25)}.sh-str{color:#50FA7B;text-shadow:0 0 6px rgba(80,250,123,.2)}.sh-cmt{color:#6272A4;font-style:italic}.sh-num{color:#BD93F9;text-shadow:0 0 6px rgba(189,147,249,.2)}.sh-fn{color:#8BE9FD;text-shadow:0 0 6px rgba(139,233,253,.2)}.sh-dec{color:#FFB86C;text-shadow:0 0 6px rgba(255,184,108,.2)}
 .sc-line{margin-bottom:0;padding:2px 8px;border-radius:4px}
 .sc-line:nth-child(odd){background:rgba(255,255,255,.015)}
 .sc-blank{height:3px}
@@ -518,7 +566,7 @@ document.body.style.background='transparent';
 
     <!-- Right-side icons -->
     <div class="tb-utils">
-      <button class="tb-btn" id="btn-config" data-tip="Settings" onclick="toggleConfigPill()">
+      <button class="tb-btn" id="btn-config" data-tip="Settings" onclick="openSettings()">
         <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       </button>
       <button class="tb-btn danger tip-left" data-tip="Sign out" onclick="doLogout()">
@@ -601,6 +649,104 @@ document.body.style.background='transparent';
       <div class="copilot-gear-section">
         <button class="copilot-gear-save" onclick="saveCopilotGear()">Save & Close</button>
         <div class="copilot-gear-status" id="copilot-gear-status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="settings-overlay" id="settings-overlay" style="display:none" onclick="if(event.target===this)closeSettings()">
+  <div class="settings-modal">
+    <div class="settings-header">
+      <span class="settings-title"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> Settings</span>
+      <button class="settings-close" onclick="closeSettings()">&#10005;</button>
+    </div>
+    <div class="settings-body">
+      <!-- DISPLAY -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#127912; Display</div>
+        <div class="settings-row">
+          <div><div class="settings-label">Answer Style</div></div>
+          <select class="settings-select" id="s-answer-style" onchange="changeAnswerStyle(this.value);syncConfigPickers()">
+            <option value="conversational">Chat</option><option value="technical">Tech</option><option value="executive">Exec</option>
+            <option value="star">STAR</option><option value="storytelling">Story</option><option value="datadriven">Data</option>
+            <option value="direct">Direct</option><option value="framework">Frame</option><option value="leadership">Lead</option>
+            <option value="teacher">Teach</option><option value="keywords">Keys</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Theme</div></div>
+          <select class="settings-select" id="s-theme" onchange="setTheme(this.value);syncConfigPickers()">
+            <option value="glass">Glass</option><option value="minimal">Minimal</option><option value="neon">Neon</option><option value="ocean">Ocean</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Light Mode</div></div>
+          <label class="toggle-switch"><input type="checkbox" id="s-light-mode" onchange="toggleLightMode()"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Font Size</div><div class="settings-desc">Base text size for cards</div></div>
+          <div class="settings-control">
+            <button class="tb-btn" onclick="changeFontSize(-1)">A&#8722;</button>
+            <span id="s-font-size" style="font:600 10px Inter;color:var(--text2);min-width:24px;text-align:center">12</span>
+            <button class="tb-btn" onclick="changeFontSize(1)">A+</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANSWERS -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#128161; Answers</div>
+        <div class="settings-row">
+          <div><div class="settings-label">Max Answer Lines</div><div class="settings-desc">Truncate long answers (0 = no limit)</div></div>
+          <input type="number" class="settings-input" id="s-max-lines" value="0" min="0" max="100" onchange="applyMaxLines(this.value)">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Follow-Up Predictions</div><div class="settings-desc">Show predicted next questions</div></div>
+          <label class="toggle-switch"><input type="checkbox" id="s-followups" checked onchange="toggleFollowUps(this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Auto-Cleanup (min)</div><div class="settings-desc">Remove matched cards after N min</div></div>
+          <input type="number" class="settings-input" id="s-cleanup-min" value="3" min="1" max="30" onchange="applyCleanupTime(this.value)">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Auto-Scroll</div><div class="settings-desc">Scroll to new cards automatically</div></div>
+          <label class="toggle-switch"><input type="checkbox" id="s-auto-scroll" checked onchange="toggleAutoScroll(this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+
+      <!-- LIVE MODE -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#127908; Live Mode</div>
+        <div class="settings-row">
+          <div><div class="settings-label">Stealth Mode</div><div class="settings-desc">Hide from screen sharing</div></div>
+          <label class="toggle-switch"><input type="checkbox" id="s-stealth" checked onchange="toggleStealthFromSettings(this.checked)"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Screen Capture Interval</div><div class="settings-desc">Auto-record interval (sec)</div></div>
+          <input type="number" class="settings-input" id="s-record-interval" value="8" min="3" max="30" onchange="applyRecordInterval(this.value)">
+        </div>
+      </div>
+
+      <!-- SHORTCUTS -->
+      <div class="settings-section">
+        <div class="settings-section-title">&#9000; Keyboard Shortcuts</div>
+        <div class="settings-row">
+          <div class="settings-label">What Should I Say?</div>
+          <span class="settings-shortcut">&#8984;&#8679;&#8629;</span>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Screen Assist</div>
+          <span class="settings-shortcut">&#8984;&#8629;</span>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Interview Recap</div>
+          <span class="settings-shortcut">&#8984;R</span>
+        </div>
+        <div class="settings-row" style="border-bottom:none">
+          <div class="settings-label">Open Settings</div>
+          <span class="settings-shortcut">&#8984;,</span>
+        </div>
       </div>
     </div>
   </div>
@@ -780,7 +926,7 @@ function $(id) { return document.getElementById(id); }
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function syntaxHL(code){
   var e=esc(code);
-  var KW=/^(import|from|def|class|return|if|elif|else|for|while|try|except|finally|raise|with|as|in|not|and|or|is|None|True|False|self|yield|async|await|lambda|pass|break|continue|del|global|nonlocal|assert|function|const|let|var|new|this|typeof|instanceof|throw|catch|switch|case|default|export|extends|super|static|void|SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|INDEX|AND|OR|NOT|NULL|AS|DISTINCT|UNION|LIMIT|OFFSET|BETWEEN|LIKE|IN|EXISTS|CASE|WHEN|THEN|ELSE|END|COUNT|SUM|AVG|MAX|MIN|func|package|fmt|go|defer|chan|map|range|struct|interface|type|println|printf|print|public|private|protected|abstract|final|implements|throws|enum|synchronized)$/;
+  var KW=/^(import|from|def|class|return|if|elif|else|for|while|try|except|finally|raise|with|as|in|not|and|or|is|None|True|False|self|yield|async|await|lambda|pass|break|continue|del|global|nonlocal|assert|function|const|let|var|new|this|typeof|instanceof|throw|catch|switch|case|default|export|extends|super|static|void|SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|FULL|ON|GROUP|BY|ORDER|HAVING|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|INDEX|AND|OR|NOT|NULL|AS|DISTINCT|UNION|ALL|LIMIT|OFFSET|BETWEEN|LIKE|IN|EXISTS|CASE|WHEN|THEN|ELSE|END|COUNT|SUM|AVG|MAX|MIN|OVER|PARTITION|ROW_NUMBER|RANK|DENSE_RANK|LEAD|LAG|FIRST_VALUE|LAST_VALUE|NTILE|ROWS|RANGE|UNBOUNDED|PRECEDING|FOLLOWING|CURRENT|ROW|ROUND|COALESCE|CAST|CONVERT|ISNULL|IFNULL|NVL|DATEADD|DATEDIFF|GETDATE|NOW|SYSDATE|TOP|FETCH|NEXT|ONLY|WITH|RECURSIVE|PIVOT|UNPIVOT|MERGE|USING|MATCHED|CTE|WINDOW|FILTER|QUALIFY|HAVING|ASC|DESC|NULLS|FIRST|LAST|TEMP|TEMPORARY|VIEW|REPLACE|GRANT|REVOKE|TRUNCATE|EXPLAIN|ANALYZE|VACUUM|TRIGGER|PROCEDURE|EXEC|EXECUTE|DECLARE|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|CONSTRAINT|PRIMARY|KEY|FOREIGN|REFERENCES|UNIQUE|CHECK|DEFAULT|AUTO_INCREMENT|IDENTITY|SERIAL|BIGSERIAL|BOOLEAN|INTEGER|INT|BIGINT|SMALLINT|VARCHAR|TEXT|DATE|TIMESTAMP|NUMERIC|DECIMAL|FLOAT|DOUBLE|REAL|func|package|fmt|go|defer|chan|map|range|struct|interface|type|println|printf|print|public|private|protected|abstract|final|implements|throws|enum|synchronized)$/;
   var FN=/^(print|len|range|str|int|float|list|dict|set|tuple|bool|type|input|open|map|filter|zip|enumerate|sorted|reversed|sum|min|max|abs|round|format|isinstance|hasattr|getattr|setattr|super|console|document|window|Math|Array|Object|String|Number|JSON|Promise|setTimeout|setInterval|require|module|exports|pd|np|plt|DataFrame|Series|read_csv|to_csv|groupby|merge|concat|apply|describe)$/;
   return e.replace(/(#.*|\/\/.*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*?"|'(?:[^'\\]|\\.)*?')|(@\w+)|(\b[a-zA-Z_]\w*\b)|(\b\d+\.?\d*(?:e[+-]?\d+)?\b)/gm,function(m,cmt,str,dec,word,num){
     if(cmt)return'<span class="sh-cmt">'+cmt+'</span>';
@@ -1237,7 +1383,7 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
   card.innerHTML = numBadge + dismissHtml
     + '<div class="sc-card-q"><span class="sc-tag ' + tagClass + '">' + tagText + '</span><div class="sc-q-text">' + esc(question) + '</div>' + simBadge + '</div>'
     + catHtml
-    + '<div class="sc-card-a">' + formatAnswer(answer) + '</div>'
+    + '<div class="sc-card-a"' + (settingsMaxLines > 0 ? ' style="max-height:' + (settingsMaxLines * 1.7 * canvasFontSize / 12) + 'em;overflow:hidden"' : '') + '>' + formatAnswer(answer) + '</div>'
     + footerHtml;
 
   // Apply current filter visibility
@@ -1651,6 +1797,9 @@ function changeFontSize(delta) {
   _fontStyleEl.textContent =
     '.sc-card-a, .sc-card-q, .sc-card-loading, .feed-wrap { font-size: ' + canvasFontSize + 'px !important; }' +
     '.sc-card-a pre, .sc-card-a code, .sc-card-a pre code { font-size: ' + codeSz + 'px !important; }';
+  // Update settings display
+  var sFont = $('s-font-size');
+  if (sFont) sFont.textContent = canvasFontSize;
 }
 
 function toggleLightMode() {
@@ -1723,6 +1872,117 @@ setTimeout(function() {
   var btn = $('btn-stealth');
   if (btn && isElectronMode) btn.style.color = '#34D399';
 }, 150);
+
+// ===== SETTINGS MODAL =====
+var settingsFollowUps = true;
+var settingsAutoScroll = true;
+var settingsMaxLines = 0; // 0 = no limit
+
+function openSettings() {
+  // Sync settings values from current state
+  var sStyle = $('s-answer-style');
+  var sTheme = $('s-theme');
+  var sLight = $('s-light-mode');
+  var sFont = $('s-font-size');
+  var sFollowups = $('s-followups');
+  var sAutoScroll = $('s-auto-scroll');
+  var sMaxLines = $('s-max-lines');
+  var sStealth = $('s-stealth');
+  var sCleanup = $('s-cleanup-min');
+  var sRecordInt = $('s-record-interval');
+
+  if (sStyle) sStyle.value = _currentAnswerStyle;
+  if (sTheme) { var lp = $('look-picker'); if (lp) sTheme.value = lp.value; }
+  if (sLight) sLight.checked = isLightMode;
+  if (sFont) sFont.textContent = canvasFontSize;
+  if (sFollowups) sFollowups.checked = settingsFollowUps;
+  if (sAutoScroll) sAutoScroll.checked = settingsAutoScroll;
+  if (sMaxLines) sMaxLines.value = settingsMaxLines;
+  if (sStealth) sStealth.checked = stealthOn;
+  if (sCleanup) sCleanup.value = Math.round(CARD_CLEANUP_MS / 60000);
+  if (sRecordInt) sRecordInt.value = Math.round(RECORD_INTERVAL_MS / 1000);
+
+  $('settings-overlay').style.display = 'flex';
+}
+
+function closeSettings() {
+  $('settings-overlay').style.display = 'none';
+}
+
+function syncConfigPickers() {
+  // Keep the config pill pickers in sync with settings modal
+  var sStyle = $('s-answer-style');
+  var picker = $('answer-style-picker');
+  if (sStyle && picker && sStyle.value !== picker.value) picker.value = sStyle.value;
+
+  var sTheme = $('s-theme');
+  var lookPicker = $('look-picker');
+  if (sTheme && lookPicker && sTheme.value !== lookPicker.value) lookPicker.value = sTheme.value;
+}
+
+function applyMaxLines(val) {
+  settingsMaxLines = parseInt(val) || 0;
+  // Apply truncation to all existing cards
+  document.querySelectorAll('.sc-card-a').forEach(function(el) {
+    if (settingsMaxLines > 0) {
+      el.style.maxHeight = (settingsMaxLines * 1.7 * canvasFontSize / 12) + 'em';
+      el.style.overflow = 'hidden';
+    } else {
+      el.style.maxHeight = '';
+      el.style.overflow = '';
+    }
+  });
+}
+
+function toggleFollowUps(on) {
+  settingsFollowUps = on;
+  // Hide/show existing followup chips
+  document.querySelectorAll('.followup-wrap').forEach(function(el) {
+    el.style.display = on ? '' : 'none';
+  });
+}
+
+function applyCleanupTime(val) {
+  var minutes = parseInt(val) || 3;
+  CARD_CLEANUP_MS = minutes * 60000;
+}
+
+function toggleAutoScroll(on) {
+  settingsAutoScroll = on;
+  // When auto-scroll is off, pretend user always scrolled up
+  if (!on) userScrolledUp = true;
+}
+
+function toggleStealthFromSettings(on) {
+  if (stealthOn !== on) {
+    stealthOn = on;
+    var btn = $('btn-stealth');
+    if (btn) {
+      btn.style.color = stealthOn ? '#34D399' : '';
+      btn.setAttribute('data-tip', stealthOn ? 'Stealth: On' : 'Stealth: Off');
+    }
+    if (window.electronAPI && window.electronAPI.setStealth) {
+      window.electronAPI.setStealth(stealthOn);
+    }
+  }
+}
+
+function applyRecordInterval(val) {
+  var seconds = parseInt(val) || 8;
+  RECORD_INTERVAL_MS = seconds * 1000;
+}
+
+// Keyboard shortcut: Cmd+, opens settings
+document.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+    e.preventDefault();
+    openSettings();
+  }
+  // Escape closes settings
+  if (e.key === 'Escape' && $('settings-overlay').style.display === 'flex') {
+    closeSettings();
+  }
+});
 
 // ===== SESSION PICKER =====
 async function loadSessions() {
@@ -2193,6 +2453,7 @@ function getCopilotContext() {
 // ===== FOLLOW-UP PREDICTIONS =====
 function showFollowUpChips(questionId, predictions) {
   if (!predictions || predictions.length === 0) return;
+  if (!settingsFollowUps) return; // Disabled in settings
   var cardEl = document.getElementById('card-' + questionId);
   if (!cardEl) return;
   // Don't add duplicate chips
