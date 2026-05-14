@@ -236,8 +236,11 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .sc-card-a{padding:8px 10px;font:400 11.5px/1.7 Inter,sans-serif;color:#e8edf5}
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
-.sc-card-a pre{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px 10px;margin:4px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 10.5px/1.5 'Fira Code',Consolas,'Courier New',monospace;color:#e6edf3;position:relative}
+.sc-card-a pre{background:rgba(30,33,48,.85);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:8px 10px;padding-top:24px;margin:4px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 10.5px/1.5 'Fira Code',Consolas,'Courier New',monospace;color:#e6edf3;position:relative}
 .sc-card-a pre::before{content:'';position:absolute;top:0;left:0;width:2px;height:100%;background:linear-gradient(180deg,var(--accent),rgba(124,58,237,.2));border-radius:2px 0 0 2px}
+.code-copy-btn{position:absolute;top:4px;right:4px;width:22px;height:22px;border:1px solid rgba(255,255,255,.1);border-radius:4px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0;z-index:1}
+.code-copy-btn:hover{background:rgba(124,58,237,.2);color:#fff;border-color:rgba(124,58,237,.3)}
+.code-copy-btn.copied{color:#34D399;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.1)}
 .sc-card-a pre code{background:none !important;padding:0;font-size:10.5px;color:inherit;border:none !important}
 .sc-card-a code{background:rgba(124,58,237,.1);padding:1px 5px;border-radius:4px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c4b5fd;border:1px solid rgba(124,58,237,.12)}
 .sh-kw{color:#ff79c6}.sh-str{color:#50fa7b}.sh-cmt{color:#6272a4;font-style:italic}.sh-num{color:#bd93f9}.sh-fn{color:#8be9fd}.sh-dec{color:#ffb86c}
@@ -349,7 +352,8 @@ body.light-mode .sc-card{background:#fff;border-color:rgba(0,0,0,.08);box-shadow
 body.light-mode .sc-card-q{background:rgba(109,40,217,.04);border-color:rgba(109,40,217,.06)}
 body.light-mode .sc-card-a{color:#1f2937}
 body.light-mode .sc-card-a strong{color:#111827}
-body.light-mode .sc-card-a pre{background:#0d1117;color:#e6edf3;border-color:#21262d}
+body.light-mode .sc-card-a pre{background:#1e2130;color:#e6edf3;border-color:rgba(0,0,0,.12)}
+body.light-mode .code-copy-btn{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.08)}
 body.light-mode .sc-card-a pre code{color:#e6edf3;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.06);color:#6d28d9;border-color:rgba(109,40,217,.1)}
 body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.02)}
@@ -1015,7 +1019,7 @@ function formatAnswer(text) {
     var line = lines[i];
     if (/^```/.test(line.trim())) {
       if (!inCode) { inCode = true; codeLines = []; }
-      else { html += '<pre><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; }
+      else { html += '<pre><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy code"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; }
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
@@ -1041,8 +1045,24 @@ function formatAnswer(text) {
     if (line.trim() === '') { html += '<div class="sc-blank"></div>'; }
     else { html += '<div class="sc-line">' + processed + '</div>'; }
   }
-  if (inCode && codeLines.length) { html += '<pre><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>'; }
+  if (inCode && codeLines.length) { html += '<pre><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy code"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>'; }
   return html;
+}
+
+// Copy code block to clipboard
+function copyCodeBlock(btn) {
+  var pre = btn.closest('pre');
+  if (!pre) return;
+  var code = pre.querySelector('code');
+  var text = code ? code.textContent : pre.textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    btn.classList.add('copied');
+    btn.innerHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+    setTimeout(function() {
+      btn.classList.remove('copied');
+      btn.innerHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+    }, 1500);
+  });
 }
 
 // Copy answer text to clipboard
