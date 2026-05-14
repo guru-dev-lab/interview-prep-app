@@ -3432,10 +3432,16 @@ wss.on('connection', (ws) => {
       }
 
       else if (msg.type === 'update_settings') {
-        // Client sends answer length preference — store on ws for use in generateLiveAnswer
+        // Client sends answer length preference — apply to ALL clients in this session
+        // so the main (full-mode) WS that generates answers picks it up
         if (msg.maxLines !== undefined) {
-          ws._maxAnswerLines = parseInt(msg.maxLines) || 0; // 0 = no limit
-          console.log('[Settings] maxAnswerLines set to', ws._maxAnswerLines);
+          const val = parseInt(msg.maxLines) || 0;
+          console.log('[Settings] maxAnswerLines set to', val, 'for session', sessionId);
+          const clients = sessionClients.get(sessionId);
+          if (clients) {
+            clients.forEach(c => { c._maxAnswerLines = val; });
+          }
+          ws._maxAnswerLines = val; // also set on sender in case not in set yet
         }
       }
 

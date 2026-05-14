@@ -704,8 +704,8 @@ document.body.style.background='transparent';
           <select id="s-max-lines" onchange="applyMaxLines(this.value)" style="width:auto;min-width:145px;height:28px;font:500 10px Inter,sans-serif;padding:2px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.85);outline:none;cursor:pointer;-webkit-appearance:menulist">
             <option value="0">Full (no limit)</option>
             <option value="3">Ultra-short (2–3)</option>
-            <option value="5">Short (4–5)</option>
-            <option value="8" selected>Balanced (5–8)</option>
+            <option value="5" selected>Short (4–5)</option>
+            <option value="8">Balanced (5–8)</option>
             <option value="12">Detailed (8–12)</option>
             <option value="20">Thorough (12–20)</option>
           </select>
@@ -1888,7 +1888,7 @@ setTimeout(function() {
 // ===== SETTINGS MODAL =====
 var settingsFollowUps = true;
 var settingsAutoScroll = true;
-var settingsMaxLines = 8; // default: balanced (5-8 sentences)
+var settingsMaxLines = 5; // default: short (4-5 sentences)
 
 function openSettings() {
   // Sync settings values from current state
