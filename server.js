@@ -3102,6 +3102,7 @@ wss.on('connection', (ws) => {
           ws._sessionContext = sResult.rows[0] || {};
           ws._sessionQuestions = sessionQuestions;
           ws._isCanvas = true; // Mark as canvas client for forwarding logic
+          ws._maxAnswerLines = 5; // Default: short answers
           ws.send(JSON.stringify({ type: 'status', message: 'Canvas connected — waiting for live data' }));
           console.log(`[Canvas] Connected to session ${sessionId} with ${sessionQuestions.length} questions`);
           return; // Skip Deepgram, transcript, etc
@@ -3121,6 +3122,7 @@ wss.on('connection', (ws) => {
         // Cache session context + questions on WS for fast answer generation (no DB lookup needed)
         ws._sessionContext = sResult.rows[0] || {};
         ws._sessionQuestions = sessionQuestions;
+        ws._maxAnswerLines = 5; // Default: short answers (canvas can override via update_settings)
 
         // Create transcript record — attach current meeting's interviewer info
         let interviewerName = '', interviewerTitle = '', interviewStage = '';
