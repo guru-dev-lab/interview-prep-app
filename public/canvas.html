@@ -762,7 +762,7 @@ document.body.style.background='transparent';
           <span class="settings-shortcut">&#8984;&#8629;</span>
         </div>
         <div class="settings-row">
-          <div class="settings-label">Interview Recap</div>
+          <div class="settings-label">Follow-Up Questions</div>
           <span class="settings-shortcut">&#8984;R</span>
         </div>
         <div class="settings-row" style="border-bottom:none">
@@ -815,8 +815,8 @@ document.body.style.background='transparent';
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         Assist<span class="kbd">&#8984;&#8629;</span>
       </button>
-      <button class="tb-btn" id="btn-recap" data-tip="Recap" onclick="requestRecap()" style="display:none">
-        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <button class="tb-btn" id="btn-followup" data-tip="Ask them" onclick="requestFollowUps()" style="display:none">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </button>
       <div class="q-input-wrap">
         <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
@@ -913,11 +913,11 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     screenAssist();
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
-    // Cmd+R / Ctrl+R → Interview Recap (only when recap button visible)
-    var recapBtn = $('btn-recap');
-    if (recapBtn && recapBtn.style.display !== 'none') {
+    // Cmd+R / Ctrl+R → Follow-up Questions (only when button visible)
+    var fuBtn = $('btn-followup');
+    if (fuBtn && fuBtn.style.display !== 'none') {
       e.preventDefault();
-      requestRecap();
+      requestFollowUps();
     }
   }
 });
@@ -1237,9 +1237,9 @@ function connect() {
       // Show predicted follow-up questions as chips below the answer card
       showFollowUpChips(msg.questionId, msg.predictions);
     }
-    else if (msg.type === 'interview_recap') {
-      // Show recap card at the top of the feed
-      showRecapCard(msg.recap, msg.questionCount);
+    else if (msg.type === 'followup_questions_result') {
+      // Show follow-up questions card in the feed
+      showFollowUpQuestionsCard(msg.questions, msg.questionCount);
     }
   };
 }
@@ -2612,28 +2612,30 @@ function askFollowUp(chipEl) {
 }
 
 // ===== INTERVIEW RECAP =====
-function requestRecap() {
-  var btn = $('btn-recap');
+var followUpIconHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+function requestFollowUps() {
+  var btn = $('btn-followup');
   if (!btn || btn.classList.contains('loading')) return;
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>';
   setTimeout(function() {
     btn.classList.remove('loading');
-    btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Recap';
-  }, 5000);
+    btn.innerHTML = followUpIconHTML;
+  }, 8000);
 
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'interview_recap' }));
+    ws.send(JSON.stringify({ type: 'followup_questions' }));
   } else {
     btn.classList.remove('loading');
-    btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Recap';
+    btn.innerHTML = followUpIconHTML;
     showToast('Not live — tap Go Live first', '', 2500);
   }
 }
 
-function showRecapCard(recap, questionCount) {
-  // Remove existing recap card if any
-  var old = document.getElementById('recap-card');
+function showFollowUpQuestionsCard(questionsText, questionCount) {
+  // Remove existing follow-up card if any
+  var old = document.getElementById('followup-card');
   if (old) old.remove();
 
   var feed = $('feed');
@@ -2641,24 +2643,24 @@ function showRecapCard(recap, questionCount) {
 
   var card = document.createElement('div');
   card.className = 'recap-card';
-  card.id = 'recap-card';
+  card.id = 'followup-card';
   card.innerHTML = '<div class="recap-header">'
-    + '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
-    + ' Interview Recap — ' + questionCount + ' questions'
+    + '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    + ' Questions to Ask — based on ' + questionCount + ' topics discussed'
     + '<button class="card-dismiss" onclick="this.closest(\'.recap-card\').remove()" title="Dismiss" style="position:absolute;top:4px;right:6px">&times;</button>'
     + '</div>'
-    + '<div class="recap-body">' + formatAnswer(recap) + '</div>';
+    + '<div class="recap-body">' + formatAnswer(questionsText) + '</div>';
 
   feed.appendChild(card);
   setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
 
-  // Reset recap button
-  var btn = $('btn-recap');
+  // Reset button
+  var btn = $('btn-followup');
   if (btn) {
     btn.classList.remove('loading');
-    btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Recap';
+    btn.innerHTML = followUpIconHTML;
   }
-  showToast('Recap ready', 'info', 1500);
+  showToast('Follow-up questions ready', 'info', 1500);
 }
 
 // ===== LIVE ELAPSED TIME UPDATER =====
@@ -2686,11 +2688,11 @@ function stopElapsedTimer() {
   }
 }
 
-// ===== SHOW RECAP BUTTON WHEN CARDS EXIST =====
-// Watch for card additions — show recap button after 2+ questions answered
+// ===== SHOW FOLLOW-UP BUTTON WHEN CARDS EXIST =====
+// Watch for card additions — show follow-up button after 2+ questions answered
 var recapBtnObserver = new MutationObserver(function() {
   var answeredCards = cards.filter(function(c) { return c.answer && c.source !== 'copilot'; });
-  var btn = $('btn-recap');
+  var btn = $('btn-followup');
   if (btn) {
     btn.style.display = answeredCards.length >= 2 ? '' : 'none';
   }

@@ -3615,24 +3615,38 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'status', message: 'Tab switched — listening on new tab' }));
       }
 
-      else if (msg.type === 'interview_recap') {
-        // Generate a concise summary of the interview so far
-        const recapQuestions = (ws._sessionQuestions || sessionQuestions || []).filter(q => q.answer).slice(-20);
-        if (recapQuestions.length === 0) {
-          ws.send(JSON.stringify({ type: 'error', message: 'No questions answered yet' }));
+      else if (msg.type === 'followup_questions') {
+        // Generate smart follow-up questions the candidate can ask the interviewer
+        const answeredQs = (ws._sessionQuestions || sessionQuestions || []).filter(q => q.answer).slice(-20);
+        if (answeredQs.length === 0) {
+          ws.send(JSON.stringify({ type: 'error', message: 'No questions discussed yet' }));
           return;
         }
         const wsCtx = ws._sessionContext || {};
-        const recapSystem = `You are an interview coach. Summarize an ongoing interview concisely. Include: total questions so far, key topics covered, areas where the candidate did well (strong answers), and any gaps or topics not yet covered that the interviewer might bring up. Keep it under 200 words. Use bullet points. Be encouraging but realistic.`;
-        const qaSummary = recapQuestions.map((q, i) => `Q${i+1}: ${q.text}\nA: ${(q.answer || '').substring(0, 200)}`).join('\n\n');
-        const recapUser = `Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n\n${qaSummary}\n\nProvide a concise interview recap:`;
-        callClaude(recapSystem, recapUser, 400, MODEL_HAIKU).then(recap => {
-          const recapMsg = { type: 'interview_recap', recap: recap, questionCount: recapQuestions.length };
-          ws.send(JSON.stringify(recapMsg));
-          broadcastToSession(sessionId, recapMsg, ws);
+        const recentTranscript = (ws._recentTranscript || []).slice(-30).join('\n');
+        const followUpSystem = `You generate smart follow-up questions a candidate should ask the interviewer at the end of an interview.
+
+RULES:
+- Generate exactly 5 questions
+- Each question should be specific to THIS interview — reference topics, projects, tools, or challenges that were actually discussed
+- Mix of types: team/culture, role specifics, growth, technical depth, next steps
+- Questions should show the candidate was paying attention and is genuinely curious
+- Sound natural and conversational, not scripted or generic
+- NEVER ask generic questions like "What does a typical day look like?" unless it connects to something discussed
+- Each question = 1 sentence, max 20 words
+- Number them 1-5
+- No intro, no labels, no preamble — just the 5 numbered questions
+- After the 5 questions, add a blank line then one short line starting with "Tip:" giving advice on which 2-3 to prioritize based on what was discussed`;
+
+        const qaSummary = answeredQs.map((q, i) => `Q${i+1}: ${q.text}\nA: ${(q.answer || '').substring(0, 150)}`).join('\n\n');
+        const followUpUser = `Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n\nJOB DESCRIPTION:\n${wsCtx.jd || 'N/A'}\n\nQUESTIONS DISCUSSED:\n${qaSummary}${recentTranscript ? '\n\nRECENT CONVERSATION:\n' + recentTranscript : ''}\n\nGenerate 5 smart follow-up questions:`;
+        callClaude(followUpSystem, followUpUser, 350, MODEL_HAIKU).then(result => {
+          const followUpMsg = { type: 'followup_questions_result', questions: result, questionCount: answeredQs.length };
+          ws.send(JSON.stringify(followUpMsg));
+          broadcastToSession(sessionId, followUpMsg, ws);
         }).catch(e => {
-          console.error('[Recap error]', e.message);
-          ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate recap' }));
+          console.error('[Follow-up questions error]', e.message);
+          ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate follow-up questions' }));
         });
       }
 
