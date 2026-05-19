@@ -297,6 +297,14 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .sc-line{margin-bottom:0;padding:2px 8px;border-radius:4px}
 .sc-line:nth-child(odd){background:transparent}
 .sc-blank{height:3px}
+/* Rich text lists */
+.sc-list{margin:4px 0 4px 6px;padding-left:16px;list-style-position:outside}
+ul.sc-list{list-style-type:disc}
+ol.sc-list{list-style-type:decimal}
+.sc-list li{padding:2px 4px;margin-bottom:2px;font:400 12.5px/1.7 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7}
+.sc-list li::marker{color:var(--accent2)}
+/* Section headers in answers */
+.sc-section-header{font:600 12.5px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#fff;padding:4px 8px 2px;margin-top:4px}
 .sc-card-loading{padding:8px 10px;display:flex;align-items:center;gap:6px;color:var(--accent2);font:500 11px Inter,sans-serif}
 
 /* ===== CARD FOOTER — actions + meta ===== */
@@ -427,6 +435,9 @@ body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;
 body.light-mode,html.light-mode{--bg:transparent;--surface:#ebedf2;--text:#111827;--text2:#1f2937;--text3:#4b5563;--text4:#9ca3af;--glass-border:rgba(0,0,0,.08);--accent2:#6d28d9;--glass-bg:rgba(255,255,255,0.6);--glass-border-color:rgba(0,0,0,.1)}
 body.light-mode{background:transparent !important}
 body.light-mode .toolbar{box-shadow:none}
+body.light-mode .toolbar::before{background:linear-gradient(90deg,transparent,rgba(109,40,217,.35),rgba(99,102,241,.2),rgba(109,40,217,.35),transparent)}
+body.light-mode .board-toggle-pill{background:rgba(255,255,255,.5);border-color:rgba(0,0,0,.08)}
+body.light-mode .board-toggle-pill:hover{background:rgba(109,40,217,.1);border-color:rgba(109,40,217,.2);color:#6d28d9}
 body.light-mode .panel{box-shadow:none}
 body.light-mode .sc-card{background:transparent;border-color:rgba(0,0,0,.06);box-shadow:none}
 body.light-mode .sc-card-q{background:transparent;border-color:rgba(0,0,0,.04)}
@@ -441,6 +452,9 @@ body.light-mode .code-copy-btn{background:rgba(0,0,0,.04);color:rgba(0,0,0,.3);b
 body.light-mode .sc-card-a pre code{color:#24292f;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.06);color:#6d28d9;border-color:rgba(109,40,217,.1)}
 body.light-mode .sc-line:nth-child(odd){background:rgba(0,0,0,.02)}
+body.light-mode .sc-list li{color:#1f2937}
+body.light-mode .sc-list li::marker{color:#7c3aed}
+body.light-mode .sc-section-header{color:#111827}
 body.light-mode .sc-q-text{color:rgba(17,24,39,.6)}
 body.light-mode .card-num{background:linear-gradient(135deg,#059669,#10B981);box-shadow:0 2px 6px rgba(16,185,129,.2)}
 body.light-mode .cat-tag.behavioral{background:rgba(16,185,129,.1);color:#059669;border-color:rgba(16,185,129,.15)}
@@ -1275,37 +1289,74 @@ function formatAnswer(text) {
   var html = '';
   var inCode = false;
   var codeLines = [];
+  var inList = false; // track if we're inside a <ul> or <ol>
+  var listType = ''; // 'ul' or 'ol'
   var lines = text.split('\n');
+
+  function processInline(line) {
+    var p = esc(line)
+      .replace(/\*\*([^*]+)\*\*/g, '<span class="hl-key">$1</span>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+    p = highlightMetrics(p);
+    // Auto-highlight common tool/framework names if not already highlighted
+    if (p.indexOf('hl-key') < 0 && p.indexOf('<code>') < 0) {
+      p = p.replace(/\b(Tableau|Power BI|Snowflake|SQL|Python|DAX|ETL|KPI|API|AWS|Azure|GCP|Excel|Looker|dbt|Airflow|Spark|Kubernetes|Docker|React|Node\.js|JavaScript|TypeScript|Git|CI\/CD|Jira|Agile|Scrum|CTE|JOIN|SELECT|WHERE|FROM|GROUP BY|ORDER BY|HAVING|UNION|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|INDEX|VIEW|TRIGGER|PROCEDURE|FUNCTION|PARTITION|WINDOW|RECURSIVE|DISTINCT|LIMIT|OFFSET|CASE|WHEN|THEN|ELSE|END|EXISTS|IN|BETWEEN|LIKE|NULL|NOT|AND|OR|AS|ON|SET|INTO|VALUES|PRIMARY KEY|FOREIGN KEY|INNER JOIN|LEFT JOIN|RIGHT JOIN|CROSS JOIN|FULL JOIN|SELF JOIN|SUBQUERY|TEMP TABLE|WITH)\b/g, '<span class="hl-key">$1</span>');
+    }
+    return p;
+  }
+
+  function closeList() {
+    if (inList) { html += '</' + listType + '>'; inList = false; listType = ''; }
+  }
+
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
     if (/^```/.test(line.trim())) {
+      closeList();
       if (!inCode) { inCode = true; codeLines = []; }
       else { html += buildCodeBlock(codeLines); inCode = false; codeLines = []; }
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
 
-    // Compact STAR section labels — inline prefix, no badge taking up space
-    var starMatch = line.match(/^\*?\*?(Situation|Action|Result|Context|Task)\s*[:—\-]\s*/i);
-    if (starMatch) {
-      var rest = line.substring(starMatch[0].length);
-      var processed = highlightMetrics(esc(rest).replace(/\*\*([^*]+)\*\*/g, '<span class="hl-key">$1</span>').replace(/`([^`]+)`/g, '<code>$1</code>'));
-      html += '<div class="sc-line"><span class="star-inline">' + starMatch[1].toUpperCase() + '</span>' + processed + '</div>';
+    // Detect bullet points: - item, * item, • item
+    var bulletMatch = line.match(/^\s*[-*•]\s+(.+)/);
+    // Detect numbered lists: 1. item, 2) item
+    var numMatch = line.match(/^\s*(\d+)[.)]\s+(.+)/);
+
+    if (bulletMatch) {
+      if (!inList || listType !== 'ul') { closeList(); html += '<ul class="sc-list">'; inList = true; listType = 'ul'; }
+      html += '<li>' + processInline(bulletMatch[1]) + '</li>';
+      continue;
+    }
+    if (numMatch) {
+      if (!inList || listType !== 'ol') { closeList(); html += '<ol class="sc-list">'; inList = true; listType = 'ol'; }
+      html += '<li>' + processInline(numMatch[2]) + '</li>';
       continue;
     }
 
-    var processed = esc(line)
-      .replace(/\*\*([^*]+)\*\*/g, '<span class="hl-key">$1</span>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>');
-    processed = highlightMetrics(processed);
-    // Client-side fallback: auto-highlight common tool/framework names if not already highlighted
-    if (processed.indexOf('hl-key') < 0 && processed.indexOf('<code>') < 0) {
-      processed = processed.replace(/\b(Tableau|Power BI|Snowflake|SQL|Python|DAX|ETL|KPI|API|AWS|Azure|GCP|Excel|Looker|dbt|Airflow|Spark|Kubernetes|Docker|React|Node\.js|JavaScript|TypeScript|Git|CI\/CD|Jira|Agile|Scrum)\b/g, '<span class="hl-key">$1</span>');
+    // Not a list item — close any open list
+    closeList();
+
+    // Compact STAR section labels — inline prefix
+    var starMatch = line.match(/^\*?\*?(Situation|Action|Result|Context|Task)\s*[:—\-]\s*/i);
+    if (starMatch) {
+      var rest = line.substring(starMatch[0].length);
+      html += '<div class="sc-line"><span class="star-inline">' + starMatch[1].toUpperCase() + '</span>' + processInline(rest) + '</div>';
+      continue;
+    }
+
+    // Markdown headers: ## Header or ### Header → bold section header
+    var headerMatch = line.match(/^#{1,4}\s+(.+)/);
+    if (headerMatch) {
+      html += '<div class="sc-section-header">' + processInline(headerMatch[1]) + '</div>';
+      continue;
     }
 
     if (line.trim() === '') { html += '<div class="sc-blank"></div>'; }
-    else { html += '<div class="sc-line">' + processed + '</div>'; }
+    else { html += '<div class="sc-line">' + processInline(line) + '</div>'; }
   }
+  closeList();
   if (inCode && codeLines.length) { html += buildCodeBlock(codeLines); }
   return html;
 }
