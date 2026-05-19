@@ -1282,13 +1282,17 @@ function buildCodeBlock(lines) {
 function formatAnswer(text) {
   if (!text) return '<div class="sc-card-loading"><span class="spinner" style="width:14px;height:14px"></span> Generating answer...</div>';
   // Strip verbose section headers and labels
-  var headerWords = 'How it works|How this works|Why use it|Simple explanation|Key points|Key takeaway|What it does|What this does|In summary|Overview|Background|Here\'?s how|Here\'?s why|Here\'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|Detailed explanation|Brief explanation|Quick explanation|The approach|The solution|The idea|The concept|The answer|Basic structure|Real example|Practical example|Example|Key concept|Main idea|The logic|The process|Step by step|Here\'?s an example|Let me explain';
+  var headerWords = 'How it works|How this works|Why use it|Simple explanation|Key points|Key takeaway|What it does|What this does|In summary|Overview|Background|Here\'?s how|Here\'?s why|Here\'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|Detailed explanation|Brief explanation|Quick explanation|The approach|The solution|The idea|The concept|The answer|Basic structure|Real example|Practical example|Example|Key concept|Main idea|The logic|The process|Step by step|Here\'?s an example|Let me explain|Definition|In short|What this means|The way I\'?d explain it|To put it simply|In simple terms|To answer your question|Let me walk you through|Think of it this way|The bottom line|In conclusion|To summarize|The key takeaway|Overall';
   // Headers alone on a line → remove entirely
-  text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]\\s*$', 'gim'), '');
+  text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]?\\s*$', 'gim'), '');
   // Headers at start of a line followed by content → keep content only
   text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]\\s*', 'gim'), '');
   // Strip QUESTION:/ANSWER: labels (any casing)
   text = text.replace(/^(QUESTION|ANSWER|Question|Answer)\s*[:]\s*/gm, '');
+  // Strip preamble phrases at start of lines
+  text = text.replace(/^(Great question[.!,]?\s*|That'?s a great question[.!,]?\s*|So essentially[,]?\s*|Essentially[,]?\s*|Basically[,]?\s*|To put it simply[,]?\s*|In other words[,]?\s*|What this means is[,]?\s*)/gim, '');
+  // Strip closing/summary lines
+  text = text.replace(/^(In summary[,:.].*|To summarize[,:.].*|The key takeaway is[,:.].*|Overall[,:].*|In conclusion[,:.].*|The bottom line is[,:.].*|So in short[,:].*)\s*$/gim, '');
   // Strip --- dividers
   text = text.replace(/^-{3,}\s*$/gm, '');
   text = text.replace(/\n{3,}/g, '\n\n');

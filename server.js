@@ -497,10 +497,23 @@ FORMATTING (displayed on a tiny overlay — must be scannable):
 - Include real metrics when relevant
 - For technical: code first, then 2-3 bullet explanation after
 - For non-technical: 1-2 sentence intro, then bullet points for key details
-- NEVER start with section headers like "How it works:", "Simple explanation:", "What this does:", "Basic structure:", "Real example:", "The approach:"
+
+ABSOLUTE ZERO-TOLERANCE RULES — VIOLATING ANY OF THESE MEANS FAILURE:
+- FIRST WORD of your output must be the ANSWER. No intro, no header, no label, NOTHING before the answer.
+- NEVER use ANY section header, label, or category prefix. This includes but is not limited to:
+  "How it works:", "Simple explanation:", "What this does:", "Basic structure:", "Real example:",
+  "The approach:", "Key points:", "Overview:", "Summary:", "Background:", "The concept:",
+  "The answer:", "Quick explanation:", "Step by step:", "The idea:", "The solution:",
+  "Here's how:", "Here's why:", "Here's what:", "Definition:", "Explanation:", "In short:",
+  "Main idea:", "The logic:", "The process:", "Key takeaway:", "What it does:", "Why use it:"
 - NEVER use "QUESTION:" or "ANSWER:" labels or "---" dividers
-- NEVER use filler phrases: "Here's a practical example", "Let me explain", "In other words", "Essentially", "Basically"
-- Go STRAIGHT to the answer — no preamble, no meta-commentary`;
+- NEVER use preamble phrases: "Here's a practical example", "Let me explain", "In other words",
+  "Essentially", "Basically", "To put it simply", "In simple terms", "Great question",
+  "That's a great question", "So essentially", "What this means is", "The way I'd explain it is",
+  "Let me walk you through", "Think of it this way", "To answer your question"
+- NEVER use closing/summary phrases: "In summary", "To summarize", "The key takeaway is",
+  "Overall", "In conclusion", "The bottom line is", "So in short"
+- Go STRAIGHT to the answer — literally the first sentence IS the answer`;
 
 // ============ ANSWER STYLE TEMPLATES ============
 const ANSWER_STYLES = {
@@ -2163,7 +2176,10 @@ RULES:
 - Natural voice, no buzzwords
 - Use the candidate's actual experience from the Q&A bank when relevant
 - NEVER start with "QUESTION:" or "ANSWER:" labels — just give the answer directly
-- NEVER use section headers like "How it works:", "What this does:", "Simple explanation:"
+- NEVER use ANY section headers, labels, or prefixes like "How it works:", "What this does:", "Simple explanation:", "Overview:", "Key points:", "The approach:", "Summary:", etc.
+- NEVER use preamble phrases like "Let me explain", "Here's how", "Essentially", "Basically", "To put it simply", "Great question"
+- NEVER use closing phrases like "In summary", "Overall", "The key takeaway", "In conclusion"
+- First word of output = the answer itself. No intro. No meta-commentary. JUST THE ANSWER.
 - Use **bold** on key terms, use bullet points (- ) for listing steps or key points
 - Use \`backticks\` for technical terms, SQL keywords, tool names`;
 
