@@ -223,7 +223,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 
 /* Feed — scrollable */
 .feed-wrap{flex:1;overflow-y:auto;padding:4px 6px;scroll-behavior:smooth;background:transparent;min-height:0;-webkit-app-region:drag}
-.feed-wrap .sc-card,.feed-wrap .empty-state{-webkit-app-region:no-drag}
+.feed-wrap .sc-card,.feed-wrap .empty-state,.feed-wrap .recap-card{-webkit-app-region:no-drag}
 .feed-wrap::-webkit-scrollbar{width:4px}
 .feed-wrap::-webkit-scrollbar-thumb{background:rgba(124,58,237,.25);border-radius:3px}
 .feed-wrap::-webkit-scrollbar-thumb:hover{background:rgba(124,58,237,.4)}
@@ -1342,6 +1342,19 @@ function formatAnswer(text) {
       if (!inList || listType !== 'ol') { closeList(); html += '<ol class="sc-list">'; inList = true; listType = 'ol'; }
       html += '<li>' + processInline(numMatch[2]) + '</li>';
       continue;
+    }
+
+    // Blank line inside a list — skip it (don't close list, AI often puts blank lines between numbered items)
+    if (line.trim() === '' && inList) {
+      // Check if next non-blank line continues the list
+      var peekAhead = false;
+      for (var j = i + 1; j < lines.length && j <= i + 3; j++) {
+        if (lines[j].trim() === '') continue;
+        if (listType === 'ol' && /^\s*\d+[.)]\s+/.test(lines[j])) peekAhead = true;
+        if (listType === 'ul' && /^\s*[-*•]\s+/.test(lines[j])) peekAhead = true;
+        break;
+      }
+      if (peekAhead) continue; // skip blank line, list continues
     }
 
     // Not a list item — close any open list
