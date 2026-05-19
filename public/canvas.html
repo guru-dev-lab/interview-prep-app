@@ -815,9 +815,8 @@ document.body.style.background='transparent';
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         Assist<span class="kbd">&#8984;&#8629;</span>
       </button>
-      <button class="action-btn" id="btn-recap" data-tip="AI summary of interview so far" onclick="requestRecap()" style="display:none">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Recap
+      <button class="tb-btn" id="btn-recap" data-tip="Recap" onclick="requestRecap()" style="display:none">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       </button>
       <div class="q-input-wrap">
         <input type="text" id="q-input" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendQuestion()">
@@ -1672,7 +1671,7 @@ var recordingInterval = null;
 var isRecording = false;
 var RECORD_INTERVAL_MS = 8000;
 
-var assistDefaultHTML = 'Assist';
+var assistDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Assist<span class="kbd">⌘↵</span>';
 var recordDefaultHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg> Record';
 
 async function getScreenStream() {

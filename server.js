@@ -461,13 +461,13 @@ Use the resume for facts ONLY when the question asks about the candidate's backg
 Use the JD ONLY to understand what tools/skills matter — never copy its language, never reference the target company.
 Never fabricate. No filler lines.
 
-QUESTION TYPES:
-"What is X?" / Concept questions → 3-5 lines. Simple, clear definition. One example if helpful. NO personal experience needed.
-"How do you do X?" / Process questions → 4-6 lines. Steps or approach. Say "I do X" — no company name.
-"Tell me about yourself" → 6-8 lines. Name, background highlights, why this role.
-Behavioral (tell me about a time) → 5-7 lines. Use real experience from Q&A bank. NOW you can name companies.
-Technical (code/SQL) → 3-5 lines. Show the code or steps, brief explanation. No company references.
-"Why this role/company?" → 4-5 lines. Genuine reasons tied to the role.
+QUESTION TYPES (these are DEFAULTS — a length override below will supersede these):
+"What is X?" / Concept questions → 3-4 lines. Simple, clear definition. NO personal experience needed.
+"How do you do X?" / Process questions → 3-5 lines. Steps or approach. Say "I do X" — no company name.
+"Tell me about yourself" → 4-6 lines. Name, background highlights, why this role.
+Behavioral (tell me about a time) → 4-6 lines. Use real experience from Q&A bank. NOW you can name companies.
+Technical (code/SQL) → 3-4 lines. Show the code or steps, brief explanation. No company references.
+"Why this role/company?" → 3-4 lines. Genuine reasons tied to the role.
 
 Output ONLY the answer. No intro, no labels, no "Here's my answer."`;
 
@@ -3798,25 +3798,30 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     const basePrompt = getStylePrompt(session.answer_style);
 
     // Response length control — user picks how concise answers should be
+    // THIS OVERRIDES ALL OTHER LINE COUNT GUIDANCE IN THE STYLE PROMPTS
     const maxSentences = ws._maxAnswerLines || 0;
     let lengthConstraint = '';
     let tokenLimit = isTechnical ? 1200 : 600;
     if (maxSentences > 0) {
       if (maxSentences <= 3) {
-        lengthConstraint = `\n\nRESPONSE LENGTH: MAXIMUM ${maxSentences} sentences. This is a HARD limit. Cut everything non-essential. No preamble, no filler, no "additionally." If code is needed, the code block does NOT count toward the sentence limit but keep explanation to 1 sentence after the code. Every word must earn its place.`;
-        tokenLimit = Math.min(tokenLimit, isTechnical ? 800 : 120);
+        lengthConstraint = `\n\n*** HARD LENGTH OVERRIDE — THIS SUPERSEDES ALL OTHER LINE COUNTS ABOVE ***\nMAXIMUM ${maxSentences} sentences total. NOT ${maxSentences} lines — ${maxSentences} SENTENCES. Count them. If your answer has more than ${maxSentences} sentences, you have FAILED.\nThis means: answer in ${maxSentences} short sentences. That's it. No preamble. No filler. No "additionally."\nIf code is needed, code block + 1 sentence only.\nIgnore any "4-8 lines" or "6-10 lines" guidance above — the limit is ${maxSentences}.`;
+        tokenLimit = isTechnical ? 500 : 80;
       } else if (maxSentences <= 5) {
-        lengthConstraint = `\n\nRESPONSE LENGTH: Keep to ${maxSentences} sentences maximum. Be direct — answer the question, give one supporting detail, done. No intro sentences like "That's a great question" or "Here's how I'd approach this." Start with the answer itself. If code is needed, code block + 1 sentence explanation.`;
-        tokenLimit = Math.min(tokenLimit, isTechnical ? 900 : 250);
+        lengthConstraint = `\n\n*** HARD LENGTH OVERRIDE — THIS SUPERSEDES ALL OTHER LINE COUNTS ABOVE ***\nMAXIMUM ${maxSentences} sentences total. Count them. If you write more than ${maxSentences} sentences, you have FAILED.\nAnswer the question directly in ${maxSentences} short sentences. No intro, no setup, no conclusion.\nIf code is needed, code block + 1-2 sentence explanation only.\nIgnore any "4-8 lines" or "6-10 lines" guidance above — the limit is ${maxSentences}.`;
+        tokenLimit = isTechnical ? 600 : 150;
       } else if (maxSentences <= 8) {
-        lengthConstraint = `\n\nRESPONSE LENGTH: Stay within ${maxSentences} sentences. Be concise — no unnecessary context, no filler transitions, no restating the question. Lead with the answer. Each sentence should add new information. If code is needed, the code block is separate — keep surrounding text to 2-3 sentences max.`;
-        tokenLimit = Math.min(tokenLimit, isTechnical ? 1000 : 400);
+        lengthConstraint = `\n\n*** HARD LENGTH OVERRIDE — THIS SUPERSEDES ALL OTHER LINE COUNTS ABOVE ***\nMAXIMUM ${maxSentences} sentences. Lead with the answer. Each sentence must add new information. No filler.\nIf code is needed, code block + 2-3 sentence explanation.\nIgnore any line count guidance above that exceeds ${maxSentences}.`;
+        tokenLimit = isTechnical ? 800 : 250;
       } else if (maxSentences <= 12) {
-        lengthConstraint = `\n\nRESPONSE LENGTH: Aim for ${maxSentences} sentences or fewer. You have room for detail but don't pad. No filler intros or conclusions.`;
-        tokenLimit = Math.min(tokenLimit, isTechnical ? 1100 : 500);
+        lengthConstraint = `\n\nRESPONSE LENGTH LIMIT: ${maxSentences} sentences maximum. Don't pad with filler. No intros or conclusions.`;
+        tokenLimit = isTechnical ? 1000 : 400;
       } else {
         lengthConstraint = `\n\nRESPONSE LENGTH: Up to ${maxSentences} sentences. Be thorough where needed but don't pad with filler.`;
       }
+    } else {
+      // Even with no explicit limit, keep answers overlay-sized — not paragraphs
+      lengthConstraint = `\n\n*** IMPORTANT LENGTH GUIDANCE ***\nThis answer displays on a TINY overlay during a live interview. The candidate glances at it while talking.\nKeep to 4-6 sentences for simple questions, 6-8 for complex ones. NEVER write paragraphs.\nEach sentence = its own line. Short sentences only (max 15 words each).`;
+      tokenLimit = isTechnical ? 800 : 300;
     }
 
     const system = basePrompt + liveAddendum + lengthConstraint;
