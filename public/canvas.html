@@ -556,9 +556,10 @@ document.body.style.background='transparent';
     <button class="tb-btn" id="btn-stealth" style="display:none" data-tip="Stealth" onclick="toggleStealth()">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
     </button>
+    <div class="tb-sep" id="sep-after-stealth" style="display:none"></div>
 
     <!-- Spacer pushes right-side items -->
-    <div style="flex:1;min-width:4px"></div>
+    <div style="flex:1;min-width:16px"></div>
 
     <!-- Mode toggle -->
     <div class="mode-toggle">
@@ -872,6 +873,8 @@ if (isElectronMode) {
     if (stealthBtn) stealthBtn.style.display = '';
     var sepLive = document.getElementById('sep-after-live');
     if (sepLive) sepLive.style.display = '';
+    var sepStealth = document.getElementById('sep-after-stealth');
+    if (sepStealth) sepStealth.style.display = '';
   }, 100);
 }
 
