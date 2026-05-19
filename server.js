@@ -497,8 +497,10 @@ FORMATTING (displayed on a tiny overlay — must be scannable):
 - Include real metrics when relevant
 - For technical: code first, then 2-3 bullet explanation after
 - For non-technical: 1-2 sentence intro, then bullet points for key details
-- NEVER start with section headers like "How it works:" or "Simple explanation:"
-- NEVER use "QUESTION:" or "ANSWER:" labels`;
+- NEVER start with section headers like "How it works:", "Simple explanation:", "What this does:", "Basic structure:", "Real example:", "The approach:"
+- NEVER use "QUESTION:" or "ANSWER:" labels or "---" dividers
+- NEVER use filler phrases: "Here's a practical example", "Let me explain", "In other words", "Essentially", "Basically"
+- Go STRAIGHT to the answer — no preamble, no meta-commentary`;
 
 // ============ ANSWER STYLE TEMPLATES ============
 const ANSWER_STYLES = {

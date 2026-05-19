@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:transparent;--surface:#0c1019;--accent:#7c3aed;--accent2:#c4b5fd;--text:#ffffff;--text2:#f1f5f9;--text3:#cbd5e1;--text4:#94a3b8;--glass-border:rgba(255,255,255,.08);--glow:rgba(124,58,237,.35);--glass-bg:rgba(15,15,25,0.65);--glass-blur:blur(60px) saturate(200%);--glass-border-color:rgba(255,255,255,0.10)}
+:root{--bg:transparent;--surface:#0c1019;--accent:#7c3aed;--accent2:#c4b5fd;--text:#ffffff;--text2:#f1f5f9;--text3:#cbd5e1;--text4:#94a3b8;--glass-border:rgba(255,255,255,.08);--glow:rgba(124,58,237,.35);--glass-bg:rgba(12,12,20,0.92);--glass-blur:blur(40px) saturate(180%);--glass-border-color:rgba(255,255,255,0.08)}
 html{height:100%;overflow:hidden;background:transparent !important;background-color:transparent !important;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 body{height:100%;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0 14px;background:transparent !important;background-color:transparent !important;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;-webkit-app-region:no-drag}
 
@@ -294,16 +294,16 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .sc-card-a pre code{background:none !important;padding:0;font-size:11px;color:inherit;border:none !important;display:block}
 .sc-card-a code{background:rgba(110,118,129,.2);padding:2px 6px;border-radius:5px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c9d1d9;border:none}
 .sh-kw{color:#FF6188;font-weight:600}.sh-str{color:#FFD866}.sh-cmt{color:#727072;font-style:italic}.sh-num{color:#AB9DF2}.sh-fn{color:#78DCE8}.sh-dec{color:#FC9867}.sh-op{color:#FF6188}.sh-br{color:#939293}.sh-tp{color:#A9DC76}.sh-prop{color:#FCFCFA}.sh-call{color:#A9DC76}.sh-cls{color:#78DCE8;font-style:italic}
-.sc-line{margin-bottom:2px;padding:2px 6px;border-radius:4px;background:rgba(15,15,25,.35);display:inline-block;width:auto;max-width:100%}
-.sc-blank{height:6px;background:none}
+.sc-line{margin-bottom:0;padding:2px 4px;border-radius:0}
+.sc-blank{height:4px}
 /* Rich text lists */
 .sc-list{margin:4px 0 4px 6px;padding-left:16px;list-style-position:outside}
 ul.sc-list{list-style-type:disc}
 ol.sc-list{list-style-type:decimal}
-.sc-list li{padding:2px 6px;margin-bottom:3px;font:400 12.5px/1.7 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7;background:rgba(15,15,25,.3);border-radius:4px}
+.sc-list li{padding:1px 0;margin-bottom:2px;font:400 12.5px/1.7 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7}
 .sc-list li::marker{color:var(--accent2)}
 /* Section headers in answers */
-.sc-section-header{font:600 12.5px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#FBBF24;padding:3px 6px;margin-top:6px;margin-bottom:2px;background:rgba(251,191,36,.08);border-radius:4px;display:inline-block}
+.sc-section-header{font:600 12.5px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#c4b5fd;padding:4px 0 2px;margin-top:4px}
 .sc-card-loading{padding:8px 10px;display:flex;align-items:center;gap:6px;color:var(--accent2);font:500 11px Inter,sans-serif}
 
 /* ===== CARD FOOTER — actions + meta ===== */
@@ -431,7 +431,7 @@ body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;
 .spinner{display:inline-block;border:2px solid rgba(124,58,237,.2);border-top-color:var(--accent2);border-radius:50%;animation:spin .6s linear infinite}
 
 /* ===== LIGHT MODE ===== */
-body.light-mode,html.light-mode{--bg:transparent;--surface:#f1f5f9;--text:#0f172a;--text2:#1e293b;--text3:#475569;--text4:#94a3b8;--glass-border:rgba(0,0,0,.08);--accent2:#6d28d9;--glass-bg:rgba(255,255,255,0.65);--glass-border-color:rgba(0,0,0,.1)}
+body.light-mode,html.light-mode{--bg:transparent;--surface:#f1f5f9;--text:#0f172a;--text2:#1e293b;--text3:#475569;--text4:#94a3b8;--glass-border:rgba(0,0,0,.08);--accent2:#6d28d9;--glass-bg:rgba(255,255,255,0.93);--glass-border-color:rgba(0,0,0,.08)}
 body.light-mode{background:transparent !important}
 body.light-mode .toolbar{box-shadow:none}
 body.light-mode .toolbar::before{background:linear-gradient(90deg,transparent,rgba(109,40,217,.35),rgba(99,102,241,.2),rgba(109,40,217,.35),transparent)}
@@ -449,10 +449,10 @@ body.light-mode .code-ln{color:rgba(0,0,0,.18)}body.light-mode .code-content{col
 body.light-mode .code-copy-btn{background:rgba(0,0,0,.04);color:rgba(0,0,0,.3);border-color:rgba(0,0,0,.08)}
 body.light-mode .sc-card-a pre code{color:#1e293b;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.08);color:#6d28d9;border-color:rgba(109,40,217,.12);padding:2px 6px;border-radius:4px;font-weight:500}
-body.light-mode .sc-line{background:rgba(255,255,255,.5)}
-body.light-mode .sc-list li{color:#1e293b;background:rgba(255,255,255,.45)}
+body.light-mode .sc-line{background:none}
+body.light-mode .sc-list li{color:#1e293b}
 body.light-mode .sc-list li::marker{color:#7c3aed}
-body.light-mode .sc-section-header{color:#6d28d9;font-weight:700;background:rgba(109,40,217,.06)}
+body.light-mode .sc-section-header{color:#6d28d9;font-weight:700}
 body.light-mode .sc-q-text{color:rgba(15,23,42,.55)}
 body.light-mode .card-num{background:linear-gradient(135deg,#059669,#10B981);box-shadow:0 2px 6px rgba(16,185,129,.2)}
 body.light-mode .cat-tag.behavioral{background:rgba(16,185,129,.1);color:#059669;border-color:rgba(16,185,129,.15)}
@@ -1282,7 +1282,7 @@ function buildCodeBlock(lines) {
 function formatAnswer(text) {
   if (!text) return '<div class="sc-card-loading"><span class="spinner" style="width:14px;height:14px"></span> Generating answer...</div>';
   // Strip verbose section headers and labels
-  var headerWords = 'How it works|How this works|Why use it|Simple explanation|Key points|Key takeaway|What it does|What this does|In summary|Overview|Background|Here\'?s how|Here\'?s why|Here\'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|Detailed explanation|Brief explanation|Quick explanation|The approach|The solution|The idea|The concept|The answer';
+  var headerWords = 'How it works|How this works|Why use it|Simple explanation|Key points|Key takeaway|What it does|What this does|In summary|Overview|Background|Here\'?s how|Here\'?s why|Here\'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|Detailed explanation|Brief explanation|Quick explanation|The approach|The solution|The idea|The concept|The answer|Basic structure|Real example|Practical example|Example|Key concept|Main idea|The logic|The process|Step by step|Here\'?s an example|Let me explain';
   // Headers alone on a line → remove entirely
   text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]\\s*$', 'gim'), '');
   // Headers at start of a line followed by content → keep content only
