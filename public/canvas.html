@@ -279,7 +279,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 
 /* Question & answer text */
 .sc-q-text{font:500 8px/1.3 Inter,sans-serif;color:rgba(255,255,255,.55);flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em}
-.sc-card-a{padding:10px 14px;font:400 12.5px/1.75 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7;background:rgba(12,14,22,.5);border-radius:10px;margin:2px 4px 4px}
+.sc-card-a{padding:8px 12px;font:400 12.5px/1.75 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7}
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
 .sc-card-a pre{background:rgba(30,28,32,.6);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:12px 14px;margin:6px 0;overflow-x:auto;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 11px/1.65 'Fira Code','JetBrains Mono',Consolas,'Courier New',monospace;color:#FCFCFA;position:relative;-webkit-font-smoothing:antialiased}
@@ -294,17 +294,16 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .sc-card-a pre code{background:none !important;padding:0;font-size:11px;color:inherit;border:none !important;display:block}
 .sc-card-a code{background:rgba(110,118,129,.2);padding:2px 6px;border-radius:5px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c9d1d9;border:none}
 .sh-kw{color:#FF6188;font-weight:600}.sh-str{color:#FFD866}.sh-cmt{color:#727072;font-style:italic}.sh-num{color:#AB9DF2}.sh-fn{color:#78DCE8}.sh-dec{color:#FC9867}.sh-op{color:#FF6188}.sh-br{color:#939293}.sh-tp{color:#A9DC76}.sh-prop{color:#FCFCFA}.sh-call{color:#A9DC76}.sh-cls{color:#78DCE8;font-style:italic}
-.sc-line{margin-bottom:0;padding:2px 8px;border-radius:4px}
-.sc-line:nth-child(odd){background:transparent}
-.sc-blank{height:3px}
+.sc-line{margin-bottom:2px;padding:2px 6px;border-radius:4px;background:rgba(15,15,25,.35);display:inline-block;width:auto;max-width:100%}
+.sc-blank{height:6px;background:none}
 /* Rich text lists */
 .sc-list{margin:4px 0 4px 6px;padding-left:16px;list-style-position:outside}
 ul.sc-list{list-style-type:disc}
 ol.sc-list{list-style-type:decimal}
-.sc-list li{padding:2px 4px;margin-bottom:2px;font:400 12.5px/1.7 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7}
+.sc-list li{padding:2px 6px;margin-bottom:3px;font:400 12.5px/1.7 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7;background:rgba(15,15,25,.3);border-radius:4px}
 .sc-list li::marker{color:var(--accent2)}
 /* Section headers in answers */
-.sc-section-header{font:600 12.5px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#fff;padding:4px 8px 2px;margin-top:4px}
+.sc-section-header{font:600 12.5px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#FBBF24;padding:3px 6px;margin-top:6px;margin-bottom:2px;background:rgba(251,191,36,.08);border-radius:4px;display:inline-block}
 .sc-card-loading{padding:8px 10px;display:flex;align-items:center;gap:6px;color:var(--accent2);font:500 11px Inter,sans-serif}
 
 /* ===== CARD FOOTER — actions + meta ===== */
@@ -441,7 +440,7 @@ body.light-mode .board-toggle-pill:hover{background:rgba(109,40,217,.1);border-c
 body.light-mode .panel{box-shadow:none}
 body.light-mode .sc-card{background:transparent;border-color:rgba(0,0,0,.06);box-shadow:none}
 body.light-mode .sc-card-q{background:transparent;border-color:rgba(0,0,0,.04)}
-body.light-mode .sc-card-a{color:#1e293b;background:rgba(248,250,252,.6)}
+body.light-mode .sc-card-a{color:#1e293b}
 body.light-mode .sc-card-a strong{color:#0f172a;font-weight:700}
 body.light-mode .sc-card-a pre{background:#f1f5f9;color:#1e293b;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:12px 14px}
 body.light-mode .sc-card-a pre::before{display:none}
@@ -450,10 +449,10 @@ body.light-mode .code-ln{color:rgba(0,0,0,.18)}body.light-mode .code-content{col
 body.light-mode .code-copy-btn{background:rgba(0,0,0,.04);color:rgba(0,0,0,.3);border-color:rgba(0,0,0,.08)}
 body.light-mode .sc-card-a pre code{color:#1e293b;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.08);color:#6d28d9;border-color:rgba(109,40,217,.12);padding:2px 6px;border-radius:4px;font-weight:500}
-body.light-mode .sc-line:nth-child(odd){background:transparent}
-body.light-mode .sc-list li{color:#1e293b}
+body.light-mode .sc-line{background:rgba(255,255,255,.5)}
+body.light-mode .sc-list li{color:#1e293b;background:rgba(255,255,255,.45)}
 body.light-mode .sc-list li::marker{color:#7c3aed}
-body.light-mode .sc-section-header{color:#0f172a;font-weight:700}
+body.light-mode .sc-section-header{color:#6d28d9;font-weight:700;background:rgba(109,40,217,.06)}
 body.light-mode .sc-q-text{color:rgba(15,23,42,.55)}
 body.light-mode .card-num{background:linear-gradient(135deg,#059669,#10B981);box-shadow:0 2px 6px rgba(16,185,129,.2)}
 body.light-mode .cat-tag.behavioral{background:rgba(16,185,129,.1);color:#059669;border-color:rgba(16,185,129,.15)}
