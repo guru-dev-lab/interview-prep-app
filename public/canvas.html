@@ -292,10 +292,10 @@ body.glow-live .panel::after{box-shadow:0 0 20px rgba(52,211,153,.1),0 0 45px rg
 .code-copy-btn.copied{color:#73daca;background:rgba(115,218,202,.08);border-color:rgba(115,218,202,.2);opacity:1}
 .code-line{display:flex;gap:0;min-height:18px}
 .code-ln{min-width:28px;padding-right:12px;text-align:right;color:rgba(255,255,255,.2);font:400 10px/1.65 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0}
-.code-content{flex:1;color:#FCFCFA}
+.code-content{flex:1;color:#C1C0C0}
 .sc-card-a pre code{background:none !important;padding:0;font-size:11px;color:inherit;border:none !important;display:block}
 .sc-card-a code{background:rgba(110,118,129,.2);padding:2px 6px;border-radius:5px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c9d1d9;border:none}
-.sh-kw{color:#FF6188;font-weight:600}.sh-str{color:#FFD866}.sh-cmt{color:#727072;font-style:italic}.sh-num{color:#AB9DF2}.sh-fn{color:#78DCE8}.sh-dec{color:#FC9867}.sh-op{color:#FF6188}.sh-br{color:#FCFCFA;opacity:.7}.sh-tp{color:#A9DC76}
+.sh-kw{color:#FF6188;font-weight:600}.sh-str{color:#FFD866}.sh-cmt{color:#727072;font-style:italic}.sh-num{color:#AB9DF2}.sh-fn{color:#78DCE8}.sh-dec{color:#FC9867}.sh-op{color:#FF6188}.sh-br{color:#939293}.sh-tp{color:#A9DC76}.sh-prop{color:#FCFCFA}.sh-call{color:#A9DC76}.sh-cls{color:#78DCE8;font-style:italic}
 .sc-line{margin-bottom:0;padding:2px 8px;border-radius:4px}
 .sc-line:nth-child(odd){background:rgba(255,255,255,.015)}
 .sc-blank{height:3px}
@@ -438,7 +438,7 @@ body.light-mode .sc-card-a{color:#1f2937}
 body.light-mode .sc-card-a strong{color:#111827}
 body.light-mode .sc-card-a pre{background:#f6f8fa;color:#24292f;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:12px 14px}
 body.light-mode .sc-card-a pre::before{display:none}
-body.light-mode .sh-kw{color:#D63384;font-weight:600}body.light-mode .sh-str{color:#C18401}body.light-mode .sh-cmt{color:#A0A1A7;font-style:italic}body.light-mode .sh-num{color:#6F42C1}body.light-mode .sh-fn{color:#0070C1}body.light-mode .sh-dec{color:#E36209}body.light-mode .sh-op{color:#D63384}body.light-mode .sh-br{color:#383A42;opacity:.6}body.light-mode .sh-tp{color:#50A14F}
+body.light-mode .sh-kw{color:#D63384;font-weight:600}body.light-mode .sh-str{color:#C18401}body.light-mode .sh-cmt{color:#A0A1A7;font-style:italic}body.light-mode .sh-num{color:#6F42C1}body.light-mode .sh-fn{color:#0070C1}body.light-mode .sh-dec{color:#E36209}body.light-mode .sh-op{color:#D63384}body.light-mode .sh-br{color:#383A42;opacity:.5}body.light-mode .sh-tp{color:#50A14F}body.light-mode .sh-prop{color:#E45649}body.light-mode .sh-call{color:#4078F2}body.light-mode .sh-cls{color:#C18401;font-style:italic}
 body.light-mode .code-ln{color:rgba(0,0,0,.2)}body.light-mode .code-content{color:#24292f}
 body.light-mode .sc-card-a code{background:rgba(175,184,193,.2);color:#24292f}
 body.light-mode .code-copy-btn{background:rgba(0,0,0,.04);color:rgba(0,0,0,.3);border-color:rgba(0,0,0,.08)}
@@ -940,19 +940,53 @@ function esc(s) { var d = document.createElement('div'); d.textContent = s; retu
 function syntaxHL(code){
   var e=esc(code);
   var KW=/^(import|from|def|class|return|if|elif|else|for|while|try|except|finally|raise|with|as|in|not|and|or|is|None|True|False|self|yield|async|await|lambda|pass|break|continue|del|global|nonlocal|assert|function|const|let|var|new|this|typeof|instanceof|throw|catch|switch|case|default|export|extends|super|static|void|select|from|where|join|left|right|inner|outer|cross|full|on|group|by|order|having|insert|into|values|update|set|delete|create|table|alter|drop|index|null|distinct|union|all|limit|offset|between|like|exists|when|then|end|count|sum|avg|max|min|over|partition|row_number|rank|dense_rank|lead|lag|first_value|last_value|ntile|rows|range|unbounded|preceding|following|current|row|round|coalesce|cast|convert|isnull|ifnull|nvl|dateadd|datediff|getdate|now|sysdate|top|fetch|next|only|with|recursive|pivot|unpivot|merge|using|matched|cte|window|filter|qualify|asc|desc|nulls|first|last|temp|temporary|view|replace|grant|revoke|truncate|explain|analyze|vacuum|trigger|procedure|exec|execute|declare|begin|commit|rollback|savepoint|constraint|primary|key|foreign|references|unique|check|auto_increment|identity|serial|bigserial|boolean|integer|int|bigint|smallint|varchar|text|date|timestamp|numeric|decimal|float|double|real|func|package|fmt|go|defer|chan|map|struct|interface|type|println|printf|print|public|private|protected|abstract|final|implements|throws|enum|synchronized)$/i;
-  var FN=/^(print|len|range|str|int|float|list|dict|set|tuple|bool|type|input|open|map|filter|zip|enumerate|sorted|reversed|sum|min|max|abs|round|format|isinstance|hasattr|getattr|setattr|super|console|document|window|Math|Array|Object|String|Number|JSON|Promise|setTimeout|setInterval|require|module|exports|pd|np|plt|DataFrame|Series|read_csv|to_csv|groupby|merge|concat|apply|describe)$/;
-  var TP=/^(int|str|float|bool|list|dict|tuple|set|None|Any|Optional|Union|List|Dict|Tuple|Set|Callable|Iterator|Generator|Type|ClassVar|Final|Literal|Annotated|string|number|boolean|undefined|null|void|never|unknown|any|object|Promise|Array|Map|Set|Record|Partial|Required|Readonly|Pick|Omit|Exclude|Extract|ReturnType|InstanceType|Parameters|ConstructorParameters)$/;
-  // Enhanced regex: comments | strings | decorators | operators | brackets | words | numbers
-  return e.replace(/(#.*|\/\/.*)|("""[\s\S]*?"""|'''[\s\S]*?'''|`(?:[^`\\]|\\.)*?`|"(?:[^"\\]|\\.)*?"|'(?:[^'\\]|\\.)*?')|(@\w+)|(===?|!==?|&lt;=?|&gt;=?|=&gt;|\|\||&amp;&amp;|[+\-*/%]=?|\.\.\.|::)|([\[\]{}().,;:])|(\b[a-zA-Z_]\w*\b)|(\b\d+\.?\d*(?:e[+-]?\d+)?\b)/gm,function(m,cmt,str,dec,op,br,word,num){
-    if(cmt)return'<span class="sh-cmt">'+cmt+'</span>';
-    if(str)return'<span class="sh-str">'+str+'</span>';
-    if(dec)return'<span class="sh-dec">'+dec+'</span>';
-    if(op)return'<span class="sh-op">'+op+'</span>';
-    if(br)return'<span class="sh-br">'+br+'</span>';
-    if(word){if(KW.test(word))return'<span class="sh-kw">'+word+'</span>';if(FN.test(word))return'<span class="sh-fn">'+word+'</span>';if(TP.test(word))return'<span class="sh-tp">'+word+'</span>';return word;}
-    if(num)return'<span class="sh-num">'+num+'</span>';
-    return m;
-  });
+  var BUILTIN=/^(print|len|range|str|int|float|list|dict|set|tuple|bool|type|input|open|map|filter|zip|enumerate|sorted|reversed|sum|min|max|abs|round|format|isinstance|hasattr|getattr|setattr|super|console|document|window|Math|Array|Object|String|Number|JSON|Promise|setTimeout|setInterval|require|module|exports|pd|np|plt|DataFrame|Series|read_csv|to_csv|groupby|merge|concat|apply|describe)$/;
+  var CLS=/^[A-Z][a-zA-Z0-9_]*$/;
+  // Tokenize into an array first so we can look-ahead for function calls & property access
+  var tokens=[];
+  var rx=/(#.*|\/\/.*)|("""[\s\S]*?"""|'''[\s\S]*?'''|`(?:[^`\\]|\\.)*?`|"(?:[^"\\]|\\.)*?"|'(?:[^'\\]|\\.)*?')|(@\w+)|(===?|!==?|&lt;=?|&gt;=?|=&gt;|\|\||&amp;&amp;|[+\-*/%]=?|\.\.\.|::)|([\[\]{}().,;:])|(\b[a-zA-Z_]\w*\b)|(\b\d+\.?\d*(?:e[+-]?\d+)?\b)/gm;
+  var last=0,m;
+  while((m=rx.exec(e))!==null){
+    if(m.index>last)tokens.push({t:'raw',v:e.slice(last,m.index)});
+    if(m[1])tokens.push({t:'cmt',v:m[0]});
+    else if(m[2])tokens.push({t:'str',v:m[0]});
+    else if(m[3])tokens.push({t:'dec',v:m[0]});
+    else if(m[4])tokens.push({t:'op',v:m[0]});
+    else if(m[5])tokens.push({t:'br',v:m[0]});
+    else if(m[6])tokens.push({t:'word',v:m[0]});
+    else if(m[7])tokens.push({t:'num',v:m[0]});
+    else tokens.push({t:'raw',v:m[0]});
+    last=rx.lastIndex;
+  }
+  if(last<e.length)tokens.push({t:'raw',v:e.slice(last)});
+  // Second pass: classify words using look-ahead context
+  var out='';
+  for(var i=0;i<tokens.length;i++){
+    var tk=tokens[i];
+    if(tk.t==='cmt')out+='<span class="sh-cmt">'+tk.v+'</span>';
+    else if(tk.t==='str')out+='<span class="sh-str">'+tk.v+'</span>';
+    else if(tk.t==='dec')out+='<span class="sh-dec">'+tk.v+'</span>';
+    else if(tk.t==='op')out+='<span class="sh-op">'+tk.v+'</span>';
+    else if(tk.t==='br')out+='<span class="sh-br">'+tk.v+'</span>';
+    else if(tk.t==='num')out+='<span class="sh-num">'+tk.v+'</span>';
+    else if(tk.t==='word'){
+      // Find next non-whitespace token for context
+      var nx=null;for(var j=i+1;j<tokens.length;j++){if(tokens[j].t!=='raw'||tokens[j].v.trim()){nx=tokens[j];break;}}
+      // Also check if previous token was a dot (property access)
+      var pv=null;for(var j=i-1;j>=0;j--){if(tokens[j].t!=='raw'||tokens[j].v.trim()){pv=tokens[j];break;}}
+      var isDotAccess=pv&&pv.t==='br'&&pv.v==='.';
+      var isCallNext=nx&&nx.t==='br'&&nx.v==='(';
+      if(KW.test(tk.v))out+='<span class="sh-kw">'+tk.v+'</span>';
+      else if(isDotAccess&&isCallNext)out+='<span class="sh-call">'+tk.v+'</span>';
+      else if(isCallNext&&BUILTIN.test(tk.v))out+='<span class="sh-fn">'+tk.v+'</span>';
+      else if(isCallNext)out+='<span class="sh-call">'+tk.v+'</span>';
+      else if(isDotAccess)out+='<span class="sh-prop">'+tk.v+'</span>';
+      else if(CLS.test(tk.v)&&!KW.test(tk.v))out+='<span class="sh-cls">'+tk.v+'</span>';
+      else out+=tk.v;
+    }
+    else out+=tk.v;
+  }
+  return out;
 }
 
 function setStatus(text, state) {
