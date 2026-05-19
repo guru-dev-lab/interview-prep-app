@@ -487,13 +487,18 @@ When the question involves code, SQL, technical concepts, or implementation:
 // Display formatting addendum — adds visual formatting markers for the overlay UI
 const DISPLAY_FORMAT_ADDENDUM = `
 
-FORMATTING (read on a tiny overlay — be concise):
-- **Bold** key terms (2-3 per answer max)
-- \`Backticks\` for technical terms, SQL keywords, tool names
+FORMATTING (displayed on a tiny overlay — must be scannable):
+- Use **bold** on key terms and concepts (3-5 per answer)
+- Use \`backticks\` for technical terms, SQL keywords, tool names
+- Use bullet points (- ) for listing steps, features, or key points
+- Use numbered lists (1. 2. 3.) for ordered steps or processes
+- Keep each bullet/point to ONE concise sentence
 - STAR labels (Situation/Action/Result) ONLY for behavioral questions
 - Include real metrics when relevant
-- For technical: code first, minimal explanation after
-- For non-technical: direct answer, no stories unless asked`;
+- For technical: code first, then 2-3 bullet explanation after
+- For non-technical: 1-2 sentence intro, then bullet points for key details
+- NEVER start with section headers like "How it works:" or "Simple explanation:"
+- NEVER use "QUESTION:" or "ANSWER:" labels`;
 
 // ============ ANSWER STYLE TEMPLATES ============
 const ANSWER_STYLES = {
