@@ -2159,7 +2159,11 @@ RULES:
 - Lead with the answer — no preamble
 - If multiple questions are visible, answer each one separated by a blank line with the question number
 - Natural voice, no buzzwords
-- Use the candidate's actual experience from the Q&A bank when relevant`;
+- Use the candidate's actual experience from the Q&A bank when relevant
+- NEVER start with "QUESTION:" or "ANSWER:" labels — just give the answer directly
+- NEVER use section headers like "How it works:", "What this does:", "Simple explanation:"
+- Use **bold** on key terms, use bullet points (- ) for listing steps or key points
+- Use \`backticks\` for technical terms, SQL keywords, tool names`;
 
 // Screen Assist memory — rolling buffer of previous analyses per session
 // So the AI remembers what it saw on earlier captures (tables, code, diagrams)

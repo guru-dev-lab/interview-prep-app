@@ -279,7 +279,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 
 /* Question & answer text */
 .sc-q-text{font:500 8px/1.3 Inter,sans-serif;color:rgba(255,255,255,.55);flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.01em}
-.sc-card-a{padding:8px 12px;font:400 12.5px/1.75 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7}
+.sc-card-a{padding:10px 14px;font:400 12.5px/1.75 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#edf0f7;background:rgba(12,14,22,.5);border-radius:10px;margin:2px 4px 4px}
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
 .sc-card-a pre{background:rgba(30,28,32,.6);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:12px 14px;margin:6px 0;overflow-x:auto;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 11px/1.65 'Fira Code','JetBrains Mono',Consolas,'Courier New',monospace;color:#FCFCFA;position:relative;-webkit-font-smoothing:antialiased}
@@ -441,7 +441,7 @@ body.light-mode .board-toggle-pill:hover{background:rgba(109,40,217,.1);border-c
 body.light-mode .panel{box-shadow:none}
 body.light-mode .sc-card{background:transparent;border-color:rgba(0,0,0,.06);box-shadow:none}
 body.light-mode .sc-card-q{background:transparent;border-color:rgba(0,0,0,.04)}
-body.light-mode .sc-card-a{color:#1e293b}
+body.light-mode .sc-card-a{color:#1e293b;background:rgba(248,250,252,.6)}
 body.light-mode .sc-card-a strong{color:#0f172a;font-weight:700}
 body.light-mode .sc-card-a pre{background:#f1f5f9;color:#1e293b;border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:12px 14px}
 body.light-mode .sc-card-a pre::before{display:none}
@@ -1282,16 +1282,17 @@ function buildCodeBlock(lines) {
 
 function formatAnswer(text) {
   if (!text) return '<div class="sc-card-loading"><span class="spinner" style="width:14px;height:14px"></span> Generating answer...</div>';
-  // Strip verbose section headers from pre-built bank answers
-  // Match headers alone on a line (remove entirely)
-  text = text.replace(/^(How it works|Why use it|Simple explanation|Key points|Key takeaway|What it does|In summary|Overview|Background|Here'?s how|Here'?s why|Here'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|ANSWER)\s*[:—\-]\s*$/gim, '');
-  // Match headers at START of a line followed by content (keep content, strip header)
-  text = text.replace(/^(How it works|Why use it|Simple explanation|Key points|Key takeaway|What it does|In summary|Overview|Background|Here'?s how|Here'?s why|Here'?s what|The short version|Quick summary|Summary|Explanation|TL;DR)\s*[:—\-]\s*/gim, '');
-  // Strip QUESTION:/ANSWER: labels
-  text = text.replace(/^(QUESTION|ANSWER)\s*[:]\s*/gim, '');
+  // Strip verbose section headers and labels
+  var headerWords = 'How it works|How this works|Why use it|Simple explanation|Key points|Key takeaway|What it does|What this does|In summary|Overview|Background|Here\'?s how|Here\'?s why|Here\'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|Detailed explanation|Brief explanation|Quick explanation|The approach|The solution|The idea|The concept|The answer';
+  // Headers alone on a line → remove entirely
+  text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]\\s*$', 'gim'), '');
+  // Headers at start of a line followed by content → keep content only
+  text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]\\s*', 'gim'), '');
+  // Strip QUESTION:/ANSWER: labels (any casing)
+  text = text.replace(/^(QUESTION|ANSWER|Question|Answer)\s*[:]\s*/gm, '');
   // Strip --- dividers
-  text = text.replace(/^-{3,}\s*$/gim, '');
-  text = text.replace(/\n{3,}/g, '\n\n'); // collapse excess blank lines
+  text = text.replace(/^-{3,}\s*$/gm, '');
+  text = text.replace(/\n{3,}/g, '\n\n');
   var html = '';
   var inCode = false;
   var codeLines = [];
