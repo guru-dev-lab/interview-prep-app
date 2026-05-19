@@ -716,7 +716,7 @@ document.body.style.background='transparent';
         </div>
         <div class="settings-row">
           <div><div class="settings-label">Follow-Up Predictions</div><div class="settings-desc">Show predicted next questions</div></div>
-          <label class="toggle-switch"><input type="checkbox" id="s-followups" checked onchange="toggleFollowUps(this.checked)"><span class="toggle-slider"></span></label>
+          <label class="toggle-switch"><input type="checkbox" id="s-followups" onchange="toggleFollowUps(this.checked)"><span class="toggle-slider"></span></label>
         </div>
         <div class="settings-row">
           <div><div class="settings-label">Auto-Cleanup (min)</div><div class="settings-desc">Remove matched cards after N min</div></div>
@@ -1890,7 +1890,7 @@ setTimeout(function() {
 }, 150);
 
 // ===== SETTINGS MODAL =====
-var settingsFollowUps = true;
+var settingsFollowUps = false;
 var settingsAutoScroll = true;
 var settingsMaxLines = 5; // default: short (4-5 sentences)
 
