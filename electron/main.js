@@ -4,9 +4,17 @@ const path = require('path');
 // Safe logging — prevents EIO crash when stdout pipe is broken
 const _log = (...args) => { try { console.log(...args); } catch(e) {} };
 
-// macOS transparency fix — disable hardware acceleration + Chromium's RoundedWindowMac
-app.disableHardwareAcceleration();
-app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
+// Transparency fix — disable hardware acceleration on macOS (required for transparency)
+// On Windows, hardware acceleration is needed for performance but transparency uses a different approach
+if (process.platform === 'darwin') {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
+}
+// Windows: enable transparency with DWM composition
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('enable-transparent-visuals');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+}
 
 // ===== CONFIG =====
 const SERVER_URL = process.env.XHIRE_SERVER || 'https://xhire.app';
@@ -36,9 +44,10 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   // Hide dock icon — CRITICAL for overlay to float above fullscreen apps on macOS
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' && app.dock) {
     app.dock.hide();
   }
+  // Windows: skip taskbar is set in BrowserWindow options
 
   createTray();
   createOverlay();
@@ -50,6 +59,7 @@ app.whenReady().then(() => {
     desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       const screenSources = sources.filter(s => s.id.startsWith('screen:'));
       if (screenSources.length === 0) {
+        _log('[Xhire] No screen sources found');
         callback({});
         return;
       }
@@ -57,7 +67,10 @@ app.whenReady().then(() => {
       // Single monitor — just use it
       if (screenSources.length === 1) {
         _log('[Xhire] Single screen:', screenSources[0].name);
-        callback({ video: screenSources[0], audio: 'loopback' });
+        // macOS: 'loopback' captures system audio natively
+        // Windows: 'loopbackWithMute' or just pass audio constraints — Electron handles it
+        const audioOption = process.platform === 'darwin' ? 'loopback' : 'loopbackWithMute';
+        callback({ video: screenSources[0], audio: audioOption });
         return;
       }
 
@@ -84,19 +97,22 @@ app.whenReady().then(() => {
       chosenIndex = Math.min(chosenIndex, screenSources.length - 1);
       const chosen = screenSources[chosenIndex];
       _log('[Xhire] Capturing screen:', chosen.name, '(' + chosen.id + ')');
-      callback({ video: chosen, audio: 'loopback' });
+      const audioOption = process.platform === 'darwin' ? 'loopback' : 'loopbackWithMute';
+      callback({ video: chosen, audio: audioOption });
     }).catch((e) => {
       _log('[Xhire] desktopCapturer error:', e);
       callback({});
     });
   });
 
-  // Request microphone permission on macOS
+  // Request microphone permission on macOS (Windows doesn't need explicit system permission)
   if (process.platform === 'darwin') {
     systemPreferences.askForMediaAccess('microphone').then((granted) => {
       _log('[Xhire] Microphone access:', granted ? 'granted' : 'denied');
     });
   }
+
+  _log('[Xhire] Platform:', process.platform, '| Electron:', process.versions.electron);
 });
 
 app.on('window-all-closed', (e) => {
@@ -177,6 +193,9 @@ function createTray() {
 function createOverlay() {
   const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
 
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+
   mainWindow = new BrowserWindow({
     width: 420,
     height: 650,
@@ -191,9 +210,14 @@ function createOverlay() {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    visibleOnAllWorkspaces: true,
-    hiddenInMissionControl: true,
+    // macOS-only properties (ignored on Windows but set for safety)
+    ...(isMac ? {
+      visibleOnAllWorkspaces: true,
+      hiddenInMissionControl: true,
+    } : {}),
     backgroundColor: '#00000000',
+    // Windows: use WS_EX_LAYERED for proper transparency
+    ...(isWin ? { thickFrame: false } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -204,13 +228,25 @@ function createOverlay() {
     }
   });
 
-  // CRITICAL macOS settings — must be called AFTER window creation
-  mainWindow.setAlwaysOnTop(true, 'screen-saver');
-  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  mainWindow.setHiddenInMissionControl(true);
+  // CRITICAL always-on-top — must be called AFTER window creation
+  if (process.platform === 'darwin') {
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    mainWindow.setHiddenInMissionControl(true);
+  } else {
+    // Windows: 'screen-saver' level isn't supported the same way
+    // Use 'floating' which stays above normal windows
+    mainWindow.setAlwaysOnTop(true, 'floating');
+    mainWindow.setSkipTaskbar(true);
+  }
 
   // Hide overlay from screen sharing — interviewer won't see it
-  mainWindow.setContentProtection(true);
+  // On Windows, setContentProtection uses WDA (Windows Display Affinity)
+  // which can require a small delay after window creation
+  setTimeout(() => {
+    mainWindow.setContentProtection(true);
+    _log('[Xhire] Content protection enabled (platform:', process.platform, ')');
+  }, process.platform === 'win32' ? 500 : 0);
 
   // Load launcher from the server (same-origin for API calls)
   // Falls back to local file if server is unreachable
@@ -287,16 +323,41 @@ ipcMain.handle('quit-app', () => {
 });
 
 // Stealth mode — toggle content protection (hide from screen sharing)
+// Windows quirk: WDA (Windows Display Affinity) needs the window to briefly hide/show
+// for the DWM to pick up the change. Without this, it takes a second click.
 ipcMain.handle('set-stealth', (_, on) => {
   if (mainWindow) {
-    mainWindow.setContentProtection(!!on);
+    if (process.platform === 'win32') {
+      // Windows: force DWM to re-evaluate display affinity
+      mainWindow.setContentProtection(!!on);
+      // Briefly toggle visibility to force Windows to apply the change
+      mainWindow.setOpacity(0.99);
+      setTimeout(() => {
+        mainWindow.setOpacity(1.0);
+      }, 50);
+    } else {
+      mainWindow.setContentProtection(!!on);
+    }
     _log('[Xhire] Content protection:', on ? 'ON' : 'OFF');
   }
 });
 
-// Window dragging support (fallback if -webkit-app-region doesn't work)
+// Window dragging support — on Windows, CSS -webkit-app-region:drag can be
+// unreliable with transparent frameless windows. This IPC call lets the
+// renderer trigger native window drag via the OS.
 ipcMain.handle('start-drag', () => {
   // No-op — handled by CSS -webkit-app-region:drag
+});
+
+// Windows drag fallback — renderer calls this on mousedown on the toolbar
+ipcMain.handle('start-window-drag', () => {
+  if (mainWindow && process.platform === 'win32') {
+    // On Windows, we need to use moveTop + track position manually
+    // But the simplest reliable fix is to ensure the window is properly movable
+    try {
+      mainWindow.setMovable(true);
+    } catch(e) {}
+  }
 });
 
 // ===== HELPERS =====

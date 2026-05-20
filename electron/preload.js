@@ -9,10 +9,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quitApp: () => ipcRenderer.invoke('quit-app'),
   setStealth: (on) => ipcRenderer.invoke('set-stealth', on),
 
+  // Window drag support for Windows (CSS -webkit-app-region can be flaky on Win)
+  startWindowDrag: () => ipcRenderer.invoke('start-window-drag'),
+
   // Display change listener — fires when overlay moves to a different monitor
   onDisplayChanged: (callback) => ipcRenderer.on('display-changed', (_, displayId) => callback(displayId)),
 
   // Platform info
   platform: process.platform,
-  isElectron: true
+  isElectron: true,
+  isWindows: process.platform === 'win32',
+  isMac: process.platform === 'darwin'
 });

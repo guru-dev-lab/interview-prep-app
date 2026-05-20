@@ -889,6 +889,50 @@ if (isElectronMode) {
   }, 100);
 }
 
+// Windows: fix keyboard shortcut labels (Ctrl instead of Cmd)
+if (window.electronAPI && window.electronAPI.isWindows) {
+  setTimeout(function() {
+    document.querySelectorAll('.kbd').forEach(function(el) {
+      el.textContent = el.textContent.replace('⌘', 'Ctrl+');
+    });
+  }, 200);
+}
+
+// Windows drag fix — -webkit-app-region:drag can be flaky on Win transparent windows
+// Add a JavaScript-based drag handler as a supplement
+if (isElectronMode && window.electronAPI && window.electronAPI.isWindows) {
+  setTimeout(function() {
+    var toolbar = document.querySelector('.toolbar');
+    if (!toolbar) return;
+    var isDragging = false;
+    var dragStartX = 0, dragStartY = 0;
+    var winStartX = 0, winStartY = 0;
+
+    toolbar.addEventListener('mousedown', function(e) {
+      // Only drag from the toolbar background, not from buttons
+      if (e.target.closest('button, input, select, .tb-btn, .tb-utils')) return;
+      isDragging = true;
+      dragStartX = e.screenX;
+      dragStartY = e.screenY;
+      // Get current window position via screen coords
+      winStartX = window.screenX;
+      winStartY = window.screenY;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var dx = e.screenX - dragStartX;
+      var dy = e.screenY - dragStartY;
+      window.moveTo(winStartX + dx, winStartY + dy);
+    });
+
+    document.addEventListener('mouseup', function() {
+      isDragging = false;
+    });
+  }, 300);
+}
+
 // Listen for display changes in Electron — refresh screen stream when overlay moves monitors
 if (window.electronAPI && window.electronAPI.onDisplayChanged) {
   window.electronAPI.onDisplayChanged(function(displayId) {
@@ -1694,7 +1738,23 @@ async function getScreenStream() {
     if (tracks.length && tracks[0].readyState === 'live') return screenStream;
   }
   try {
+    // In Electron on Windows, if we already have a systemAudioStream with video,
+    // reuse its video track for screen capture instead of prompting again
+    if (isElectronMode && systemAudioStream && systemAudioStream.active) {
+      var existingVideo = systemAudioStream.getVideoTracks();
+      if (existingVideo.length && existingVideo[0].readyState === 'live') {
+        console.log('[ScreenStream] Reusing existing system audio stream video track');
+        screenStream = systemAudioStream;
+        $('btn-switch').style.display = '';
+        return screenStream;
+      }
+    }
+
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    if (!screenStream || screenStream.getVideoTracks().length === 0) {
+      console.warn('[ScreenStream] No video tracks in stream');
+      return null;
+    }
     screenStream.getVideoTracks()[0].addEventListener('ended', function() {
       stopRecording();
       screenStream = null;
@@ -1704,7 +1764,11 @@ async function getScreenStream() {
     $('btn-switch').style.display = '';
     return screenStream;
   } catch(e) {
-    console.warn('Screen capture denied:', e);
+    console.warn('Screen capture denied:', e.name, e.message);
+    // On Windows Electron, if getDisplayMedia fails, show a helpful message
+    if (window.electronAPI && window.electronAPI.platform === 'win32') {
+      showToast('Screen capture failed — try clicking Go Live first', '', 3000);
+    }
     return null;
   }
 }
@@ -2287,47 +2351,95 @@ async function toggleElectronLive() {
 async function goLiveElectron() {
   var tb = $('btn-live-tb');
   if (tb) { tb.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span>'; tb.className = 'tb-btn'; }
+  var isWin = window.electronAPI && window.electronAPI.platform === 'win32';
 
   try {
     // Step 1: Capture system audio via getDisplayMedia
+    // On Windows, Electron's setDisplayMediaRequestHandler returns the screen + system audio
+    // The handler in main.js uses 'loopbackWithMute' on Windows vs 'loopback' on macOS
     systemAudioStream = await navigator.mediaDevices.getDisplayMedia({
       video: true,   // Required by Chromium to show the picker
-      audio: true    // System audio via electron-audio-loopback
+      audio: true    // System audio — handled by main.js setDisplayMediaRequestHandler
     });
 
-    if (systemAudioStream.getAudioTracks().length === 0) {
+    var hasAudio = systemAudioStream.getAudioTracks().length > 0;
+    var hasVideo = systemAudioStream.getVideoTracks().length > 0;
+
+    console.log('[GoLive] Stream tracks — audio:', hasAudio, 'video:', hasVideo, 'platform:', isWin ? 'win32' : 'darwin');
+
+    if (!hasAudio && !hasVideo) {
       if (tb) { tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>'; tb.className = 'tb-btn tb-btn-live'; }
-      setStatus('No audio track', 'off');
+      setStatus('No capture available', 'off');
       return;
     }
 
-    // Handle user stopping the share
-    systemAudioStream.getAudioTracks()[0].onended = function() {
-      stopElectronAudio();
-      updateLiveUI(false);
-      setStatus('Live', 'on');
-    };
+    // If no audio track (Windows sometimes doesn't provide system audio loopback),
+    // still proceed with mic-only mode — user can still use manual "What should I say?"
+    if (!hasAudio) {
+      console.warn('[GoLive] No system audio — proceeding with mic-only mode');
+      setStatus('Live — Mic Only (no system audio)', 'on');
+    } else {
+      // Handle user stopping the share
+      systemAudioStream.getAudioTracks()[0].onended = function() {
+        stopElectronAudio();
+        updateLiveUI(false);
+        setStatus('Live', 'on');
+      };
+    }
+
+    // Handle video track ending
+    if (hasVideo) {
+      systemAudioStream.getVideoTracks()[0].onended = function() {
+        stopElectronAudio();
+        updateLiveUI(false);
+        setStatus('Screen share ended', 'off');
+      };
+    }
 
     // Step 2: Get mic for user voice
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
 
-    // Step 3: Start processing both streams
+    // Step 3: Start processing streams
     electronLive = true;
-    processAudioStream(systemAudioStream, 1);  // Channel 1 = interviewer/system
+    if (hasAudio) {
+      processAudioStream(systemAudioStream, 1);  // Channel 1 = interviewer/system
+    }
     processAudioStream(micStream, 2);           // Channel 2 = user mic
 
     // Update UI
     updateLiveUI(true);
-    setStatus('Live — Audio', 'on');
+    if (hasAudio) {
+      setStatus('Live — Audio', 'on');
+    }
     var empty = $('empty-state');
     if (empty) empty.style.display = 'none';
 
   } catch(e) {
-    console.error('[Electron] Audio capture error:', e);
+    console.error('[Electron] Audio capture error:', e.name, e.message);
     if (tb) { tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>'; tb.className = 'tb-btn tb-btn-live'; }
-    setStatus('Audio error', 'off');
+
+    // On Windows, if getDisplayMedia fails, try mic-only fallback
+    if (isWin && e.name !== 'AbortError') {
+      try {
+        console.log('[GoLive] Windows fallback — trying mic-only mode');
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+        electronLive = true;
+        processAudioStream(micStream, 2);
+        updateLiveUI(true);
+        setStatus('Live — Mic Only', 'on');
+        var empty = $('empty-state');
+        if (empty) empty.style.display = 'none';
+        return;
+      } catch(e2) {
+        console.error('[Electron] Mic fallback also failed:', e2);
+      }
+    }
+
+    setStatus('Audio error — ' + e.message, 'off');
     stopElectronAudio();
   }
 }
