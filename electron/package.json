@@ -1,6 +1,6 @@
 {
   "name": "xhire-overlay",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Xhire Interview Prep Overlay — floats on top of Zoom, Teams, or any app",
   "main": "main.js",
   "author": "Xhire",
@@ -15,7 +15,9 @@
     "publish:win": "electron-builder --win --publish always",
     "publish:all": "electron-builder --mac --win --publish always"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.1.0"
+  },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.13.0"

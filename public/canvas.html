@@ -946,6 +946,20 @@ if (window.electronAPI && window.electronAPI.onDisplayChanged) {
   });
 }
 
+// ===== AUTO-UPDATE NOTIFICATIONS =====
+if (window.electronAPI) {
+  if (window.electronAPI.onUpdateAvailable) {
+    window.electronAPI.onUpdateAvailable(function(version) {
+      showToast('Update v' + version + ' downloading...', 'info', 4000);
+    });
+  }
+  if (window.electronAPI.onUpdateDownloaded) {
+    window.electronAPI.onUpdateDownloaded(function(version) {
+      showToast('v' + version + ' ready — restart to update', 'success', 6000);
+    });
+  }
+}
+
 // ===== KEYBOARD SHORTCUTS =====
 // Cmd+Enter (Mac) / Ctrl+Enter (Windows) → Screen Assist (capture & analyze)
 // Cmd+Shift+Enter → "What should I say?"

@@ -1,8 +1,35 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences, dialog } = require('electron');
 const path = require('path');
+const { autoUpdater } = require('electron-updater');
 
 // Safe logging — prevents EIO crash when stdout pipe is broken
 const _log = (...args) => { try { console.log(...args); } catch(e) {} };
+
+// ===== AUTO-UPDATER =====
+// Checks GitHub Releases for new versions and installs silently in background.
+// On next app restart the new version is active — no user action needed.
+autoUpdater.logger = { info: _log, warn: _log, error: _log };
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('checking-for-update', () => _log('[Update] Checking for updates...'));
+autoUpdater.on('update-available', (info) => {
+  _log('[Update] New version available:', info.version);
+  // Notify the renderer so it can show a subtle toast
+  if (mainWindow) mainWindow.webContents.send('update-available', info.version);
+});
+autoUpdater.on('update-not-available', () => _log('[Update] App is up to date'));
+autoUpdater.on('download-progress', (progress) => {
+  _log(`[Update] Downloading: ${Math.round(progress.percent)}%`);
+});
+autoUpdater.on('update-downloaded', (info) => {
+  _log('[Update] Update downloaded:', info.version, '— will install on next restart');
+  // Notify the renderer
+  if (mainWindow) mainWindow.webContents.send('update-downloaded', info.version);
+});
+autoUpdater.on('error', (err) => {
+  _log('[Update] Error:', err.message);
+});
 
 // Transparency fix — disable hardware acceleration on macOS (required for transparency)
 // On Windows, hardware acceleration is needed for performance but transparency uses a different approach
@@ -113,6 +140,18 @@ app.whenReady().then(() => {
   }
 
   _log('[Xhire] Platform:', process.platform, '| Electron:', process.versions.electron);
+
+  // Check for updates after a short delay (don't slow down startup)
+  setTimeout(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch(e => {
+      _log('[Update] Check failed (offline or no releases):', e.message);
+    });
+  }, 5000);
+
+  // Re-check every 2 hours while running
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  }, 2 * 60 * 60 * 1000);
 });
 
 app.on('window-all-closed', (e) => {

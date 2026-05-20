@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Display change listener — fires when overlay moves to a different monitor
   onDisplayChanged: (callback) => ipcRenderer.on('display-changed', (_, displayId) => callback(displayId)),
 
+  // Auto-update listeners — fires when a new version is available/downloaded
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_, version) => callback(version)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_, version) => callback(version)),
+
   // Platform info
   platform: process.platform,
   isElectron: true,
