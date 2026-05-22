@@ -614,7 +614,7 @@ Use Q&A BANK for real stories — actual companies, projects, outcomes.
 Use resume for facts. Each answer must reference a real experience.
 Never fabricate. If the question doesn't fit STAR, adapt — lead with your approach.
 
-Output ONLY the answer. No intro, no labels.`
+Output ONLY the answer. No intro sentence, no preamble. Always include section labels (Situation:, Task:, Action:, Result:).`
   },
   storytelling: {
     name: 'Storytelling',
