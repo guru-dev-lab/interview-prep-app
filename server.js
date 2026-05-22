@@ -975,9 +975,33 @@ EXAMPLES OF EXPERIENCE ANSWERS (ONLY WHEN ASKED):
 
 The JD and resume are context for what the candidate knows — NOT scripts to recite into every answer.`;
 
+// STAR-safe version of DISPLAY_FORMAT_ADDENDUM — removes "no labels" rules that conflict with STAR section labels
+const DISPLAY_FORMAT_ADDENDUM_STAR = `
+
+FORMATTING (displayed on a tiny overlay — must be scannable):
+- Use **bold** on key terms and concepts (3-5 per answer)
+- Use \`backticks\` for technical terms, SQL keywords, tool names
+- Use bullet points (- ) for listing steps, features, or key points
+- Use numbered lists (1. 2. 3.) for ordered steps or processes
+- Keep each bullet/point to ONE concise sentence
+- ALWAYS use STAR section labels: Situation:, Task:, Action:, Result: — these are REQUIRED
+- Include real metrics when relevant
+
+ABSOLUTE ZERO-TOLERANCE RULES — VIOLATING ANY OF THESE MEANS FAILURE:
+- NEVER use preamble phrases: "Here's a practical example", "Let me explain", "In other words",
+  "Essentially", "Basically", "To put it simply", "In simple terms", "Great question",
+  "That's a great question", "So essentially", "What this means is", "The way I'd explain it is",
+  "Let me walk you through", "Think of it this way", "To answer your question"
+- NEVER use closing/summary phrases: "In summary", "To summarize", "The key takeaway is",
+  "Overall", "In conclusion", "The bottom line is", "So in short"
+- NEVER use "QUESTION:" or "ANSWER:" labels or "---" dividers
+- Start with "Situation:" label — the FIRST word must be the STAR label`;
+
 // Get style prompt by key — fallback to conversational, always append code rules + anti-stuffing
 function getStylePrompt(styleKey) {
-  return (ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).prompt + CODE_ANSWER_ADDENDUM + NO_ROLE_STUFFING + DISPLAY_FORMAT_ADDENDUM;
+  const base = (ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).prompt;
+  const displayAddendum = (styleKey === 'star') ? DISPLAY_FORMAT_ADDENDUM_STAR : DISPLAY_FORMAT_ADDENDUM;
+  return base + CODE_ANSWER_ADDENDUM + NO_ROLE_STUFFING + displayAddendum;
 }
 
 const BATCH_PREAMBLE = `You will receive MULTIPLE interview questions. You MUST generate a separate, complete, high-quality answer for EACH question.
@@ -1751,7 +1775,9 @@ app.post('/api/sessions/:id/generate/:qid', authMiddleware, async (req, res) => 
     }
 
     const stylePrompt = getStylePrompt(session.answer_style);
+    console.log(`[SINGLE-GEN] Session ${req.params.id}, Q ${req.params.qid}, style='${session.answer_style}', promptSnippet='${stylePrompt.substring(0, 120)}...'`);
     const answer = await callClaude(stylePrompt, userMsg, 1500, MODEL_HAIKU);
+    console.log(`[SINGLE-GEN] Answer preview: '${answer.substring(0, 100)}...'`);
     await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, question.id]);
     await pool.query('UPDATE sessions SET updated_at = NOW() WHERE id = $1', [req.params.id]);
     res.json({ answer });
