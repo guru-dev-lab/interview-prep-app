@@ -94,9 +94,9 @@ app.whenReady().then(() => {
       // Single monitor — just use it
       if (screenSources.length === 1) {
         _log('[Xhire] Single screen:', screenSources[0].name);
-        // macOS: 'loopback' captures system audio natively
-        // Windows: 'loopbackWithMute' or just pass audio constraints — Electron handles it
-        const audioOption = process.platform === 'darwin' ? 'loopback' : 'loopbackWithMute';
+        // 'loopback' captures system audio — works on both macOS and Windows (Electron 28+)
+        // Note: 'loopbackWithMute' is macOS-only and breaks Windows!
+        const audioOption = 'loopback';
         callback({ video: screenSources[0], audio: audioOption });
         return;
       }
@@ -124,7 +124,7 @@ app.whenReady().then(() => {
       chosenIndex = Math.min(chosenIndex, screenSources.length - 1);
       const chosen = screenSources[chosenIndex];
       _log('[Xhire] Capturing screen:', chosen.name, '(' + chosen.id + ')');
-      const audioOption = process.platform === 'darwin' ? 'loopback' : 'loopbackWithMute';
+      const audioOption = 'loopback';
       callback({ video: chosen, audio: audioOption });
     }).catch((e) => {
       _log('[Xhire] desktopCapturer error:', e);

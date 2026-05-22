@@ -2379,7 +2379,7 @@ async function goLiveElectron() {
     var hasAudio = systemAudioStream.getAudioTracks().length > 0;
     var hasVideo = systemAudioStream.getVideoTracks().length > 0;
 
-    console.log('[GoLive] Stream tracks — audio:', hasAudio, 'video:', hasVideo, 'platform:', isWin ? 'win32' : 'darwin');
+    console.log('[GoLive] Stream tracks — audio:', hasAudio, '(' + systemAudioStream.getAudioTracks().map(function(t){return t.label+'/'+t.readyState}).join(',') + ') video:', hasVideo, '(' + systemAudioStream.getVideoTracks().map(function(t){return t.label+'/'+t.readyState}).join(',') + ') platform:', isWin ? 'win32' : 'darwin');
 
     if (!hasAudio && !hasVideo) {
       if (tb) { tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>'; tb.className = 'tb-btn tb-btn-live'; }
