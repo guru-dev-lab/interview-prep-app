@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window drag support for Windows (CSS -webkit-app-region can be flaky on Win)
   startWindowDrag: () => ipcRenderer.invoke('start-window-drag'),
 
+  // Manual corner resize — supplements tiny native resize zones on transparent frameless windows
+  resizeWindow: (deltaW, deltaH, direction) => ipcRenderer.invoke('resize-window', deltaW, deltaH, direction),
+
   // Display change listener — fires when overlay moves to a different monitor
   onDisplayChanged: (callback) => ipcRenderer.on('display-changed', (_, displayId) => callback(displayId)),
 

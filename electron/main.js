@@ -398,6 +398,38 @@ ipcMain.handle('start-window-drag', () => {
   }
 });
 
+// Manual window resize — renderer sends delta from mousedown+mousemove on corner grabs
+// This supplements the tiny native resize zones on transparent frameless windows
+ipcMain.handle('resize-window', (_, deltaW, deltaH, direction) => {
+  if (!mainWindow) return;
+  const bounds = mainWindow.getBounds();
+  const newBounds = { ...bounds };
+
+  if (direction === 'se') {
+    newBounds.width = Math.max(300, bounds.width + deltaW);
+    newBounds.height = Math.max(300, bounds.height + deltaH);
+  } else if (direction === 'sw') {
+    const newW = Math.max(300, bounds.width - deltaW);
+    newBounds.x = bounds.x + (bounds.width - newW);
+    newBounds.width = newW;
+    newBounds.height = Math.max(300, bounds.height + deltaH);
+  } else if (direction === 'ne') {
+    newBounds.width = Math.max(300, bounds.width + deltaW);
+    const newH = Math.max(300, bounds.height - deltaH);
+    newBounds.y = bounds.y + (bounds.height - newH);
+    newBounds.height = newH;
+  } else if (direction === 'nw') {
+    const newW = Math.max(300, bounds.width - deltaW);
+    const newH = Math.max(300, bounds.height - deltaH);
+    newBounds.x = bounds.x + (bounds.width - newW);
+    newBounds.y = bounds.y + (bounds.height - newH);
+    newBounds.width = newW;
+    newBounds.height = newH;
+  }
+
+  mainWindow.setBounds(newBounds);
+});
+
 // ===== HELPERS =====
 
 function toggleOverlay() {
