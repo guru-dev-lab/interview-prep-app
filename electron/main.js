@@ -262,7 +262,6 @@ function createOverlay() {
       sandbox: false,
       webSecurity: false,
       backgroundThrottling: false,
-      zoomFactor: 1.0,                     // Prevent any zoom scaling artifacts
     }
   });
 
@@ -291,24 +290,6 @@ function createOverlay() {
   mainWindow.loadURL(SERVER_URL + '/launcher').catch(() => {
     _log('[Xhire] Server unreachable, loading local launcher');
     mainWindow.loadFile(path.join(__dirname, 'launcher.html'));
-  });
-
-  // ===== RETINA SHARPNESS FIX =====
-  // Software rendering (required for transparency) can produce blurry text.
-  // Fix: inject CSS that forces crisp rendering at native device pixel ratio.
-  mainWindow.webContents.on('did-finish-load', () => {
-    const scaleFactor = screen.getPrimaryDisplay().scaleFactor || 2;
-    mainWindow.webContents.setZoomFactor(1.0);
-    mainWindow.webContents.insertCSS(`
-      * { -webkit-font-smoothing: subpixel-antialiased !important; }
-      html, body { text-rendering: geometricPrecision !important; }
-      .sc-card-a, .card, .panel, .sc-card-q, .modal-body, .tb-btn, .hud-btn,
-      .copilot-card, .followup-chip, .settings-label, .style-pill {
-        transform: translateZ(0);
-        backface-visibility: hidden;
-      }
-    `);
-    _log('[Xhire] Retina sharpness CSS injected (scaleFactor:', scaleFactor, ')');
   });
 
   // Handle close — hide instead of quit (tray keeps app alive)
