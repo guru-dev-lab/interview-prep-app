@@ -1969,9 +1969,9 @@ app.post('/api/sessions/:id/regenerate', authMiddleware, async (req, res) => {
     const bankContext = qaRows.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
 
     const answer = await callClaude(
-      stylePrompt + `\n\nLIVE MODE: Answer simply and directly.`,
+      stylePrompt,
       `RESUME:\n${s.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${s.jd || 'N/A'}\n\nQ&A BANK:\n${bankContext}\n\nQUESTION:\n${text}\n\nAnswer:`,
-      isTechnical ? 1200 : 600, MODEL_HAIKU
+      isTechnical ? 1200 : 1000, MODEL_HAIKU
     );
 
     // Update in DB
