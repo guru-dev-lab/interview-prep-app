@@ -36,6 +36,9 @@ autoUpdater.on('error', (err) => {
 if (process.platform === 'darwin') {
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
+  // Disable LCD (subpixel) text — it looks blurry on transparent backgrounds
+  // because the renderer doesn't know the background color. Grayscale AA is sharper.
+  app.commandLine.appendSwitch('disable-lcd-text');
 }
 // Windows: transparency works via DWM + transparent:true in BrowserWindow
 // DO NOT disable GPU compositing — it forces software rendering which
@@ -303,13 +306,22 @@ function createOverlay() {
   });
 
   // Workaround for Electron bug: briefly focus to ensure workspace visibility works
+  // Also force a re-render at correct DPI — fixes "sometimes blurry" on Retina
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
-    // Then make it not steal focus going forward
+    // Tiny resize bounce forces Chromium to re-evaluate display DPI and re-render
+    const bounds = mainWindow.getBounds();
+    mainWindow.setBounds({ ...bounds, width: bounds.width + 1 });
     setTimeout(() => {
+      mainWindow.setBounds(bounds);
       mainWindow.blur();
-    }, 200);
+    }, 100);
+  });
+
+  // Force re-render when window becomes visible again (prevents stale low-DPI paint)
+  mainWindow.on('show', () => {
+    if (mainWindow) mainWindow.webContents.invalidate();
   });
 
   // Track which display the window is on — notify renderer when it changes
