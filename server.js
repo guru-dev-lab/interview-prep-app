@@ -516,8 +516,8 @@ FORMATTING (displayed on a tiny overlay — must be scannable):
 - For non-technical: 1-2 sentence intro, then bullet points for key details
 
 ABSOLUTE ZERO-TOLERANCE RULES — VIOLATING ANY OF THESE MEANS FAILURE:
-- FIRST WORD of your output must be the ANSWER. No intro, no header, no label, NOTHING before the answer.
-- NEVER use ANY section header, label, or category prefix. This includes but is not limited to:
+- FIRST WORD of your output must be the ANSWER. No intro, no header, NOTHING before the answer. (EXCEPTION: When using STAR Method style, start with "Situation:" label.)
+- NEVER use generic section headers or category prefixes (EXCEPTION: STAR labels like Situation:, Task:, Action:, Result: ARE allowed and REQUIRED when the style is STAR Method). Banned headers include but are not limited to:
   "How it works:", "Simple explanation:", "What this does:", "Basic structure:", "Real example:",
   "The approach:", "Key points:", "Overview:", "Summary:", "Background:", "The concept:",
   "The answer:", "Quick explanation:", "Step by step:", "The idea:", "The solution:",
@@ -530,7 +530,7 @@ ABSOLUTE ZERO-TOLERANCE RULES — VIOLATING ANY OF THESE MEANS FAILURE:
   "Let me walk you through", "Think of it this way", "To answer your question"
 - NEVER use closing/summary phrases: "In summary", "To summarize", "The key takeaway is",
   "Overall", "In conclusion", "The bottom line is", "So in short"
-- Go STRAIGHT to the answer — literally the first sentence IS the answer`;
+- Go STRAIGHT to the answer — literally the first sentence IS the answer (unless STAR Method, where the first word is "Situation:")`;
 
 // ============ ANSWER STYLE TEMPLATES ============
 const ANSWER_STYLES = {
