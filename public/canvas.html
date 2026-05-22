@@ -10,7 +10,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:transparent;--surface:#0c1019;--accent:#7c3aed;--accent2:#c4b5fd;--text:#ffffff;--text2:#f1f5f9;--text3:#cbd5e1;--text4:#94a3b8;--glass-border:rgba(255,255,255,.08);--glow:rgba(124,58,237,.35);--glass-bg:rgba(15,15,25,0.65);--glass-blur:blur(60px) saturate(200%);--glass-border-color:rgba(255,255,255,0.10)}
 html{height:100%;overflow:hidden;background:transparent !important;background-color:transparent !important;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-body{height:100%;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0 14px;background:transparent !important;background-color:transparent !important;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;-webkit-app-region:no-drag}
+body{height:100%;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:6px;padding:0;background:transparent !important;background-color:transparent !important;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;-webkit-app-region:no-drag}
 
 button,input,select{-webkit-app-region:no-drag;cursor:pointer}
 input[type=text],input[type=email],input[type=password]{cursor:text}
@@ -23,7 +23,7 @@ input[type=text],input[type=email],input[type=password]{cursor:text}
 [data-tip].tip-left:hover::after{transform:translateX(0) translateY(0)}
 
 /* ===== TOOLBAR — floating frosted glass bar ===== */
-.toolbar{width:auto;max-width:380px;flex-shrink:0;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:18px 18px 6px 6px;-webkit-app-region:drag;position:relative;box-shadow:none;user-select:none;-webkit-user-select:none;padding:2px 0}
+.toolbar{width:100%;flex-shrink:0;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:18px 18px 6px 6px;-webkit-app-region:drag;position:relative;box-shadow:none;user-select:none;-webkit-user-select:none;padding:2px 0}
 /* Top accent line — crown glow */
 .toolbar::before{content:'';position:absolute;top:-1px;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,rgba(124,58,237,.5),rgba(99,102,241,.35),rgba(124,58,237,.5),transparent);pointer-events:none;z-index:1;border-radius:2px}
 .toolbar::after{display:none}
