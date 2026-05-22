@@ -37,10 +37,11 @@ if (process.platform === 'darwin') {
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
 }
-// Windows: enable transparency with DWM composition
+// Windows: transparency works via DWM + transparent:true in BrowserWindow
+// DO NOT disable GPU compositing — it forces software rendering which
+// causes massive CPU/memory usage and makes the window hang
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('enable-transparent-visuals');
-  app.commandLine.appendSwitch('disable-gpu-compositing');
 }
 
 // ===== CONFIG =====
@@ -255,8 +256,6 @@ function createOverlay() {
       hiddenInMissionControl: true,
     } : {}),
     backgroundColor: '#00000000',
-    // Windows: use WS_EX_LAYERED for proper transparency
-    ...(isWin ? { thickFrame: false } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
