@@ -85,7 +85,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .tb-utils{display:flex;gap:4px;align-items:center;flex-shrink:0;-webkit-app-region:no-drag}
 
 /* ===== FLOATING CONFIG PILL ===== */
-.config-float{position:fixed;top:66px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:6px;padding:6px 12px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(124,58,237,.15);border-radius:14px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none}
+.config-float{position:fixed;top:66px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:6px;padding:6px 12px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(124,58,237,.15);border-radius:14px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none;-webkit-app-region:no-drag}
 .config-float.show{display:flex}
 .config-float-label{font:700 8px Inter,sans-serif;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px}
 .config-float .cfg-sep{width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(124,58,237,.15),transparent);flex-shrink:0}
@@ -93,7 +93,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .config-float .hud-select:hover{background:rgba(255,255,255,.08);color:var(--text)}
 
 /* ===== FLOATING CO-PILOT PILL — vertical strip on right edge ===== */
-.copilot-float{position:fixed;top:50%;right:2px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none}
+.copilot-float{position:fixed;top:50%;right:2px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none;-webkit-app-region:no-drag}
 .copilot-float.show{display:flex}
 @keyframes floatIn{from{opacity:0;transform:translateY(-50%) scale(.96)}to{opacity:1;transform:translateY(-50%) scale(1)}}
 .copilot-float-label{font:700 7px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.3px;writing-mode:vertical-rl;text-orientation:mixed}
