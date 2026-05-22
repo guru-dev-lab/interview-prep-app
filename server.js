@@ -351,7 +351,7 @@ function detectType(t) {
 const MODEL_SONNET = 'claude-sonnet-4-20250514';
 const MODEL_HAIKU = 'claude-haiku-4-5-20251001';
 
-function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET) {
+function _callClaudeOnce(system, user, maxTokens, model) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
     const req = https.request({
@@ -365,6 +365,23 @@ function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET) {
     req.setTimeout(90000, () => { req.destroy(); reject(new Error('timeout')); });
     req.write(body); req.end();
   });
+}
+
+// Retry on 'Overloaded' — up to 3 attempts with exponential backoff
+async function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await _callClaudeOnce(system, user, maxTokens, model);
+    } catch (e) {
+      if (e.message === 'Overloaded' && attempt < 3) {
+        const delay = attempt * 1500; // 1.5s, 3s
+        _log(`[Claude] Overloaded — retry ${attempt}/3 in ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
 // Vision API — sends image + text to Claude for screen analysis
