@@ -2016,6 +2016,9 @@ function selQ(i){if(i<0||i>=FQ.length)return;CI=i;const q=FQ[i];$('ct').innerHTM
 function toggleInst(){var p=$('inst-popup');p.style.display=p.style.display==='block'?'none':'block'}
 function rAns(t){
   var lines=t.split('\n'), h='<div class="a-lines'+(ansLightBg?' light-band':'')+'">', inCode=false, codeLines=[];
+  function processLine(l){
+    return esc(l).replace(/\*\*([^*]+)\*\*/g,'<strong style="color:#c4b5fd">$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>');
+  }
   for(var i=0;i<lines.length;i++){
     var line=lines[i];
     if(/^```/.test(line.trim())){
@@ -2024,7 +2027,14 @@ function rAns(t){
       continue;
     }
     if(inCode){codeLines.push(line);continue;}
-    var processed=line.trim()===''?'<div class="lb"></div>':'<div class="ln">'+esc(line).replace(/`([^`]+)`/g,'<code>$1</code>')+'</div>';
+    // STAR section labels — render as colored badges
+    var starMatch=line.match(/^\*?\*?(Situation|Action|Result|Context|Task)\s*[:—\-]\s*/i);
+    if(starMatch){
+      var rest=line.substring(starMatch[0].length);
+      h+='<div class="ln"><span style="display:inline-flex;align-items:center;padding:1px 8px;border-radius:4px;font:700 10px Inter,sans-serif;color:#34D399;background:rgba(52,211,153,.12);margin-right:6px;letter-spacing:.3px;text-transform:uppercase">'+starMatch[1].toUpperCase()+'</span>'+processLine(rest)+'</div>';
+      continue;
+    }
+    var processed=line.trim()===''?'<div class="lb"></div>':'<div class="ln">'+processLine(line)+'</div>';
     h+=processed;
   }
   if(inCode&&codeLines.length)h+='<pre><code>'+syntaxHL(codeLines.join('\n'))+'</code></pre>';
