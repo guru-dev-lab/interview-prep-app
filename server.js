@@ -2541,7 +2541,7 @@ function removeSessionClient(sessionId, ws) {
 
 // ============ LIVE AUDIO - DEEPGRAM + MATCHING ============
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
-const MATCH_THRESHOLD = 0.45; // Raised from 0.30 — prevents weak keyword overlaps (e.g. EDA matching "data, info, insights")
+const MATCH_THRESHOLD = 0.50; // Raised from 0.45 — must be at least 50% match or generate fresh answer
 
 // Quick regex cleanup — fast, runs on every text. AI cleanup runs after for detected questions.
 function cleanQuestionText(text) {
