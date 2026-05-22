@@ -618,7 +618,8 @@ Line 3: TASK — what was your specific responsibility.
 Line 4-6: ACTION — what YOU did, step by step. Be specific.
 Line 7-8: RESULT — quantified outcome with real numbers.
 
-Use section labels: "Situation:", "Action:", "Result:" at the start of each section.
+Each STAR section MUST start with its label ON ITS OWN LINE: "Situation:", "Task:", "Action:", "Result:"
+The label line must contain ONLY the label word and colon — no other text on that line.
 These render as colored badges in the UI and help the candidate scan quickly.
 
 VOICE:
@@ -631,7 +632,7 @@ Use Q&A BANK for real stories — actual companies, projects, outcomes.
 Use resume for facts. Each answer must reference a real experience.
 Never fabricate. If the question doesn't fit STAR, adapt — lead with your approach.
 
-Output ONLY the answer. No intro sentence, no preamble. Always include section labels (Situation:, Task:, Action:, Result:).`
+Output ONLY the answer. No intro sentence, no preamble. Always include section labels (Situation:, Task:, Action:, Result:) each on its OWN LINE with no other text on the label line.`
   },
   storytelling: {
     name: 'Storytelling',
@@ -984,7 +985,7 @@ FORMATTING (displayed on a tiny overlay — must be scannable):
 - Use bullet points (- ) for listing steps, features, or key points
 - Use numbered lists (1. 2. 3.) for ordered steps or processes
 - Keep each bullet/point to ONE concise sentence
-- ALWAYS use STAR section labels: Situation:, Task:, Action:, Result: — these are REQUIRED
+- ALWAYS use STAR section labels: Situation:, Task:, Action:, Result: — each label MUST be on its OWN LINE with nothing else on that line
 - Include real metrics when relevant
 
 ABSOLUTE ZERO-TOLERANCE RULES — VIOLATING ANY OF THESE MEANS FAILURE:
@@ -995,7 +996,7 @@ ABSOLUTE ZERO-TOLERANCE RULES — VIOLATING ANY OF THESE MEANS FAILURE:
 - NEVER use closing/summary phrases: "In summary", "To summarize", "The key takeaway is",
   "Overall", "In conclusion", "The bottom line is", "So in short"
 - NEVER use "QUESTION:" or "ANSWER:" labels or "---" dividers
-- Start with "Situation:" label — the FIRST word must be the STAR label`;
+- Start with "Situation:" on its own line — the FIRST line must be ONLY the word "Situation:" with nothing else`;
 
 // Get style prompt by key — fallback to conversational, always append code rules + anti-stuffing
 function getStylePrompt(styleKey) {
