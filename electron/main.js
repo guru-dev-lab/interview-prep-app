@@ -35,11 +35,12 @@ autoUpdater.on('error', (err) => {
 // Force high-DPI rendering — prevents blurry "480p" text on Retina/HiDPI screens
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('force-device-scale-factor', '0');  // 0 = auto-detect native scale
+app.commandLine.appendSwitch('enable-use-zoom-for-dsf', 'false'); // Prevent DSF zoom blur
 
-// Transparency approach per platform
+// Transparency requires disabling hardware acceleration on macOS
+// The high-dpi and scale-factor flags above ensure Retina sharpness even in software mode
 if (process.platform === 'darwin') {
-  // Do NOT disable hardware acceleration — it causes blurry software rendering on Retina.
-  // Instead, use vibrancy or backgroundColor for transparency with GPU compositing.
+  app.disableHardwareAcceleration();
   app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
 }
 if (process.platform === 'win32') {
@@ -256,8 +257,6 @@ function createOverlay() {
     ...(isMac ? {
       visibleOnAllWorkspaces: true,
       hiddenInMissionControl: true,
-      vibrancy: 'under-window',           // GPU-accelerated transparency on macOS
-      visualEffectState: 'active',         // Keep vibrancy active even when unfocused
     } : {}),
     backgroundColor: '#00000000',
     webPreferences: {
