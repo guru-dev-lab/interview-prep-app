@@ -31,15 +31,17 @@ autoUpdater.on('error', (err) => {
   _log('[Update] Error:', err.message);
 });
 
-// Transparency fix — disable hardware acceleration on macOS (required for transparency)
-// On Windows, hardware acceleration is needed for performance but transparency uses a different approach
+// ===== RENDERING QUALITY =====
+// Force high-DPI rendering — prevents blurry "480p" text on Retina/HiDPI screens
+app.commandLine.appendSwitch('high-dpi-support', '1');
+app.commandLine.appendSwitch('force-device-scale-factor', '0');  // 0 = auto-detect native scale
+
+// Transparency approach per platform
 if (process.platform === 'darwin') {
-  app.disableHardwareAcceleration();
+  // Do NOT disable hardware acceleration — it causes blurry software rendering on Retina.
+  // Instead, use vibrancy or backgroundColor for transparency with GPU compositing.
   app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
 }
-// Windows: transparency works via DWM + transparent:true in BrowserWindow
-// DO NOT disable GPU compositing — it forces software rendering which
-// causes massive CPU/memory usage and makes the window hang
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('enable-transparent-visuals');
 }
@@ -254,6 +256,8 @@ function createOverlay() {
     ...(isMac ? {
       visibleOnAllWorkspaces: true,
       hiddenInMissionControl: true,
+      vibrancy: 'under-window',           // GPU-accelerated transparency on macOS
+      visualEffectState: 'active',         // Keep vibrancy active even when unfocused
     } : {}),
     backgroundColor: '#00000000',
     webPreferences: {
@@ -263,6 +267,7 @@ function createOverlay() {
       sandbox: false,
       webSecurity: false,
       backgroundThrottling: false,
+      zoomFactor: 1.0,                     // Prevent any zoom scaling artifacts
     }
   });
 
