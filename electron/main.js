@@ -32,15 +32,10 @@ autoUpdater.on('error', (err) => {
 });
 
 // ===== RENDERING QUALITY =====
-// Force high-DPI rendering — prevents blurry "480p" text on Retina/HiDPI screens
-app.commandLine.appendSwitch('high-dpi-support', '1');
-app.commandLine.appendSwitch('force-device-scale-factor', '0');  // 0 = auto-detect native scale
-app.commandLine.appendSwitch('enable-use-zoom-for-dsf', 'false'); // Prevent DSF zoom blur
-
-// Transparency requires disabling hardware acceleration on macOS
-// The high-dpi and scale-factor flags above ensure Retina sharpness even in software mode
+// Electron 31+ supports transparent windows with GPU acceleration on macOS.
+// Do NOT call disableHardwareAcceleration() — it forces software rendering
+// which produces blurry text on Retina displays.
 if (process.platform === 'darwin') {
-  app.disableHardwareAcceleration();
   app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
 }
 if (process.platform === 'win32') {
