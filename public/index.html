@@ -501,6 +501,20 @@ body.canvas-open .prep-content{margin-right:480px}
 .sc-card-a pre{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px 14px;margin:8px 0;overflow-x:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 12px/1.7 'Fira Code',Consolas,'Courier New',monospace;color:#ffffff}
 .sc-card-a pre code{background:none !important;padding:0;font-size:12px;color:inherit;border:none !important}
 .sc-card-a code{background:rgba(110,118,129,.25);padding:2px 6px;border-radius:4px;font:500 11.5px 'Fira Code',Consolas,'Courier New',monospace;color:#e6edf3}
+.sc-card-a .hl-key{color:#c4b5fd;font-weight:600}
+.sc-card-a .metric-hl{color:#34D399;font-weight:600}
+.sc-card-a .star-inline{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font:700 8px Inter,sans-serif;letter-spacing:.4px;background:rgba(52,211,153,.12);color:#34D399;margin-right:6px;flex-shrink:0;text-transform:uppercase}
+.sc-card-a .sc-section-header{font:700 11px Inter,sans-serif;color:var(--accent3);text-transform:uppercase;letter-spacing:.3px;margin:6px 0 2px;padding-bottom:2px;border-bottom:1px solid rgba(124,58,237,.15)}
+.sc-card-a .sc-list{margin:4px 0;padding-left:18px;list-style-position:outside}
+.sc-card-a .sc-list li{margin-bottom:2px;padding-left:2px}
+.sc-card-a .code-line{display:flex;gap:12px;line-height:1.6}
+.sc-card-a .code-ln{color:#6e7681;user-select:none;min-width:18px;text-align:right;flex-shrink:0}
+.sc-card-a .code-content{flex:1}
+.sc-card-a .code-copy-btn{position:absolute;top:6px;right:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 6px;cursor:pointer;color:#8b949e;transition:.15s;opacity:0}
+.sc-card-a pre{position:relative}
+.sc-card-a pre:hover .code-copy-btn{opacity:1}
+.sc-card-a .code-copy-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+.sc-card-a .code-copy-btn.copied{color:#34D399}
 .sc-card-loading{padding:14px;display:flex;align-items:center;gap:8px;color:var(--accent2);font:500 12px Inter,sans-serif}
 .sc-input-bar{flex-shrink:0;padding:8px 14px;background:var(--surface);border-top:1px solid var(--glass-border);display:flex;gap:8px;align-items:center}
 .sc-input-bar input{flex:1;padding:10px 12px;border:1px solid var(--glass-border);border-radius:10px;font:400 12px Inter,sans-serif;color:var(--text);background:var(--bg2);transition:.15s}
@@ -528,6 +542,10 @@ body.canvas-open .prep-content{margin-right:480px}
 .smart-canvas.sc-light .sc-card-a pre{background:#0d1117;color:#ffffff;border-color:#30363d}
 .smart-canvas.sc-light .sc-card-a pre code{color:#ffffff;background:none !important}
 .smart-canvas.sc-light .sc-card-a code{background:rgba(110,118,129,.25);color:#24292f}
+.smart-canvas.sc-light .sc-card-a .hl-key{color:#7c3aed}
+.smart-canvas.sc-light .sc-card-a .metric-hl{color:#059669}
+.smart-canvas.sc-light .sc-card-a .star-inline{background:rgba(5,150,105,.12);color:#065f46}
+.smart-canvas.sc-light .sc-card-a .sc-section-header{color:#6d28d9;border-color:rgba(109,40,217,.2)}
 .smart-canvas.sc-light .sc-card-loading{color:#6d28d9}
 .smart-canvas.sc-light .sc-assist-btn{border-color:rgba(194,65,12,.3);background:rgba(194,65,12,.08);color:#9a3412}
 .smart-canvas.sc-light .sc-filter-btn{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.1);color:#4b5563}
@@ -605,7 +623,14 @@ body.canvas-open .prep-content{margin-right:480px}
       </div>
     </div>
   </div>
+  <!-- Collapsible transcript feed -->
+  <div id="sc-transcript-wrap" style="border-top:1px solid var(--glass-border);max-height:0;overflow:hidden;transition:max-height .3s ease">
+    <div id="sc-transcript-feed" style="padding:8px 14px;font:400 11px/1.5 Inter,sans-serif;color:var(--text3);max-height:150px;overflow-y:auto"></div>
+  </div>
   <div class="sc-input-bar">
+    <button id="sc-tx-toggle" onclick="toggleCanvasTranscript()" style="padding:6px;border:1px solid var(--glass-border);border-radius:6px;background:none;color:var(--text3);cursor:pointer;flex-shrink:0" title="Toggle transcript">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    </button>
     <input type="text" id="sc-input" placeholder="Type or paste a question..." onkeydown="if(event.key==='Enter')sendCanvasQuestion()">
     <button class="sc-send" onclick="sendCanvasQuestion()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:middle"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
@@ -2648,6 +2673,31 @@ function handleLiveMessage(msg) {
     addCanvasCard(msg.questionId, msg.questionText || 'Screen Assist', msg.answer || '', 'Strategic', 'screen', 0, false, true);
   }
 
+  else if (msg.type === 'kicked') {
+    toast('Live session started on another device — this one was stopped', 1);
+    stopLiveMode();
+  }
+
+  else if (msg.type === 'follow_up_predictions') {
+    // Show predicted follow-up questions as clickable chips
+    if (msg.predictions && msg.predictions.length > 0) {
+      var predDiv = document.createElement('div');
+      predDiv.style.cssText = 'padding:4px 88px 4px;display:flex;flex-wrap:wrap;gap:4px';
+      msg.predictions.forEach(function(p) {
+        var chip = document.createElement('button');
+        chip.style.cssText = 'padding:3px 8px;border:1px solid rgba(124,58,237,.2);border-radius:12px;background:rgba(124,58,237,.06);font:500 10px Inter,sans-serif;color:var(--accent3);cursor:pointer;transition:.15s';
+        chip.textContent = p.substring(0, 60);
+        chip.title = p;
+        chip.onclick = function() { manualMatchQuestion(p); };
+        chip.onmouseover = function() { this.style.background = 'rgba(124,58,237,.15)'; };
+        chip.onmouseout = function() { this.style.background = 'rgba(124,58,237,.06)'; };
+        predDiv.appendChild(chip);
+      });
+      $('live-transcript').appendChild(predDiv);
+      $('live-transcript').scrollTop = $('live-transcript').scrollHeight;
+    }
+  }
+
   else if (msg.type === 'error') {
     toast('Live: ' + msg.message, 1);
   }
@@ -2716,39 +2766,126 @@ function hideSmartCanvas() {
   document.body.classList.remove('canvas-open');
 }
 
+// Highlight metrics/percentages in green
+function highlightMetrics(text) {
+  return text
+    .replace(/(\d+[\.,]?\d*\s*%)/g, '<span class="metric-hl">$1</span>')
+    .replace(/(\$\d+[\.,\d]*[KMBkmb]?)/g, '<span class="metric-hl">$1</span>')
+    .replace(/(\d+x\s+(?:faster|slower|more|less|better|improvement|reduction|increase))/gi, '<span class="metric-hl">$1</span>');
+}
+
+// Build code block with line numbers and copy button
+function buildCodeBlock(lines) {
+  var numbered = lines.map(function(line, i) {
+    return '<div class="code-line"><span class="code-ln">' + (i + 1) + '</span><span class="code-content">' + syntaxHL(line) + '</span></div>';
+  }).join('');
+  return '<pre><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy code"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><code>' + numbered + '</code></pre>';
+}
+
+// Copy code block to clipboard
+function copyCodeBlock(btn) {
+  var pre = btn.closest('pre');
+  if (!pre) return;
+  var code = pre.querySelector('code');
+  var text = code ? code.textContent : pre.textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    btn.classList.add('copied');
+    setTimeout(function() { btn.classList.remove('copied'); }, 1500);
+  }).catch(function() {});
+}
+
 function formatCanvasAnswer(text) {
   if (!text) return '<div class="sc-card-loading"><span class="spinner" style="width:14px;height:14px;border-width:2px"></span> Generating answer...</div>';
+  // Strip verbose section headers and labels
+  var headerWords = 'How it works|How this works|Why use it|Simple explanation|Key points|Key takeaway|What it does|What this does|In summary|Overview|Background|Here\'?s how|Here\'?s why|Here\'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|Detailed explanation|Brief explanation|Quick explanation|The approach|The solution|The idea|The concept|The answer|Basic structure|Real example|Practical example|Example|Key concept|Main idea|The logic|The process|Step by step|Here\'?s an example|Let me explain|Definition|In short|What this means|The way I\'?d explain it|To put it simply|In simple terms|To answer your question|Let me walk you through|Think of it this way|The bottom line|In conclusion|To summarize|The key takeaway|Overall';
+  text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]?\\s*$', 'gim'), '');
+  text = text.replace(new RegExp('^(' + headerWords + ')\\s*[:—\\-]\\s*', 'gim'), '');
+  text = text.replace(/^(QUESTION|ANSWER|Question|Answer)\s*[:]\s*/gm, '');
+  text = text.replace(/^(Great question[.!,]?\s*|That'?s a great question[.!,]?\s*|So essentially[,]?\s*|Essentially[,]?\s*|Basically[,]?\s*|To put it simply[,]?\s*|In other words[,]?\s*|What this means is[,]?\s*)/gim, '');
+  text = text.replace(/^(In summary[,:.].*|To summarize[,:.].*|The key takeaway is[,:.].*|Overall[,:].*|In conclusion[,:.].*|The bottom line is[,:.].*|So in short[,:].*)\s*$/gim, '');
+  text = text.replace(/^-{3,}\s*$/gm, '');
+  text = text.replace(/\n{3,}/g, '\n\n');
+
   var html = '';
   var inCode = false;
-  var codeLang = '';
   var codeLines = [];
+  var inList = false;
+  var listType = '';
   var lines = text.split('\n');
+
+  function processInline(line) {
+    var p = esc(line)
+      .replace(/\*\*([^*]+)\*\*/g, '<span class="hl-key">$1</span>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+    p = highlightMetrics(p);
+    if (p.indexOf('hl-key') < 0 && p.indexOf('<code>') < 0) {
+      p = p.replace(/\b(Tableau|Power BI|Snowflake|SQL|Python|DAX|ETL|KPI|API|AWS|Azure|GCP|Excel|Looker|dbt|Airflow|Spark|Kubernetes|Docker|React|Node\.js|JavaScript|TypeScript|Git|CI\/CD|Jira|Agile|Scrum|CTE|SELECT|JOIN|UNION|RECURSIVE|GROUP BY|ORDER BY|HAVING|INNER JOIN|LEFT JOIN|RIGHT JOIN|CROSS JOIN|SUBQUERY|PRIMARY KEY|FOREIGN KEY)\b/g, '<span class="hl-key">$1</span>');
+    }
+    return p;
+  }
+
+  function closeList() {
+    if (inList) { html += '</' + listType + '>'; inList = false; listType = ''; }
+  }
+
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
-    // Code block start
     if (/^```/.test(line.trim())) {
-      if (!inCode) {
-        inCode = true;
-        codeLang = line.trim().replace(/^```/, '').trim();
-        codeLines = [];
-      } else {
-        // End code block
-        html += '<pre><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>';
-        inCode = false;
-        codeLines = [];
-      }
+      closeList();
+      if (!inCode) { inCode = true; codeLines = []; }
+      else { html += buildCodeBlock(codeLines); inCode = false; codeLines = []; }
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
-    // Inline code
-    var processed = esc(line).replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Bullet points
+    var bulletMatch = line.match(/^\s*[-*•]\s+(.+)/);
+    var numMatch = line.match(/^\s*(\d+)[.)]\s+(.+)/);
+    if (bulletMatch) {
+      if (!inList || listType !== 'ul') { closeList(); html += '<ul class="sc-list">'; inList = true; listType = 'ul'; }
+      html += '<li>' + processInline(bulletMatch[1]) + '</li>';
+      continue;
+    }
+    if (numMatch) {
+      if (!inList || listType !== 'ol') { closeList(); html += '<ol class="sc-list">'; inList = true; listType = 'ol'; }
+      html += '<li>' + processInline(numMatch[2]) + '</li>';
+      continue;
+    }
+
+    // Blank line in list — check if list continues
+    if (line.trim() === '' && inList) {
+      var peekAhead = false;
+      for (var j = i + 1; j < lines.length && j <= i + 3; j++) {
+        if (lines[j].trim() === '') continue;
+        if (listType === 'ol' && /^\s*\d+[.)]\s+/.test(lines[j])) peekAhead = true;
+        if (listType === 'ul' && /^\s*[-*•]\s+/.test(lines[j])) peekAhead = true;
+        break;
+      }
+      if (peekAhead) continue;
+    }
+
+    closeList();
+
+    // STAR section labels
+    var starMatch = line.match(/^\*?\*?(Situation|Action|Result|Context|Task)\s*[:—\-]\s*/i);
+    if (starMatch) {
+      var rest = line.substring(starMatch[0].length);
+      html += '<div class="sc-line"><span class="star-inline">' + starMatch[1].toUpperCase() + '</span>' + processInline(rest) + '</div>';
+      continue;
+    }
+
+    // Markdown headers
+    var headerMatch = line.match(/^#{1,4}\s+(.+)/);
+    if (headerMatch) {
+      html += '<div class="sc-section-header">' + processInline(headerMatch[1]) + '</div>';
+      continue;
+    }
+
     if (line.trim() === '') { html += '<div class="sc-blank"></div>'; }
-    else { html += '<div class="sc-line">' + processed + '</div>'; }
+    else { html += '<div class="sc-line">' + processInline(line) + '</div>'; }
   }
-  // Unclosed code block
-  if (inCode && codeLines.length) {
-    html += '<pre><code>' + syntaxHL(codeLines.join('\n')) + '</code></pre>';
-  }
+  closeList();
+  if (inCode && codeLines.length) { html += buildCodeBlock(codeLines); }
   return html;
 }
 
@@ -3408,9 +3545,10 @@ function sendCanvasQuestionFromPopout(text) {
 function toggleCanvasTranscript() {
   var wrap = $('sc-transcript-wrap');
   if (!wrap) return;
-  wrap.classList.toggle('open');
+  var isOpen = wrap.style.maxHeight !== '0px' && wrap.style.maxHeight !== '';
+  wrap.style.maxHeight = isOpen ? '0px' : '160px';
   var btn = $('sc-tx-toggle');
-  if (btn) btn.style.borderColor = wrap.classList.contains('open') ? 'var(--accent)' : 'var(--glass-border)';
+  if (btn) btn.style.borderColor = isOpen ? 'var(--glass-border)' : 'var(--accent)';
 }
 
 // ===== TRANSCRIPTS =====
