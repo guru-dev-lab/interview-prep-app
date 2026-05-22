@@ -31,14 +31,15 @@ autoUpdater.on('error', (err) => {
   _log('[Update] Error:', err.message);
 });
 
-// ===== TRANSPARENCY + RENDERING =====
-// macOS requires disableHardwareAcceleration() for transparent windows.
-// To keep text sharp in software rendering mode, we force the correct
-// device scale factor and apply CSS-level sharpness fixes.
+// Transparency fix — disable hardware acceleration on macOS (required for transparency)
+// On Windows, hardware acceleration is needed for performance but transparency uses a different approach
 if (process.platform === 'darwin') {
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch('disable-features', 'RoundedWindowMac');
 }
+// Windows: transparency works via DWM + transparent:true in BrowserWindow
+// DO NOT disable GPU compositing — it forces software rendering which
+// causes massive CPU/memory usage and makes the window hang
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('enable-transparent-visuals');
 }
