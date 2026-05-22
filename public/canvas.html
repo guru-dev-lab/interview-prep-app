@@ -1752,23 +1752,27 @@ async function getScreenStream() {
     if (tracks.length && tracks[0].readyState === 'live') return screenStream;
   }
   try {
-    // In Electron on Windows, if we already have a systemAudioStream with video,
-    // reuse its video track for screen capture instead of prompting again
+    // In Electron, reuse the systemAudioStream's video track if Go Live is active
+    // This avoids a second getDisplayMedia call which can fail on Windows
     if (isElectronMode && systemAudioStream && systemAudioStream.active) {
       var existingVideo = systemAudioStream.getVideoTracks();
       if (existingVideo.length && existingVideo[0].readyState === 'live') {
         console.log('[ScreenStream] Reusing existing system audio stream video track');
-        screenStream = systemAudioStream;
+        screenStream = new MediaStream(existingVideo);
         $('btn-switch').style.display = '';
         return screenStream;
       }
     }
 
+    // No existing stream — request a new one
+    // On Electron, this goes through setDisplayMediaRequestHandler in main.js
+    console.log('[ScreenStream] Requesting new screen capture...');
     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     if (!screenStream || screenStream.getVideoTracks().length === 0) {
       console.warn('[ScreenStream] No video tracks in stream');
       return null;
     }
+    console.log('[ScreenStream] Got stream with', screenStream.getVideoTracks().length, 'video tracks');
     screenStream.getVideoTracks()[0].addEventListener('ended', function() {
       stopRecording();
       screenStream = null;
@@ -1779,9 +1783,13 @@ async function getScreenStream() {
     return screenStream;
   } catch(e) {
     console.warn('Screen capture denied:', e.name, e.message);
-    // On Windows Electron, if getDisplayMedia fails, show a helpful message
-    if (window.electronAPI && window.electronAPI.platform === 'win32') {
-      showToast('Screen capture failed — try clicking Go Live first', '', 3000);
+    // On Windows Electron, if getDisplayMedia fails without Go Live, guide the user
+    if (isElectronMode) {
+      if (electronLive) {
+        showToast('Screen capture error — try Switch Screen', '', 3000);
+      } else {
+        showToast('Click Go Live first to enable screen capture', '', 3000);
+      }
     }
     return null;
   }
@@ -2245,7 +2253,13 @@ function processAudioStream(stream, channel) {
     return;
   }
   var audioOnly = new MediaStream(tracks);
-  var audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+  // Use native sample rate — forcing 16kHz breaks Windows loopback audio (comes in at 48kHz)
+  // We downsample to 16kHz manually before sending to Deepgram
+  var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  var nativeSR = audioCtx.sampleRate;
+  var targetSR = 16000;
+  var ratio = nativeSR / targetSR; // e.g. 48000/16000 = 3
+  console.log('[Audio] Ch' + channel + ': native=' + nativeSR + 'Hz, target=' + targetSR + 'Hz, ratio=' + ratio.toFixed(2));
   var source = audioCtx.createMediaStreamSource(audioOnly);
   var processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
@@ -2283,10 +2297,24 @@ function processAudioStream(stream, channel) {
       }
     }
 
+    // Downsample from native rate to 16kHz for Deepgram
+    var outputLen = Math.floor(inputData.length / ratio);
+    var downsampled;
+    if (ratio <= 1.01) {
+      // Already at or near 16kHz — no resampling needed
+      downsampled = inputData;
+      outputLen = inputData.length;
+    } else {
+      downsampled = new Float32Array(outputLen);
+      for (var d = 0; d < outputLen; d++) {
+        downsampled[d] = inputData[Math.floor(d * ratio)];
+      }
+    }
+
     // Convert float32 → int16 PCM
-    var pcm16 = new Int16Array(inputData.length);
-    for (var i = 0; i < inputData.length; i++) {
-      var s = Math.max(-1, Math.min(1, inputData[i]));
+    var pcm16 = new Int16Array(outputLen);
+    for (var i = 0; i < outputLen; i++) {
+      var s = Math.max(-1, Math.min(1, downsampled[i]));
       pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
     }
     // Prepend channel byte
