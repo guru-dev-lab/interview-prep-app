@@ -141,6 +141,7 @@ async function initDB() {
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS interviewer_name VARCHAR(255) DEFAULT '';
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS interviewer_title VARCHAR(255) DEFAULT '';
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS stage VARCHAR(255) DEFAULT '';
+      ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS learned BOOLEAN DEFAULT false;
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'build';
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS answer_style VARCHAR(50) DEFAULT 'conversational';
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS jd_requirements JSONB DEFAULT NULL;
@@ -348,14 +349,33 @@ function detectType(t) {
   return 'Strategic';
 }
 
-const MODEL_SONNET = 'claude-sonnet-4-20250514';
-const MODEL_HAIKU = 'claude-haiku-4-5-20251001';
+// ── Model configuration ───────────────────────────────────────────────
+// Single source of truth for Claude models. Each is env-overridable so
+// models can be swapped without code edits (set MODEL_OPUS / MODEL_SONNET /
+// MODEL_HAIKU in the environment to pin a different version).
+const MODELS = {
+  opus:   process.env.MODEL_OPUS   || 'claude-opus-4-8',          // highest quality
+  sonnet: process.env.MODEL_SONNET || 'claude-sonnet-5',         // balanced default
+  haiku:  process.env.MODEL_HAIKU  || 'claude-haiku-4-5-20251001' // fast / low-cost
+};
+
+// Backward-compatible aliases — existing call sites reference these directly.
+const MODEL_OPUS   = MODELS.opus;
+const MODEL_SONNET = MODELS.sonnet;
+const MODEL_HAIKU  = MODELS.haiku;
+
+// Reused keep-alive connection pool for Anthropic API calls. Each detected
+// question fires 3-4 separate HTTPS requests; without this, Node opens a fresh
+// TLS connection (and handshake, ~100-200ms) every time. Reusing sockets shaves
+// that off each call with zero change to request/response behavior.
+const anthropicAgent = new https.Agent({ keepAlive: true, maxSockets: 50, keepAliveMsecs: 30000 });
 
 function _callClaudeOnce(system, user, maxTokens, model) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
     const req = https.request({
       hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      agent: anthropicAgent,
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }
     }, res => {
       let d = ''; res.on('data', c => d += c);
@@ -384,6 +404,77 @@ async function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET) 
   }
 }
 
+// Streaming variant — emits text deltas via onDelta(chunk) as they arrive and
+// resolves with the full text. Used for live answers so the candidate sees text
+// appear immediately instead of waiting for the whole completion.
+// SAFETY: on ANY error this rejects, and the caller falls back to buffered callClaude,
+// so behavior can never be worse than the non-streaming path.
+function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ model, max_tokens: maxTokens, system, stream: true, messages: [{ role: 'user', content: user }] });
+    const req = https.request({
+      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      agent: anthropicAgent,
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }
+    }, res => {
+      if (res.statusCode !== 200) {
+        let errBody = ''; res.on('data', c => errBody += c);
+        res.on('end', () => {
+          let m = 'HTTP ' + res.statusCode;
+          try { m = JSON.parse(errBody).error?.message || m; } catch (e) {}
+          reject(new Error(m));
+        });
+        return;
+      }
+      let full = '';
+      let sseBuffer = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => {
+        sseBuffer += chunk;
+        let nl;
+        while ((nl = sseBuffer.indexOf('\n')) >= 0) {
+          const line = sseBuffer.slice(0, nl).trim();
+          sseBuffer = sseBuffer.slice(nl + 1);
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (!data || data === '[DONE]') continue;
+          try {
+            const evt = JSON.parse(data);
+            if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+              const t = evt.delta.text || '';
+              if (t) { full += t; try { onDelta(t); } catch (e) {} }
+            } else if (evt.type === 'error') {
+              reject(new Error(evt.error?.message || 'stream error'));
+            }
+          } catch (e) { /* ignore keep-alive / partial lines */ }
+        }
+      });
+      res.on('end', () => resolve(full));
+    });
+    req.on('error', reject);
+    req.setTimeout(90000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.write(body); req.end();
+  });
+}
+
+// Retry wrapper — only retries on Overloaded BEFORE any text has streamed, so we
+// never emit duplicate deltas. Once streaming has begun, an error rejects and the
+// caller falls back to the buffered path.
+async function callClaudeStream(system, user, maxTokens = 600, model = MODEL_SONNET, onDelta = () => {}) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let emitted = false;
+    try {
+      return await _callClaudeStreamOnce(system, user, maxTokens, model, (t) => { emitted = true; onDelta(t); });
+    } catch (e) {
+      if (e.message === 'Overloaded' && !emitted && attempt < 3) {
+        await new Promise(r => setTimeout(r, attempt * 1500));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 // Vision API — sends image + text to Claude for screen analysis
 function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, model = MODEL_HAIKU, imgMediaType = 'image/jpeg') {
   return new Promise((resolve, reject) => {
@@ -402,6 +493,7 @@ function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, mod
     console.log(`[Vision] Sending ${(bodyBytes / 1024 / 1024).toFixed(1)}MB to ${model}`);
     const req = https.request({
       hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      agent: anthropicAgent,
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': bodyBytes,
@@ -1777,6 +1869,31 @@ app.post('/api/sessions/:id/generate/:qid', authMiddleware, async (req, res) => 
 
     const stylePrompt = getStylePrompt(session.answer_style);
     console.log(`[SINGLE-GEN] Session ${req.params.id}, Q ${req.params.qid}, style='${session.answer_style}', promptSnippet='${stylePrompt.substring(0, 120)}...'`);
+
+    // Opt-in streaming: only when the client explicitly requests ?stream=1.
+    // Without it, this endpoint behaves exactly as before (single JSON response).
+    const wantStream = req.query.stream === '1' && process.env.STREAM_LIVE_ANSWERS !== '0';
+    if (wantStream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      if (res.flushHeaders) res.flushHeaders();
+      let answer = '';
+      try {
+        answer = await callClaudeStream(stylePrompt, userMsg, 1500, MODEL_HAIKU, (chunk) => {
+          res.write('data: ' + JSON.stringify({ delta: chunk }) + '\n\n');
+        });
+      } catch (streamErr) {
+        console.error('[SINGLE-GEN stream] fell back to buffered:', streamErr.message);
+        try { answer = await callClaude(stylePrompt, userMsg, 1500, MODEL_HAIKU); }
+        catch (e2) { res.write('data: ' + JSON.stringify({ error: e2.message }) + '\n\n'); return res.end(); }
+      }
+      await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, question.id]);
+      await pool.query('UPDATE sessions SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+      res.write('data: ' + JSON.stringify({ done: true, answer }) + '\n\n');
+      return res.end();
+    }
+
     const answer = await callClaude(stylePrompt, userMsg, 1500, MODEL_HAIKU);
     console.log(`[SINGLE-GEN] Answer preview: '${answer.substring(0, 100)}...'`);
     await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, question.id]);
@@ -2586,6 +2703,10 @@ function removeSessionClient(sessionId, ws) {
 // ============ LIVE AUDIO - DEEPGRAM + MATCHING ============
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 const MATCH_THRESHOLD = 0.50; // Raised from 0.45 — must be at least 50% match or generate fresh answer
+// Above this blended score, a match is near-identical phrasing — trust it and skip
+// the Haiku semantic-verify round-trip (scores are 0..1; MATCH_THRESHOLD is the floor).
+// Conservative on purpose: only very confident lexical+semantic matches skip verification.
+const HIGH_CONFIDENCE_MATCH = 0.75;
 
 // Quick regex cleanup — fast, runs on every text. AI cleanup runs after for detected questions.
 function cleanQuestionText(text) {
@@ -2870,10 +2991,19 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
     .filter(m => m.question.id !== lastMatchedQId && !recentMatchedIds?.has?.(m.question.id));
 
   if (topMatches.length > 0) {
-    // AI verification — Haiku checks if any candidate is semantically the same question
-    const tVerify = Date.now();
-    const verified = await verifyMatch(q, topMatches, ws._sessionContext);
-    console.log(`[TIMING] verifyMatch: ${Date.now() - tVerify}ms`);
+    // FAST PATH: if the top candidate is a near-identical (very high confidence) match,
+    // trust it and skip the Haiku verification round-trip. Saves ~1 API call of latency
+    // AND one Haiku call of cost on the common "question is already in the bank" case.
+    // Anything below the bar still goes through full AI verification as before.
+    let verified;
+    if (topMatches[0].similarity >= HIGH_CONFIDENCE_MATCH) {
+      console.log(`[FastMatch] High-confidence match (${Math.round(topMatches[0].similarity * 100)}%) — skipping AI verify`);
+      verified = topMatches[0];
+    } else {
+      const tVerify = Date.now();
+      verified = await verifyMatch(q, topMatches, ws._sessionContext);
+      console.log(`[TIMING] verifyMatch: ${Date.now() - tVerify}ms`);
+    }
 
     if (verified) {
       const elapsed = Date.now() - startMs;
@@ -3714,6 +3844,14 @@ RULES:
             'UPDATE live_transcripts SET transcript = $1, ended_at = NOW() WHERE id = $2',
             [JSON.stringify(transcript), transcriptId]
           );
+
+          // Post-interview learning — runs in the background so 'stop' returns immediately.
+          const _tid = transcriptId, _sid = sessionId, _uid = userId;
+          processTranscriptAfterInterview(_sid, _uid, _tid).then(sum => {
+            if (sum && sum.added > 0) {
+              try { sendAndBroadcast({ type: 'status', message: `Added ${sum.added} new question${sum.added === 1 ? '' : 's'} to your bank from this interview` }); } catch (e) {}
+            }
+          }).catch(e => console.error('[Learn trigger]', e.message));
         }
 
         ws.send(JSON.stringify({ type: 'status', message: 'Live mode ended', transcriptLines: transcript.length }));
@@ -3753,6 +3891,17 @@ RULES:
 
 // Canvas question endpoint — for when user types a question without live WebSocket
 app.post('/api/sessions/:id/canvas-ask', authMiddleware, async (req, res) => {
+  // Opt-in streaming — only when ?stream=1. Non-stream callers get identical JSON.
+  const wantStream = req.query.stream === '1' && process.env.STREAM_LIVE_ANSWERS !== '0';
+  let sseStarted = false;
+  function startSSE() {
+    if (sseStarted) return;
+    sseStarted = true;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    if (res.flushHeaders) res.flushHeaders();
+  }
   try {
     const { question } = req.body;
     if (!question || question.length < 5) return res.status(400).json({ error: 'Question too short' });
@@ -3766,14 +3915,16 @@ app.post('/api/sessions/:id/canvas-ask', authMiddleware, async (req, res) => {
       const questionIndex = buildQuestionIndex(existingQ.rows);
       const match = findBestMatch(question, existingQ.rows, questionIndex);
       if (match && match.question.answer) {
-        return res.json({
+        const payload = {
           questionId: match.question.id,
           questionText: match.question.text,
           answer: match.question.answer,
           type: match.question.type,
           source: 'matched',
           similarity: Math.round(match.similarity * 100)
-        });
+        };
+        if (wantStream) { startSSE(); res.write('data: ' + JSON.stringify(Object.assign({ done: true }, payload)) + '\n\n'); return res.end(); }
+        return res.json(payload);
       }
     }
 
@@ -3787,8 +3938,29 @@ app.post('/api/sessions/:id/canvas-ask', authMiddleware, async (req, res) => {
       ? `You are a real-time interview assistant. The interviewer asked a TECHNICAL question. Provide a clear, practical answer. If code is needed, write it in a markdown code block with the language tag. Keep explanations brief — lead with the code/solution, then 2-3 lines explaining the approach. Every sentence on its own line.`
       : `You are a real-time interview assistant. Answer concisely. Use the candidate's resume and JD context. Keep it to 4-6 sentences max. Every sentence on its own line. Lead with the answer.`;
     const userPrompt = `RESUME:\n${session.resume}\n\nJOB DESCRIPTION:\n${session.jd}\n\nQ&A BANK:\n${bankContext}\n\nQUESTION:\n${question}\n\nAnswer:`;
+    const genTokens = isTechnical ? 1200 : 600;
 
-    const answer = await callClaude(system, userPrompt, isTechnical ? 1200 : 600, MODEL_HAIKU);
+    if (wantStream) {
+      startSSE();
+      let answer = '';
+      try {
+        answer = await callClaudeStream(system, userPrompt, genTokens, MODEL_HAIKU, (chunk) => {
+          res.write('data: ' + JSON.stringify({ delta: chunk }) + '\n\n');
+        });
+      } catch (streamErr) {
+        console.error('[Canvas Ask stream] fell back to buffered:', streamErr.message);
+        try { answer = await callClaude(system, userPrompt, genTokens, MODEL_HAIKU); }
+        catch (e2) { res.write('data: ' + JSON.stringify({ error: e2.message }) + '\n\n'); return res.end(); }
+      }
+      const newQ = await pool.query(
+        'INSERT INTO questions (session_id, text, type, answer, source) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+        [req.params.id, question, qType, answer, 'live']
+      );
+      res.write('data: ' + JSON.stringify({ done: true, questionId: newQ.rows[0].id, questionText: question, answer, type: qType, source: 'new', similarity: 0 }) + '\n\n');
+      return res.end();
+    }
+
+    const answer = await callClaude(system, userPrompt, genTokens, MODEL_HAIKU);
 
     // Save as new question
     const newQ = await pool.query(
@@ -3799,7 +3971,8 @@ app.post('/api/sessions/:id/canvas-ask', authMiddleware, async (req, res) => {
     res.json({ questionId: newQ.rows[0].id, questionText: question, answer, type: qType, source: 'new', similarity: 0 });
   } catch (e) {
     console.error('[Canvas Ask Error]', e.message);
-    res.status(500).json({ error: e.message });
+    if (sseStarted) { try { res.write('data: ' + JSON.stringify({ error: e.message }) + '\n\n'); res.end(); } catch (_) {} }
+    else res.status(500).json({ error: e.message });
   }
 });
 
@@ -3892,8 +4065,36 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     const userPrompt = `${sessionHeader}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}${userContext}${transcriptContext}\n\nQUESTION (detected from speech — may be just the tail end, use RECENT CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
 
     const tGen = Date.now();
-    const answer = await callClaude(system, userPrompt, tokenLimit, MODEL_HAIKU);
+    let answer = '';
+    let ttft = 0;
+    let streamed = false;
+    const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0'; // kill switch: set to '0' to revert to buffered
+    if (streamEnabled) {
+      try {
+        answer = await callClaudeStream(system, userPrompt, tokenLimit, MODEL_HAIKU, (chunk) => {
+          if (!ttft) ttft = Date.now() - tGen;
+          const deltaMsg = {
+            type: 'live_answer_delta',
+            questionId: questionId || ('temp-' + Date.now()),
+            questionText,
+            chunk,
+            isNew: true,
+            navigate: !!forceNavigate
+          };
+          try { ws.send(JSON.stringify(deltaMsg)); } catch (e) {}
+          broadcastToSession(sessionId, deltaMsg, ws);
+        });
+        streamed = true;
+      } catch (streamErr) {
+        // Any streaming failure → fall back to the exact buffered behavior as before.
+        console.error('[Stream] fell back to buffered:', streamErr.message);
+        answer = await callClaude(system, userPrompt, tokenLimit, MODEL_HAIKU);
+      }
+    } else {
+      answer = await callClaude(system, userPrompt, tokenLimit, MODEL_HAIKU);
+    }
     console.log(`[TIMING] generateLiveAnswer: ${Date.now() - tGen}ms`);
+    console.log(`[LATENCY] gen streamed=${streamed} ttft=${ttft}ms total=${Date.now() - tGen}ms chars=${answer.length} q="${(questionText||'').substring(0,50)}"`);
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT
     if (questionId) {
@@ -3953,7 +4154,228 @@ async function generateFollowUps(questionText, answerText, session, ws, sessionI
   }
 }
 
-// (transcripts route moved before catch-all — see above)
+// ===== VIDEO NAME DETECTION =====
+// During a live call, clients send a few screenshots. Vision reads the participant
+// name tags; we accumulate non-self names in memory keyed by sessionId, and the
+// post-interview step uses the most-seen name IF the transcript didn't reveal one.
+const detectedParticipants = new Map(); // sessionId -> { names: Map<lower,{name,count}>, ts }
+
+function bestDetectedInterviewer(sessionId) {
+  const store = detectedParticipants.get(sessionId);
+  if (!store || !store.names.size) return null;
+  let best = null;
+  for (const v of store.names.values()) { if (!best || v.count > best.count) best = v; }
+  return best ? best.name : null;
+}
+
+// Purge stale detection stores hourly
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of detectedParticipants.entries()) {
+    if (now - (v.ts || 0) > 60 * 60 * 1000) detectedParticipants.delete(k);
+  }
+}, 30 * 60 * 1000);
+
+app.post('/api/sessions/:id/detect-participants', authMiddleware, async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'No image' });
+
+    const sys = 'You are looking at a screenshot of a video call (Zoom / Google Meet / Microsoft Teams). Read the participant name labels shown on the video tiles. For each, mark isYou=true if that tile is the local user (labeled "You", "(You)", or similar). Return ONLY JSON: {"participants":[{"name":"Full Name","isYou":false}]}. If no names are visible, return {"participants":[]}. No other text.';
+    let out = [];
+    try {
+      const raw = await callClaudeVision(sys, image, 'List the visible participant name labels as JSON only.', 250, MODEL_HAIKU, 'image/jpeg');
+      const m = raw.match(/\{[\s\S]*\}/);
+      const o = m ? JSON.parse(m[0]) : {};
+      out = Array.isArray(o.participants) ? o.participants : [];
+    } catch (e) { console.error('[Names] vision:', e.message); }
+
+    const selfName = (req.userName || '').toLowerCase();
+    let candName = '';
+    try {
+      const sess = await pool.query('SELECT candidate_name FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+      candName = (sess.rows[0]?.candidate_name || '').toLowerCase();
+    } catch (e) {}
+
+    let store = detectedParticipants.get(req.params.id);
+    if (!store) { store = { names: new Map(), ts: Date.now() }; detectedParticipants.set(req.params.id, store); }
+    let addedAny = false;
+    for (const p of out) {
+      if (!p || !p.name || p.isYou) continue;
+      const nm = String(p.name).trim();
+      const low = nm.toLowerCase();
+      if (!nm || low.length < 2) continue;
+      if (selfName && (low === selfName || selfName.includes(low) || low.includes(selfName))) continue;
+      if (candName && (low === candName || candName.includes(low) || low.includes(candName))) continue;
+      const cur = store.names.get(low) || { name: nm, count: 0 };
+      cur.count++; store.names.set(low, cur);
+      addedAny = true;
+    }
+    store.ts = Date.now();
+    res.json({ ok: true, captured: addedAny });
+  } catch (e) {
+    console.error('[Names] detect error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ===== POST-INTERVIEW LEARNING =====
+// Runs after a live interview ends. Three jobs, all safe/idempotent:
+//   1. Auto-delete empty/test transcripts (no real interviewer content).
+//   2. Capture the interviewer's name/title from what they said (fills empty fields only).
+//   3. Learn: mine the transcript for questions asked + predict next-round questions,
+//      dedup against the bank, generate answers in the session's style, add as 'learned'.
+// Never throws to the caller. Capped to control Haiku cost. `force` re-runs on demand.
+async function processTranscriptAfterInterview(sessionId, userId, transcriptId, force = false) {
+  const summary = { deleted: false, interviewer: null, added: 0 };
+  try {
+    const tr = await pool.query('SELECT * FROM live_transcripts WHERE id = $1 AND session_id = $2 AND user_id = $3', [transcriptId, sessionId, userId]);
+    if (!tr.rows.length) return summary;
+    const row = tr.rows[0];
+    if (row.learned && !force) return summary; // already processed
+
+    let lines = [];
+    try { lines = JSON.parse(row.transcript || '[]'); } catch (e) { lines = []; }
+
+    const interviewerLines = lines
+      .filter(l => l && !l.isUser && !l.isEcho)
+      .map(l => (l.text || '').replace(/^\[(You|Echo)\]\s*/i, '').trim())
+      .filter(Boolean);
+    const interviewerText = interviewerLines.join('\n');
+    const realChars = interviewerText.replace(/\s+/g, '').length;
+
+    // 1) EMPTY / TEST TRANSCRIPT — delete (conservative: only when clearly nothing was said)
+    if (interviewerLines.length === 0 || realChars < 40) {
+      await pool.query('DELETE FROM live_transcripts WHERE id = $1', [transcriptId]);
+      console.log(`[Learn] Deleted empty/test transcript ${transcriptId} (lines=${interviewerLines.length}, chars=${realChars})`);
+      summary.deleted = true;
+      return summary;
+    }
+
+    // Mark processed up-front so overlapping triggers (stop + close) don't double-run
+    await pool.query('UPDATE live_transcripts SET learned = true WHERE id = $1', [transcriptId]);
+
+    const session = (await pool.query('SELECT resume, jd, company, role, answer_style FROM sessions WHERE id = $1', [sessionId])).rows[0];
+    if (!session) return summary;
+
+    // 2) INTERVIEWER IDENTITY — only fill if currently empty.
+    //    Transcript first (they usually introduce themselves); video screenshots as fallback.
+    let interviewerName = row.interviewer_name || '';
+    if (!interviewerName) {
+      try {
+        const idRaw = await callClaude(
+          'From an interview transcript (interviewer speech only), extract the INTERVIEWER\'s name and job title IF they introduced themselves. Return ONLY JSON like {"name":"","title":""}. Use empty strings if unknown. No other text.',
+          interviewerText.slice(0, 3000), 80, MODEL_HAIKU
+        );
+        const m = idRaw.match(/\{[\s\S]*?\}/);
+        const o = m ? JSON.parse(m[0]) : {};
+        if (o && (o.name || o.title)) {
+          await pool.query(
+            "UPDATE live_transcripts SET interviewer_name = COALESCE(NULLIF($1,''), interviewer_name), interviewer_title = COALESCE(NULLIF($2,''), interviewer_title) WHERE id = $3",
+            [o.name || '', o.title || '', transcriptId]
+          );
+          await pool.query(
+            "UPDATE meetings SET name = CASE WHEN COALESCE(name,'')='' THEN $1 ELSE name END, title = CASE WHEN COALESCE(title,'')='' THEN $2 ELSE title END WHERE session_id = $3 AND is_current = true",
+            [o.name || '', o.title || '', sessionId]
+          );
+          interviewerName = o.name || '';
+          summary.interviewer = { name: o.name || '', title: o.title || '', via: 'transcript' };
+          console.log(`[Learn] Interviewer from transcript: "${o.name}" / "${o.title}"`);
+        }
+      } catch (e) { console.error('[Learn] interviewer extract:', e.message); }
+    }
+    // Video fallback — use the most-seen on-screen name if the transcript gave nothing
+    if (!interviewerName) {
+      const vidName = bestDetectedInterviewer(sessionId);
+      if (vidName) {
+        await pool.query(
+          "UPDATE live_transcripts SET interviewer_name = COALESCE(NULLIF($1,''), interviewer_name) WHERE id = $2",
+          [vidName, transcriptId]
+        );
+        await pool.query(
+          "UPDATE meetings SET name = CASE WHEN COALESCE(name,'')='' THEN $1 ELSE name END WHERE session_id = $2 AND is_current = true",
+          [vidName, sessionId]
+        );
+        interviewerName = vidName;
+        summary.interviewer = { name: vidName, title: '', via: 'video' };
+        console.log(`[Learn] Interviewer from video: "${vidName}"`);
+      }
+    }
+    detectedParticipants.delete(sessionId); // done with this session's detections
+
+    // 3) LEARN QUESTIONS INTO BANK
+    const existing = (await pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId])).rows;
+    const idx = buildQuestionIndex(existing);
+
+    // 3a) Questions actually asked in this interview
+    let asked = [];
+    try {
+      const raw = await callClaude(
+        'Extract EVERY distinct interview question the interviewer asked, cleaned up (full question, no filler). Ignore the candidate. Return ONLY a JSON array of question strings, nothing else.',
+        interviewerText.slice(0, 8000), 800, MODEL_HAIKU
+      );
+      const m = raw.match(/\[[\s\S]*\]/);
+      asked = m ? JSON.parse(m[0]) : [];
+    } catch (e) { console.error('[Learn] extract asked:', e.message); }
+
+    // 3b) Predict likely next-round questions
+    let predicted = [];
+    try {
+      const stage = row.stage || '';
+      const raw = await callClaude(
+        `You are an expert interviewer for ${session.role || 'this role'} at ${session.company || 'the company'}. Based on the questions from the ${stage || 'previous'} round, predict the most likely questions the candidate will face in the NEXT round. Return ONLY a JSON array of question strings (max 8), nothing else.`,
+        'Questions asked so far:\n' + (Array.isArray(asked) ? asked : []).slice(0, 20).map(q => '- ' + q).join('\n'),
+        400, MODEL_HAIKU
+      );
+      const m = raw.match(/\[[\s\S]*\]/);
+      predicted = m ? JSON.parse(m[0]) : [];
+    } catch (e) { console.error('[Learn] predict:', e.message); }
+
+    // Combine, dedup against bank AND each other, cap for cost
+    const candidates = [];
+    const seen = [];
+    for (const q of [...(Array.isArray(asked) ? asked : []), ...(Array.isArray(predicted) ? predicted : [])]) {
+      if (typeof q !== 'string') continue;
+      const qt = q.trim();
+      if (qt.length < 8) continue;
+      if (findBestMatch(qt, existing, idx)) continue; // already in bank
+      if (seen.some(s => stringSimilarity.compareTwoStrings(s.toLowerCase(), qt.toLowerCase()) > 0.6)) continue;
+      seen.push(qt);
+      candidates.push(qt);
+      if (candidates.length >= 12) break;
+    }
+
+    if (candidates.length === 0) { console.log('[Learn] no new questions to add'); return summary; }
+
+    // Generate answers in the session's chosen style and insert as 'learned'
+    const stylePrompt = getStylePrompt(session.answer_style);
+    const bank = existing.filter(q => q.answer).slice(0, 10).map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
+    for (const qt of candidates) {
+      try {
+        const userMsg = `RESUME:\n${session.resume || ''}\n\nJD:\n${session.jd || ''}\n\nQ&A BANK:\n${bank}\n\nQuestion:\n${qt}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about experience.`;
+        const ans = await callClaude(stylePrompt, userMsg, 1200, MODEL_HAIKU);
+        await pool.query(
+          'INSERT INTO questions (session_id, text, type, answer, source) VALUES ($1, $2, $3, $4, $5)',
+          [sessionId, qt, classifyQuestion(qt), ans, 'learned']
+        );
+        summary.added++;
+      } catch (e) { console.error('[Learn] gen answer:', e.message); }
+    }
+    console.log(`[Learn] Added ${summary.added} new questions from transcript ${transcriptId}`);
+    return summary;
+  } catch (e) {
+    console.error('[Learn] processTranscriptAfterInterview error:', e.message);
+    return summary;
+  }
+}
+
+// Manual re-run (e.g. a "Learn from this interview" button, or to process a past transcript)
+app.post('/api/sessions/:id/transcripts/:tid/learn', authMiddleware, async (req, res) => {
+  try {
+    const summary = await processTranscriptAfterInterview(req.params.id, req.userId, req.params.tid, true);
+    res.json({ ok: true, ...summary });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Start
 initDB().then(() => {
