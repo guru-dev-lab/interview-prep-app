@@ -3086,6 +3086,31 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
   const elapsed = Date.now() - startMs;
   console.log(`[FastMatch] NO MATCH in ${elapsed}ms: "${q.substring(0,50)}..." — creating new question`);
 
+  // PRE-GEN HIT: did we already prepare this (a predicted follow-up)? Serve it INSTANTLY,
+  // skipping the generation round-trip entirely.
+  if (process.env.PREGEN_FOLLOWUPS !== '0' && ws._pregen && ws._pregen.length) {
+    for (let pi = 0; pi < ws._pregen.length; pi++) {
+      const pg = ws._pregen[pi];
+      if (pg && pg.answer && stringSimilarity.compareTwoStrings(q.toLowerCase(), pg.q.toLowerCase()) >= 0.55) {
+        try {
+          const nq = await pool.query('INSERT INTO questions (session_id, text, type, answer, source) VALUES ($1, $2, $3, $4, $5) RETURNING id', [sessionId, q, classifyQuestion(q), pg.answer, 'live']);
+          const qId = nq.rows[0].id;
+          ws._pregen.splice(pi, 1);
+          const nqMsg = { type: 'new_question', questionId: qId, questionText: q, questionType: classifyQuestion(q), source: 'live', generated: true, navigate: !!forceNavigate };
+          ws.send(JSON.stringify(nqMsg)); broadcastToSession(sessionId, nqMsg, ws);
+          const laMsg = { type: 'live_answer', questionId: qId, questionText: q, answer: pg.answer, isNew: true, navigate: !!forceNavigate };
+          ws.send(JSON.stringify(laMsg)); broadcastToSession(sessionId, laMsg, ws);
+          sessionQuestions.push({ id: qId, text: q, type: classifyQuestion(q), answer: pg.answer, _createdAt: Date.now(), source: 'live' });
+          if (onIndexRebuild) onIndexRebuild();
+          ws._activeAnswer = { id: qId, questionText: q, answer: pg.answer, _grows: 0, _prepped: false };
+          logEvent('pregen_hit', { sessionId, qid: qId, q: q.substring(0, 60) });
+          console.log('[PreGen] Served instant answer for anticipated follow-up');
+          return lastMatchedQId;
+        } catch (e) { console.error('[PreGen hit]', e.message); }
+      }
+    }
+  }
+
   // DEDUP: Check if a very similar live question was created in the last 60 seconds
   // This prevents duplicate cards when the interviewer's question arrives in fragments
   const recentLiveQ = sessionQuestions.filter(sq => sq.source === 'live' && sq._createdAt && (Date.now() - sq._createdAt) < 60000);
@@ -4288,6 +4313,27 @@ async function generateFollowUps(questionText, answerText, session, ws, sessionI
     };
     ws.send(JSON.stringify(followUpMsg));
     broadcastToSession(sessionId, followUpMsg, ws);
+
+    // PRE-GENERATE answers for the top predicted follow-ups so they appear INSTANTLY
+    // if the interviewer actually asks one. Background, capped, flag-gated for cost.
+    if (process.env.PREGEN_FOLLOWUPS !== '0' && ws) {
+      (async () => {
+        const stylePrompt = getStylePrompt(session.answer_style);
+        for (const fq of followUps.slice(0, 2)) {
+          if (typeof fq !== 'string' || fq.length < 8) continue;
+          ws._pregen = ws._pregen || [];
+          if (ws._pregen.some(p => stringSimilarity.compareTwoStrings(p.q.toLowerCase(), fq.toLowerCase()) > 0.8)) continue;
+          try {
+            const um = `RESUME:\n${session.resume || ''}\n\nJD:\n${session.jd || ''}\n\nQuestion:\n${fq}\n\nAnswer the question naturally, headline first. Only reference companies or roles if the question asks about experience.`;
+            const ans = await callClaude(stylePrompt, um, 500, MODEL_HAIKU);
+            ws._pregen = ws._pregen || [];
+            ws._pregen.push({ q: fq, answer: ans, ts: Date.now() });
+            if (ws._pregen.length > 6) ws._pregen.shift();
+            logEvent('pregen_ready', { sessionId, q: fq.substring(0, 60) });
+          } catch (e) {}
+        }
+      })();
+    }
   } catch (parseErr) {
     console.error('[Follow-up parse error]', parseErr.message);
   }
