@@ -106,6 +106,28 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
       <span class="spinner"></span>
       <div class="sub">Loading session...</div>
     </div>
+
+    <!-- Step 4: Practice -->
+    <div id="step-practice" class="step" style="text-align:left">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="sub" style="margin:0">Practice</div>
+        <span id="pr-progress" style="font:600 11px Inter,sans-serif;color:rgba(255,255,255,.5)"></span>
+      </div>
+      <div style="font:500 11px/1.5 Inter,sans-serif;color:rgba(255,255,255,.5);margin-bottom:12px">A mock interviewer reads a question aloud. Answer out loud, then reveal the model answer to compare.</div>
+      <div style="font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:1px;color:#8B5CF6;margin-bottom:6px">Interviewer asks</div>
+      <div id="pr-question" style="font:600 16px/1.4 Inter,sans-serif;color:#fff;min-height:46px;margin-bottom:12px"></div>
+      <div id="pr-answer-wrap" style="display:none;border-top:1px solid rgba(255,255,255,.1);padding-top:10px;margin-bottom:8px;max-height:220px;overflow:auto">
+        <div style="font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,.45);margin-bottom:6px">Model answer</div>
+        <div id="pr-answer" style="font:400 13px/1.6 Inter,sans-serif;color:rgba(255,255,255,.9);white-space:pre-wrap"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+        <button class="back-btn" style="margin:0" onclick="practiceSpeak()">Repeat</button>
+        <button class="back-btn" style="margin:0" id="pr-reveal-btn" onclick="practiceReveal()">Reveal answer</button>
+        <button class="back-btn" style="margin:0" onclick="practicePrev()">Prev</button>
+        <button class="connect-btn" style="margin:0;width:auto;padding:8px 18px" onclick="practiceNext()">Next</button>
+        <button class="back-btn" style="margin:0 0 0 auto" onclick="practiceExit()">Done</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -299,7 +321,8 @@ async function loadSessions() {
       }
       div.innerHTML = avatarHTML
         + '<div class="s-info"><div class="s-company">' + esc(company) + '</div>'
-        + '<div class="s-role"><svg class="s-role-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg>' + esc(s.role || 'No role') + '</div></div>';
+        + '<div class="s-role"><svg class="s-role-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 00-8 0v2"/></svg>' + esc(s.role || 'No role') + '</div></div>'
+        + '<button class="s-practice-btn" onclick="event.stopPropagation();practiceSession(\'' + s.id + '\')" title="Rehearse before you go live" style="margin-left:auto;flex-shrink:0;background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.3);color:#c4b5fd;border-radius:8px;padding:6px 12px;font:600 11px Inter,sans-serif;cursor:pointer">Practice</button>';
       div.onclick = function() { connectToSession(s.id); };
       list.appendChild(div);
     });
@@ -309,6 +332,48 @@ async function loadSessions() {
     showError('Failed to load sessions');
   }
 }
+
+// ===== PRACTICE MODE (before you go live) =====
+var _prQs = [], _prIdx = 0;
+async function practiceSession(sessionId) {
+  try {
+    var res = await fetch(SERVER + '/api/sessions/' + sessionId, { headers: { 'Authorization': 'Bearer ' + authToken } });
+    var data = await res.json();
+    var qs = (data && data.questions) ? data.questions : [];
+    qs = qs.filter(function(q){ return q && q.text; });
+    if (!qs.length) { showError('No questions in that session yet'); return; }
+    for (var i=qs.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=qs[i];qs[i]=qs[j];qs[j]=t; }
+    _prQs = qs; _prIdx = 0;
+    showStep('step-practice');
+    practiceRender();
+  } catch (e) { showError('Failed to load session'); }
+}
+function practiceRender() {
+  var q = _prQs[_prIdx]; if (!q) return;
+  document.getElementById('pr-progress').textContent = 'Question ' + (_prIdx+1) + ' of ' + _prQs.length;
+  document.getElementById('pr-question').textContent = q.text;
+  document.getElementById('pr-answer-wrap').style.display = 'none';
+  document.getElementById('pr-answer').textContent = q.answer || 'No prepared answer yet — try answering from scratch.';
+  document.getElementById('pr-reveal-btn').textContent = 'Reveal answer';
+  setTimeout(practiceSpeak, 250);
+}
+function practiceSpeak() {
+  try {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    var q = _prQs[_prIdx]; if (!q) return;
+    var u = new SpeechSynthesisUtterance(q.text); u.rate = 0.98;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function practiceReveal() {
+  var w = document.getElementById('pr-answer-wrap');
+  if (w.style.display === 'none') { w.style.display = 'block'; document.getElementById('pr-reveal-btn').textContent = 'Hide answer'; }
+  else { w.style.display = 'none'; document.getElementById('pr-reveal-btn').textContent = 'Reveal answer'; }
+}
+function practiceNext() { if (_prIdx < _prQs.length - 1) { _prIdx++; practiceRender(); } else { practiceExit(); } }
+function practicePrev() { if (_prIdx > 0) { _prIdx--; practiceRender(); } }
+function practiceExit() { try { speechSynthesis.cancel(); } catch (e) {} showStep('step-sessions'); }
 
 function connectToSession(sessionId) {
   showStep('step-connecting');
