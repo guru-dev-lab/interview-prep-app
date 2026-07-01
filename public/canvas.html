@@ -85,7 +85,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .tb-utils{display:flex;gap:4px;align-items:center;flex-shrink:0;-webkit-app-region:no-drag}
 
 /* ===== FLOATING CONFIG PILL ===== */
-.config-float{position:fixed;top:66px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:6px;padding:6px 12px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(124,58,237,.15);border-radius:14px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none;-webkit-app-region:no-drag}
+.config-float{position:fixed;top:66px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:6px;padding:6px 12px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(124,58,237,.15);border-radius:14px;z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 0.5px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none}
 .config-float.show{display:flex}
 .config-float-label{font:700 8px Inter,sans-serif;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px}
 .config-float .cfg-sep{width:1px;height:14px;background:linear-gradient(180deg,transparent,rgba(124,58,237,.15),transparent);flex-shrink:0}
@@ -93,9 +93,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .config-float .hud-select:hover{background:rgba(255,255,255,.08);color:var(--text)}
 
 /* ===== FLOATING CO-PILOT PILL — vertical strip on right edge ===== */
-.copilot-float{position:fixed;top:50%;right:3px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:6px;padding:8px 5px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none;-webkit-app-region:no-drag}
-/* When co-pilot pill is visible, shift everything left to make room */
-body.copilot-on{padding-right:40px}
+.copilot-float{position:fixed;top:50%;right:2px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none}
 .copilot-float.show{display:flex}
 @keyframes floatIn{from{opacity:0;transform:translateY(-50%) scale(.96)}to{opacity:1;transform:translateY(-50%) scale(1)}}
 .copilot-float-label{font:700 7px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.3px;writing-mode:vertical-rl;text-orientation:mixed}
@@ -865,6 +863,7 @@ var TOKEN = null;
 var SESSION_ID = null;
 var ws = null;
 var cards = [];
+var answerStream = {}; // questionId -> accumulated streaming answer text
 var reconnectTimer = null;
 var reconnectAttempts = 0;
 var activeFilter = 'all'; // 'all' or 'generated'
@@ -1125,7 +1124,6 @@ function setMode(mode) {
     qaBtn.className = 'mode-btn';
     cpBtn.className = 'mode-btn active copilot-mode';
     cpFloat.classList.add('show');
-    document.body.classList.add('copilot-on');
     // Only show the pulsing dot when actually live
     if (electronLive) { cpDot.style.display = ''; }
     copilotTranscriptBuffer = '';
@@ -1141,7 +1139,6 @@ function setMode(mode) {
     qaBtn.className = 'mode-btn active';
     cpBtn.className = 'mode-btn';
     cpFloat.classList.remove('show');
-    document.body.classList.remove('copilot-on');
     cpDot.style.display = 'none';
     copilotTranscriptBuffer = '';
     if (copilotAutoTimer) { clearTimeout(copilotAutoTimer); copilotAutoTimer = null; }
@@ -1219,6 +1216,9 @@ function connect() {
   ws.onmessage = function(evt) {
     var msg;
     try { msg = JSON.parse(evt.data); } catch(e) { return; }
+
+    // First genuine INTERVIEWER speech (system audio, not your mic/echo) = they've joined → capture names
+    if (msg.type === 'interviewer_final' || (msg.type === 'transcript' && !msg.isEcho)) { try { onNameCapActivity(); } catch (e) {} }
 
     if (msg.type === 'match') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
@@ -1301,6 +1301,24 @@ function connect() {
         }
       } else {
         addCard(msg.questionId, msg.questionText, msg.answer, msg.isNew ? 'new' : 'matched', 0, msg.isNew, false);
+      }
+      // Streaming finished for this question — clear the accumulation buffer
+      if (answerStream) delete answerStream[msg.questionId];
+    }
+    else if (msg.type === 'live_answer_delta') {
+      // Progressive answer tokens — append and render in place as they stream in.
+      // The final 'live_answer' message still arrives and reconciles the full text.
+      answerStream[msg.questionId] = (answerStream[msg.questionId] || '') + (msg.chunk || '');
+      var dbuf = answerStream[msg.questionId];
+      var dEl = document.getElementById('card-' + msg.questionId);
+      if (dEl) {
+        var daEl = dEl.querySelector('.sc-card-a');
+        if (daEl) daEl.innerHTML = formatAnswer(dbuf);
+        var dc = cards.find(function(c){ return c.id === msg.questionId; });
+        if (dc) dc.answer = dbuf;
+      } else {
+        // No card yet (delta arrived before new_question) — create one
+        addCard(msg.questionId, msg.questionText, dbuf, 'new', 0, true, false);
       }
     }
     else if (msg.type === 'question_detected') {
@@ -2404,7 +2422,38 @@ async function startElectronAudio() {
   if (msg) msg.textContent = 'Click Go Live above to start capturing audio.';
 }
 
+// ===== SILENT PARTICIPANT-NAME CAPTURE =====
+// Screenshots so the server can read the interviewer's name tag when they don't say it.
+// Triggered by ACTUAL transcript activity (people are in the room), NOT a timer from
+// Go Live — you often join early and wait in an empty room. Silent, fire-and-forget,
+// no extra permission prompts (electron auto-approves; browser popout reuses an open stream).
+var _nameCapTimers = [];
+var _nameCapArmed = false;
+function armNameCapture() { _nameCapArmed = true; cancelNameCapture(); }
+function onNameCapActivity() {
+  if (!_nameCapArmed) return;
+  _nameCapArmed = false; // fire once, when the INTERVIEWER is actually talking
+  [0, 15000, 35000, 60000, 90000].forEach(function(d) { _nameCapTimers.push(setTimeout(captureParticipantNames, d)); });
+}
+function cancelNameCapture() { _nameCapTimers.forEach(clearTimeout); _nameCapTimers = []; }
+async function captureParticipantNames() {
+  try {
+    if (!TOKEN || !SESSION_ID) return;
+    var isElectron = window.electronAPI && window.electronAPI.isElectron;
+    var stream = isElectron ? await getScreenStream() : (screenStream && screenStream.active ? screenStream : null);
+    if (!stream) return; // don't trigger a picker just for names
+    var base64 = await captureFrame(stream);
+    if (!base64) return;
+    fetch('/api/sessions/' + SESSION_ID + '/detect-participants', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64 })
+    }).catch(function() {});
+  } catch (e) { /* silent — never disrupt the call */ }
+}
+
 function updateLiveUI(isLive) {
+  if (isLive) { try { armNameCapture(); } catch (e) {} } else { try { cancelNameCapture(); } catch (e) {} }
   var tb = $('btn-live-tb');
   if (tb) {
     if (isLive) {

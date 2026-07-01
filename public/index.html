@@ -962,6 +962,41 @@ function apiFetch(url, opts = {}) {
   return fetch(url, opts);
 }
 
+// POST that streams an answer via SSE. onDelta(fullSoFar) fires as text arrives.
+// Returns { answer, meta } where meta is the final 'done' event payload.
+// SAFE: if the server doesn't stream (no event-stream content-type) it parses the
+// plain JSON response instead, so it works against both new and old servers. Any
+// failure throws so callers can fall back to their existing non-streaming code.
+async function streamAnswerSSE(url, bodyObj, onDelta) {
+  const r = await apiFetch(url, { method: 'POST', body: JSON.stringify(bodyObj || {}) });
+  if (!r.ok) { let m = 'Error ' + r.status; try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
+  const ct = r.headers.get('content-type') || '';
+  if (!r.body || ct.indexOf('text/event-stream') < 0) {
+    // Server returned normal JSON (streaming not active) — use it directly.
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return { answer: d.answer || '', meta: d };
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', full = '', meta = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) >= 0) {
+      const evt = buf.slice(0, idx).trim(); buf = buf.slice(idx + 2);
+      if (!evt.startsWith('data:')) continue;
+      const obj = JSON.parse(evt.slice(5).trim());
+      if (obj.error) throw new Error(obj.error);
+      if (obj.delta) { full += obj.delta; if (onDelta) { try { onDelta(full); } catch (e) {} } }
+      if (obj.done) { meta = obj; if (obj.answer != null) full = obj.answer; }
+    }
+  }
+  return { answer: full, meta: meta || { answer: full } };
+}
+
 // ============ AUTH FUNCTIONS ============
 function showLogin() {
   $('auth-login-form').style.display = 'block';
@@ -2072,7 +2107,7 @@ async function regen(){const q=FQ[CI];if(!q)return;
 // Free plan: max 10 answers per session
 var plan=(USER&&USER.isAdmin)?'admin':(USER&&USER.plan)||'free';
 if(plan==='free'){var answered=S.questions.filter(x=>x.answer).length;if(answered>=10&&!q.answer){showUpgradeModal();return}}
-const b=$('btn-rg');const g1=$('btn-gen1');const instruction=$('regen-inst').value.trim();$('inst-popup').style.display='none';var wasFirst=!q.answer;if(wasFirst){g1.innerHTML='<span class="spinner"></span>Generating...';g1.disabled=true}else{b.innerHTML='<span class="spinner dk"></span>Working...';b.disabled=true}$('ans').innerHTML='<div class="a-empty"><span class="spinner dk"></span> Generating...</div>';try{const r=await apiFetch(`/api/sessions/${S.id}/generate/${q.id}`,{method:'POST',body:JSON.stringify({instruction:instruction})});const d=await r.json();if(d.error)throw new Error(d.error);q.answer=d.answer;const o=S.questions.find(x=>x.id===q.id);if(o)o.answer=d.answer;rAns(d.answer);g1.style.display='none';$('regen-area').style.display='flex';renderQL();toast('Done');playDoneSound()}catch(e){$('ans').innerHTML=`<div class="a-empty" style="color:var(--red)">Error: ${esc(e.message)}</div>`;toast('Failed',1)}finally{b.innerHTML='Regenerate';b.disabled=false;g1.innerHTML='Generate Answer';g1.disabled=false}}
+const b=$('btn-rg');const g1=$('btn-gen1');const instruction=$('regen-inst').value.trim();$('inst-popup').style.display='none';var wasFirst=!q.answer;if(wasFirst){g1.innerHTML='<span class="spinner"></span>Generating...';g1.disabled=true}else{b.innerHTML='<span class="spinner dk"></span>Working...';b.disabled=true}$('ans').innerHTML='<div class="a-empty"><span class="spinner dk"></span> Generating...</div>';try{const sr=await streamAnswerSSE(`/api/sessions/${S.id}/generate/${q.id}?stream=1`,{instruction:instruction},function(partial){rAns(partial)});const ans=sr.answer;q.answer=ans;const o=S.questions.find(x=>x.id===q.id);if(o)o.answer=ans;rAns(ans);g1.style.display='none';$('regen-area').style.display='flex';renderQL();toast('Done');playDoneSound()}catch(e){$('ans').innerHTML=`<div class="a-empty" style="color:var(--red)">Error: ${esc(e.message)}</div>`;toast('Failed',1)}finally{b.innerHTML='Regenerate';b.disabled=false;g1.innerHTML='Generate Answer';g1.disabled=false}}
 
 async function genAll(){const b=$('btn-ga');const un=S.questions.filter(q=>!q.answer);if(!un.length){toast('All answered');return}
 // Free plan: max 2 batches (10 questions)
@@ -2141,9 +2176,41 @@ var liveSystemStream = null;
 var liveMicProcessor = null;
 var liveSystemProcessor = null;
 var liveQueue = []; // {questionId, questionText, partIndex, isNew}
+var liveStreamBuf = {}; // questionId -> accumulated streaming answer text
 var liveMicMuted = false;
 var liveIdleTimer = null;
 var LIVE_IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+// Silent participant-name capture — screenshots so the server can read the interviewer's
+// on-screen name tag when they don't say it. Triggered by ACTUAL transcript activity
+// (people are in the room), NOT a timer from Go Live — because you often join early and
+// wait in an empty room. Reuses the already-granted screen stream (no new prompt).
+var _liveNameCapTimers = [];
+var _liveNameCapArmed = false;
+function armLiveNameCapture() { _liveNameCapArmed = true; cancelLiveNameCapture(); }
+function onInterviewerActivity() {
+  if (!_liveNameCapArmed) return;
+  _liveNameCapArmed = false; // fire once, when the INTERVIEWER is actually talking
+  [0, 15000, 35000, 60000, 90000].forEach(function(d) { _liveNameCapTimers.push(setTimeout(captureLiveParticipantNames, d)); });
+}
+function cancelLiveNameCapture() { _liveNameCapTimers.forEach(clearTimeout); _liveNameCapTimers = []; }
+async function captureLiveParticipantNames() {
+  try {
+    if (!TOKEN || !S || !liveSystemStream) return;
+    var track = liveSystemStream.getVideoTracks()[0];
+    if (!track || track.readyState !== 'live') return;
+    var video = document.createElement('video');
+    video.srcObject = liveSystemStream;
+    await new Promise(function(res, rej) { video.onloadedmetadata = function() { video.play().then(res).catch(rej); }; video.onerror = rej; });
+    var MAX_W = 1280, w = video.videoWidth, h = video.videoHeight;
+    if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(video, 0, 0, w, h);
+    video.pause(); video.srcObject = null;
+    var base64 = c.toDataURL('image/jpeg', 0.7).split(',')[1];
+    apiFetch('/api/sessions/' + S.id + '/detect-participants', { method: 'POST', body: JSON.stringify({ image: base64 }) }).catch(function() {});
+  } catch (e) { /* silent */ }
+}
 function resetLiveIdleTimer(){
   clearTimeout(liveIdleTimer);
   if(!liveActive) return;
@@ -2247,6 +2314,7 @@ async function toggleLiveMode() {
 
     liveActive = true;
     resetLiveIdleTimer();
+    try { armLiveNameCapture(); } catch (e) {}
 
     $('btn-live').style.background = '#EF4444';
     $('btn-live').style.borderColor = '#EF4444';
@@ -2356,6 +2424,7 @@ async function switchLiveTab() {
 function stopLiveMode() {
   liveActive = false;
   clearTimeout(liveIdleTimer);
+  try { cancelLiveNameCapture(); } catch (e) {}
 
   // Send stop to server
   if (liveWS && liveWS.readyState === WebSocket.OPEN) {
@@ -2474,6 +2543,9 @@ function toggleLiveMinimize() {
 
 function handleLiveMessage(msg) {
   var box = $('live-transcript');
+
+  // First genuine INTERVIEWER speech (system audio, not your mic/echo) = they've joined → capture names
+  if (msg.type === 'transcript' && !msg.isEcho) { try { onInterviewerActivity(); } catch (e) {} }
 
   if (msg.type === 'status') {
     $('live-status').textContent = msg.questionsLoaded ? msg.questionsLoaded + ' questions loaded' : msg.message;
@@ -2667,6 +2739,24 @@ function handleLiveMessage(msg) {
 
     // Smart Canvas: update the card with the real answer
     addCanvasCard(msg.questionId, msg.questionText, msg.answer, classifyQuestionFE(msg.questionText), msg.isNew ? 'new' : 'matched', 0, !!msg.isNew, false);
+
+    // Streaming finished for this question — clear the accumulation buffer
+    if (liveStreamBuf) delete liveStreamBuf[msg.questionId];
+  }
+
+  else if (msg.type === 'live_answer_delta') {
+    // Progressive answer tokens — append and render as they stream in.
+    // The final 'live_answer' message still arrives and reconciles the full text.
+    if (!liveStreamBuf) liveStreamBuf = {};
+    liveStreamBuf[msg.questionId] = (liveStreamBuf[msg.questionId] || '') + (msg.chunk || '');
+    var sbuf = liveStreamBuf[msg.questionId];
+    var sq = S.questions.find(function(x){ return x.id === msg.questionId; });
+    if (sq) { sq.answer = sbuf; }
+    else { S.questions.push({ id: msg.questionId, text: msg.questionText, type: classifyQuestionFE(msg.questionText), answer: sbuf, starred: false, source: 'live' }); }
+    // If the user is currently viewing this question, render the partial answer live
+    try { if (FQ[CI] && FQ[CI].id === msg.questionId) rAns(sbuf); } catch (e) {}
+    // Update the Smart Canvas card in place (idempotent, no scroll thrash)
+    addCanvasCard(msg.questionId, msg.questionText, sbuf, classifyQuestionFE(msg.questionText), 'new', 0, true, false);
   }
 
   else if (msg.type === 'screen_assist') {
@@ -3217,12 +3307,15 @@ function scStopRecording() {
 
 async function handleCanvasQuestionOffline(text) {
   if (!S || !S.questions.length) {
-    // No session or questions — generate via API
-    addCanvasCard('manual-' + Date.now(), text, '', 'Strategic', 'manual', 0);
+    // No session or questions — generate via API (streamed)
+    var cid0 = 'manual-' + Date.now();
+    addCanvasCard(cid0, text, '', 'Strategic', 'manual', 0);
     try {
-      var r = await apiFetch('/api/sessions/' + S.id + '/canvas-ask', { method: 'POST', body: JSON.stringify({ question: text }) });
-      var d = await r.json();
-      if (d.answer) addCanvasCard(d.questionId || ('manual-' + Date.now()), text, d.answer, d.type || 'Strategic', d.source || 'manual', d.similarity || 0);
+      var sr0 = await streamAnswerSSE('/api/sessions/' + S.id + '/canvas-ask?stream=1', { question: text }, function(partial) {
+        addCanvasCard(cid0, text, partial, 'Strategic', 'manual', 0);
+      });
+      var m0 = sr0.meta || {};
+      addCanvasCard(cid0, text, sr0.answer, m0.type || 'Strategic', m0.source || 'manual', m0.similarity || 0);
     } catch(e) { toast('Failed to generate answer', 1); }
     return;
   }
@@ -3240,16 +3333,19 @@ async function handleCanvasQuestionOffline(text) {
     addCanvasCard(best.id, best.text, best.answer, best.type, 'matched', Math.round(bestScore * 100));
     navigateToQuestion(best.id);
   } else {
-    // No match — generate fresh
+    // No match — generate fresh (streamed)
     var tempId = 'manual-' + Date.now();
     addCanvasCard(tempId, text, '', 'Strategic', 'manual', 0);
     try {
-      var r = await apiFetch('/api/sessions/' + S.id + '/canvas-ask', { method: 'POST', body: JSON.stringify({ question: text }) });
-      var d = await r.json();
-      addCanvasCard(d.questionId || tempId, text, d.answer, d.type || 'Strategic', d.source || 'new', d.similarity || 0);
+      var sr = await streamAnswerSSE('/api/sessions/' + S.id + '/canvas-ask?stream=1', { question: text }, function(partial) {
+        addCanvasCard(tempId, text, partial, 'Strategic', 'manual', 0);
+      });
+      var d = sr.meta || {};
+      var finalAns = sr.answer;
+      addCanvasCard(tempId, text, finalAns, d.type || 'Strategic', d.source || 'new', d.similarity || 0);
       // Add to session questions
       if (d.questionId) {
-        S.questions.push({ id: d.questionId, text: d.questionText || text, type: d.type || 'Strategic', answer: d.answer, starred: false });
+        S.questions.push({ id: d.questionId, text: d.questionText || text, type: d.type || 'Strategic', answer: finalAns, starred: false });
         renderQL();
       }
     } catch(e) { toast('Failed to generate answer', 1); }
