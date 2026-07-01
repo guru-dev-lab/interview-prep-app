@@ -2711,6 +2711,15 @@ function handleLiveMessage(msg) {
   }
 
   else if (msg.type === 'live_answer') {
+    // GROW: the interviewer added detail → the answer got longer. Extend in place, but
+    // don't steal focus or replay the chime — the candidate is mid-sentence.
+    if (msg.grew) {
+      var gq = S.questions.find(function(x){ return x.id === msg.questionId; });
+      if (gq) gq.answer = msg.answer;
+      if (FQ[CI] && FQ[CI].id === msg.questionId) { try { rAns(msg.answer); } catch(e) {} }
+      addCanvasCard(msg.questionId, msg.questionText, msg.answer, classifyQuestionFE(msg.questionText), 'new', 0, true, false);
+      return;
+    }
     // Answer generated for a question — update in place
     var genEl = $('live-gen-'+msg.questionId);
     if (genEl) {
