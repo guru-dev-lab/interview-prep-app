@@ -4175,11 +4175,18 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Add a speed note for live context + technical override when needed
     const COMMON_LIVE_RULES = `\n\nHEADLINE-FIRST: Your FIRST sentence must be a direct, immediately-speakable answer to the question — something the candidate can start saying out loud right away. Put the supporting detail AFTER that. Never open with preamble or setup.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`;
 
+    // POINTERS: most people riff from the answer in their own words rather than read it
+    // verbatim — so for non-technical questions, format as short scannable beats they can
+    // expand naturally. Technical answers stay exact (wording matters for code).
+    const POINTER_RULE = (process.env.POINTERS !== '0')
+      ? `\n\nFORMAT AS POINTERS: Give 3-5 SHORT beats, ONE per line, each leading with the key point — cues the candidate expands in their OWN words, not a paragraph to read aloud. First beat is the direct headline answer.`
+      : '';
+
     let liveAddendum;
     if (isTechnical) {
       liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: Code block FIRST with language tag. NO intro text before the code. After the code, ONE sentence max. The candidate is reading this on a tiny overlay — every extra word wastes space. If the question is conceptual (no code needed), answer in 2-4 direct sentences.\n\nACCURACY GUARDRAIL: Before finalizing, silently sanity-check the code/syntax — correct function names, valid syntax, right approach. A confidently-wrong answer is worse than a simple one. If you are NOT sure something is correct, prefer the simplest approach you ARE sure of, and do not invent APIs, functions, or flags that may not exist.` + COMMON_LIVE_RULES;
     } else if (isExperienceQ) {
-      liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Use STAR format if it fits.` + COMMON_LIVE_RULES;
+      liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Use STAR format if it fits.` + POINTER_RULE + COMMON_LIVE_RULES;
     } else {
       liveAddendum = `\n\nLIVE MODE — DIRECT ANSWER REQUIRED:
 THIS IS NOT AN EXPERIENCE QUESTION. The interviewer is asking a general/conceptual/process question.
@@ -4190,7 +4197,7 @@ WRONG: "When I was at Wells Fargo, I implemented row-level security..."
 RIGHT: "Row-level security works by filtering data based on the user's identity, so each person only sees what's relevant to them."
 Just answer the question plainly. Use "I" naturally but do NOT attach it to a specific company or role.
 The Q&A bank and resume are for CONTEXT about what tools the candidate knows — NOT for injecting stories into every answer.
-Only reference specific companies if the question EXPLICITLY asks "tell me about a time" or "at your previous role" or similar.` + COMMON_LIVE_RULES;
+Only reference specific companies if the question EXPLICITLY asks "tell me about a time" or "at your previous role" or similar.` + POINTER_RULE + COMMON_LIVE_RULES;
     }
 
     const basePrompt = getStylePrompt(session.answer_style);
@@ -4293,6 +4300,11 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     generateFollowUps(questionText, answer, session, ws, sessionId, questionId).catch(e => {
       console.error('[Follow-up prediction error]', e.message);
     });
+
+    // Fire-and-forget: coaching — extra points the candidate should ALSO hit to make this land
+    generateCoachingPoints(questionText, answer, session, ws, sessionId, questionId).catch(e => {
+      console.error('[Coaching points error]', e.message);
+    });
   } catch (e) {
     console.error('[Live Answer Error]', e.message);
     logEvent('error', { where: 'generateLiveAnswer', msg: e.message });
@@ -4349,6 +4361,30 @@ async function generateFollowUps(questionText, answerText, session, ws, sessionI
   } catch (parseErr) {
     console.error('[Follow-up parse error]', parseErr.message);
   }
+}
+
+// COACHING POINTS — the "also say this" layer. Given the question and the answer, surface
+// 2-3 short extra beats the candidate should ALSO hit to make the answer stronger or clearer
+// (a metric to quantify, a concrete example, a tradeoff to name, a tie to the role). These
+// are cues to hit IF NEEDED — not part of the answer itself. Fire-and-forget, flag-gated.
+async function generateCoachingPoints(questionText, answerText, session, ws, sessionId, questionId) {
+  if (process.env.COACHING_POINTS === '0') return;
+  const role = session.role || 'this role';
+  const company = session.company || 'the company';
+  const system = `You are an interview coach for ${role} at ${company}. Given the question and the candidate's answer, list 2-3 SHORT extra points the candidate should ALSO hit to make the answer stronger or clearer — e.g. a specific metric to quantify, a concrete example to name, a tradeoff/risk to acknowledge, or a tie back to the role. Each point is 3-7 words, action-oriented (start with a verb), something they can weave in IF NEEDED. Do NOT repeat what the answer already covers well. Return ONLY a JSON array of strings.`;
+  const userPrompt = `QUESTION:\n${questionText}\n\nANSWER GIVEN:\n${answerText.substring(0, 800)}\n\nList 2-3 short extra points to also hit:`;
+  try {
+    const raw = await callClaude(system, userPrompt, 150, MODEL_HAIKU);
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return;
+    const points = JSON.parse(match[0]);
+    if (!Array.isArray(points) || !points.length) return;
+    const msg = { type: 'coaching_points', questionId: questionId, points: points.filter(p => typeof p === 'string').slice(0, 3) };
+    if (!msg.points.length) return;
+    ws.send(JSON.stringify(msg));
+    broadcastToSession(sessionId, msg, ws);
+    logEvent('coaching', { sessionId, qid: questionId, n: msg.points.length });
+  } catch (e) { console.error('[Coaching points]', e.message); }
 }
 
 // ===== VIDEO NAME DETECTION =====
