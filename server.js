@@ -2379,7 +2379,8 @@ Example: if capture 1 showed a users table, capture 2 showed an orders table, an
 
 RULES:
 - Identify EVERY question or task visible on screen
-- For coding: write clean, working code with brief explanation
+- For coding: write the COMPLETE working solution in the right language, then ONE line on the approach and its time/space complexity, and handle the obvious edge cases. ACCURACY: sanity-check the syntax and do NOT invent functions, APIs, or flags — a confidently wrong solution is worse than a simple correct one.
+- For system design / case-study prompts: give a structured answer — the approach, the key components and tradeoffs, and what you'd clarify first — as short scannable points, not a wall of text.
 - For multiple choice: state the correct answer and why
 - For data/tables: describe the structure clearly (columns, types, sample data) so future captures can reference it
 - For open-ended: answer concisely using the candidate's real experience from their resume and Q&A bank
@@ -2819,6 +2820,22 @@ function isQuestion(text) {
   // Wh- question openers (5+ words)
   if (words >= 5 && /^(what |how |why |when |where |who |which )/.test(t)) return true;
   // Nothing matched — NOT a question
+  return false;
+}
+
+// "Stay silent" filter — clearly NON-substantive interviewer utterances that can slip past
+// isQuestion (rapport, logistics, comprehension check-ins, closing). Conservative on purpose:
+// only the obvious stuff is matched — anything that could be a real interview question is not.
+function isLowValueQuestion(text) {
+  const t = (text || '').trim().toLowerCase();
+  // meta / comprehension check-ins
+  if (/^(does that make sense|is that clear|did that (make sense|answer|help)|any questions (so far|on that)|are you (with me|following)|makes sense\??$|got it\??$|any concerns)/.test(t)) return true;
+  // rapport / small talk
+  if (/^(how are you( doing| today)?|how('s| is) (your day|it going|everything|the weather)|how has your (day|week) been|hope you('re| are) (well|doing well))/.test(t)) return true;
+  // logistics / setup
+  if (/^(can you (see|hear) (me|my|the)|are you able to (see|hear)|is my (screen|audio|video)|are you ready( to (start|begin))?|shall we (start|begin|get started)|ready to (start|begin|go)|do you have (your resume|a copy|everything you need)|can you give me (a|one) (second|moment))/.test(t)) return true;
+  // closing / time
+  if (/^(do you have any questions (for|from) (me|us)|any questions for (me|us)|that('s| is) (all|it|everything)( i had| from me)?|we('re| are) (about )?(at|out of|running out of) time|anything (else )?(you('d| would) like to (ask|add|know))|before we (wrap|finish|end))/.test(t)) return true;
   return false;
 }
 
@@ -3525,6 +3542,14 @@ wss.on('connection', (ws) => {
             if (growEnabled && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
               console.log('[Grow] Continuation detected — extending active answer');
               growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
+              return;
+            }
+
+            // STAY SILENT: don't clutter the overlay with clearly non-substantive interviewer
+            // talk (rapport, logistics, "does that make sense?", closing). Conservative + flagged.
+            if (process.env.STAY_SILENT !== '0' && isLowValueQuestion(q)) {
+              console.log('[Stay Silent] Skipping low-value question:', q.substring(0, 50));
+              logEvent('stay_silent', { sessionId, q: q.substring(0, 50) });
               return;
             }
 
