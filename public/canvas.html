@@ -805,16 +805,6 @@ document.body.style.background='transparent';
     </div>
   </div>
 
-  <!-- Live coach — reads YOUR mic stream (read-only) to track what you've covered vs. still to hit -->
-  <div id="coach-panel" style="display:none;padding:6px 10px;border-top:1px solid rgba(255,255,255,.08);background:rgba(139,92,246,.05)">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-      <span style="font:700 8px Inter,sans-serif;text-transform:uppercase;letter-spacing:.6px;color:#a78bfa">Live coach</span>
-      <span id="coach-timer" style="font:600 10px Inter,sans-serif;color:var(--text3)">0:00</span>
-      <span id="coach-fillers" style="font:600 10px Inter,sans-serif;color:var(--text3)">um 0</span>
-    </div>
-    <div id="coach-points" style="display:flex;flex-wrap:wrap;gap:4px"></div>
-  </div>
-
   <!-- Smart bottom bar -->
   <div class="bottom-bar">
     <!-- Secondary row for Record/Switch — hidden until needed -->
@@ -1229,8 +1219,6 @@ function connect() {
 
     // First genuine INTERVIEWER speech (system audio, not your mic/echo) = they've joined → capture names
     if (msg.type === 'interviewer_final' || (msg.type === 'transcript' && !msg.isEcho)) { try { onNameCapActivity(); } catch (e) {} }
-    // Live coach reads YOUR mic (read-only) to track coverage — never used for detection
-    if (msg.type === 'user_transcript' && msg.text) { try { coachHeard(msg.text); } catch (e) {} }
 
     if (msg.type === 'match') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
@@ -1254,7 +1242,6 @@ function connect() {
       } else {
         addCard(msg.questionId, msg.questionText, msg.answer || '', 'matched', msg.similarity, false, scroll);
       }
-      if (msg.answer) { try { coachSetAnswer(msg.questionId, msg.questionText, msg.answer); } catch (e) {} }
     }
     else if (msg.type === 'new_question') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
@@ -1317,7 +1304,6 @@ function connect() {
       }
       // Streaming finished for this question — clear the accumulation buffer
       if (answerStream) delete answerStream[msg.questionId];
-      try { coachSetAnswer(msg.questionId, msg.questionText, msg.answer); } catch (e) {}
     }
     else if (msg.type === 'live_answer_delta') {
       // Progressive answer tokens — append and render in place as they stream in.
@@ -1374,18 +1360,6 @@ function connect() {
       // Another device went live — show alert and stop
       addCard('kicked-' + Date.now(), '⚠️ Live session ended', msg.message || 'Live started on another device. Only one live session allowed at a time.', 'system', 0, false, true);
       setStatus('Kicked — live on another device', 'off');
-    }
-    else if (msg.type === 'coaching_points') {
-      // "Also hit" cues — extra beats to strengthen the answer, shown on its card
-      var ccEl = document.getElementById('card-' + msg.questionId);
-      if (ccEl && msg.points && msg.points.length) {
-        var cc = ccEl.querySelector('.sc-coach');
-        if (!cc) { cc = document.createElement('div'); cc.className = 'sc-coach'; cc.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.12);display:flex;flex-wrap:wrap;gap:5px;align-items:center'; ccEl.appendChild(cc); }
-        var ch = '<span style="font:700 8px Inter,sans-serif;text-transform:uppercase;letter-spacing:.5px;color:#a78bfa">Also hit</span>';
-        msg.points.forEach(function(p){ ch += '<span style="font:500 10px Inter,sans-serif;color:var(--text2);background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.25);border-radius:10px;padding:1px 7px">' + esc(p) + '</span>'; });
-        cc.innerHTML = ch;
-      }
-      try { coachAddExtra(msg.questionId, msg.points); } catch (e) {}
     }
     else if (msg.type === 'follow_up_predictions') {
       // Show predicted follow-up questions as chips below the answer card
@@ -2478,62 +2452,8 @@ async function captureParticipantNames() {
   } catch (e) { /* silent — never disrupt the call */ }
 }
 
-// ===== LIVE COACH =====
-// Read-only: consumes YOUR already-separated mic stream (user_transcript) to track which
-// beats of the current answer you've covered vs. still need to hit, plus a talk-timer and
-// filler counter. Never feeds your voice into detection or answering — pure display.
-var COACH_ON = true;
-var coach = null;
-var COACH_STOP = {the:1,and:1,for:1,that:1,this:1,with:1,your:1,you:1,they:1,them:1,have:1,has:1,had:1,are:1,was:1,were:1,will:1,would:1,could:1,should:1,from:1,into:1,about:1,what:1,when:1,which:1,their:1,there:1,then:1,than:1,been:1,being:1,also:1,more:1,most:1,some:1,such:1,each:1,over:1,just:1,like:1,here:1,does:1};
-function coachKeyWords(s){ var o={}; (String(s).toLowerCase().match(/\b[a-z]{4,}\b/g)||[]).forEach(function(w){ if(!COACH_STOP[w]) o[w]=1; }); return Object.keys(o).slice(0,7); }
-function coachBeats(text){ return String(text||'').split('\n').map(function(l){ return l.replace(/^[\s>*\-•\d\.\)]+/,'').trim(); }).filter(function(l){ return l.length>0 && l.split(/\s+/).length>=4 && !/^```/.test(l) && !/[{}();=]/.test(l); }).slice(0,5); }
-function coachEvaluate(){
-  if(!coach) return;
-  var said={}; (coach.said.toLowerCase().match(/\b[a-z]{4,}\b/g)||[]).forEach(function(w){ said[w]=1; });
-  coach.points.forEach(function(p){ if(p.covered||!p.key.length) return; var hit=0; p.key.forEach(function(w){ if(said[w]) hit++; }); if(hit/p.key.length>=0.5) p.covered=true; });
-}
-function coachSetAnswer(qid, questionText, answerText){
-  if(!COACH_ON || !answerText) return;
-  if(!coach || coach.qid !== qid){ if(coach && coach.timer) clearInterval(coach.timer); coach = { qid:qid, points:[], said:'', fillers:0, startTs:0, timer:null }; }
-  var beats = coachBeats(answerText);
-  var prev = {}; coach.points.forEach(function(p){ if(p.covered) prev[p.text]=1; });
-  var extras = coach.points.filter(function(p){ return p.extra; });
-  coach.points = beats.map(function(b){ return { text:b, key:coachKeyWords(b), covered:!!prev[b], extra:false }; }).concat(extras);
-  coachEvaluate(); coachRender();
-}
-function coachAddExtra(qid, pts){
-  if(!coach || coach.qid !== qid || !pts) return;
-  pts.forEach(function(p){ if(!coach.points.some(function(x){ return x.text===p; })) coach.points.push({ text:p, key:coachKeyWords(p), covered:false, extra:true }); });
-  coachEvaluate(); coachRender();
-}
-function coachHeard(text){
-  if(!coach || !text) return;
-  if(!coach.startTs){ coach.startTs = Date.now(); coach.timer = setInterval(coachRender, 1000); }
-  coach.said += ' ' + text;
-  coach.fillers += (text.match(/\b(um+|uh+|er+|like|you know|sort of|kind of|basically|actually|literally|i mean)\b/gi)||[]).length;
-  coachEvaluate(); coachRender();
-}
-function coachRender(){
-  var panel = document.getElementById('coach-panel');
-  if(!panel){ return; }
-  if(!coach || !coach.points.length){ panel.style.display='none'; return; }
-  panel.style.display='block';
-  var el = coach.startTs ? Math.floor((Date.now()-coach.startTs)/1000) : 0;
-  var t = document.getElementById('coach-timer'); if(t){ t.textContent = Math.floor(el/60)+':'+(el%60<10?'0':'')+(el%60); t.style.color = el>=75 ? '#FCA5A5' : 'var(--text3)'; }
-  var f = document.getElementById('coach-fillers'); if(f){ f.textContent = 'um '+coach.fillers; f.style.color = coach.fillers>=4 ? '#FCA5A5' : 'var(--text3)'; }
-  var box = document.getElementById('coach-points'); if(!box) return;
-  var h = '';
-  coach.points.forEach(function(p){
-    var s = p.text.length>34 ? p.text.substring(0,32)+'…' : p.text;
-    if(p.covered){ h += '<span style="font:500 9px Inter,sans-serif;color:var(--text4);text-decoration:line-through;background:rgba(255,255,255,.04);border-radius:8px;padding:1px 6px">&#10003; '+esc(s)+'</span>'; }
-    else { var col = p.extra ? '#a78bfa' : '#34D399'; h += '<span style="font:600 9px Inter,sans-serif;color:'+col+';background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);border-radius:8px;padding:1px 6px">'+esc(s)+'</span>'; }
-  });
-  box.innerHTML = h;
-}
-function coachStop(){ if(coach && coach.timer) clearInterval(coach.timer); coach = null; var p = document.getElementById('coach-panel'); if(p) p.style.display='none'; }
-
 function updateLiveUI(isLive) {
-  if (isLive) { try { armNameCapture(); } catch (e) {} } else { try { cancelNameCapture(); coachStop(); } catch (e) {} }
+  if (isLive) { try { armNameCapture(); } catch (e) {} } else { try { cancelNameCapture(); } catch (e) {} }
   var tb = $('btn-live-tb');
   if (tb) {
     if (isLive) {

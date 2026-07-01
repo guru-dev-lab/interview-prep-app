@@ -2784,18 +2784,6 @@ function handleLiveMessage(msg) {
     stopLiveMode();
   }
 
-  else if (msg.type === 'coaching_points') {
-    // "Also hit" cues — extra beats to strengthen the answer, shown on its Smart Canvas card
-    var ccEl = document.getElementById('sc-card-' + msg.questionId);
-    if (ccEl && msg.points && msg.points.length) {
-      var cc = ccEl.querySelector('.sc-coach');
-      if (!cc) { cc = document.createElement('div'); cc.className = 'sc-coach'; cc.style.cssText = 'margin-top:8px;padding-top:8px;border-top:1px dashed var(--glass-border);display:flex;flex-wrap:wrap;gap:6px;align-items:center'; ccEl.appendChild(cc); }
-      var ch = '<span style="font:700 9px Inter,sans-serif;text-transform:uppercase;letter-spacing:.5px;color:var(--accent2)">Also hit</span>';
-      msg.points.forEach(function(p){ ch += '<span style="font:500 11px Inter,sans-serif;color:var(--text2);background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);border-radius:12px;padding:2px 9px">' + esc(p) + '</span>'; });
-      cc.innerHTML = ch;
-    }
-  }
-
   else if (msg.type === 'follow_up_predictions') {
     // Show predicted follow-up questions as clickable chips
     if (msg.predictions && msg.predictions.length > 0) {
@@ -3808,8 +3796,9 @@ function renderTranscriptList(transcripts) {
 
       // Transcript tab content
       html += '<div class="tx-tab-content" data-tab="transcript" data-tid="' + t.id + '" style="max-height:400px;overflow-y:auto">';
-      if (lines.length) {
-        lines.forEach(function(line) {
+      var shownLines = lines.filter(function(l){ return l && !l.isEcho && !/^\[Echo\]/i.test(l.text || ''); });
+      if (shownLines.length) {
+        shownLines.forEach(function(line) {
           var time = line.ts ? new Date(line.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
           html += '<div style="display:flex;gap:8px;margin-bottom:6px;font:400 13px/1.6 Inter,sans-serif">';
           html += '<span style="color:var(--text4);font-size:11px;min-width:70px;flex-shrink:0;padding-top:2px">' + time + '</span>';
