@@ -370,6 +370,20 @@ const MODEL_HAIKU  = MODELS.haiku;
 // that off each call with zero change to request/response behavior.
 const anthropicAgent = new https.Agent({ keepAlive: true, maxSockets: 50, keepAliveMsecs: 30000 });
 
+// ── Lightweight observability ─────────────────────────────────────────
+// In-memory ring buffer of recent live-pipeline events so we can SEE the app
+// working (and catch regressions) without a real interview. Surfaced at
+// GET /api/admin/health. Never throws; capped so it can't grow unbounded.
+const SERVER_START = Date.now();
+const eventLog = [];
+const EVENT_LOG_MAX = 800;
+function logEvent(type, data) {
+  try {
+    eventLog.push(Object.assign({ t: Date.now(), type }, data || {}));
+    if (eventLog.length > EVENT_LOG_MAX) eventLog.shift();
+  } catch (e) {}
+}
+
 function _callClaudeOnce(system, user, maxTokens, model) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
@@ -2064,6 +2078,42 @@ app.get('/api/admin/stats', authMiddleware, adminOnly, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Live-pipeline health — recent events + rolled-up counters so you can see the app
+// working (detections, answer latency, growths, learning, errors) without a real interview.
+app.get('/api/admin/health', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const now = Date.now();
+    const hourAgo = now - 60 * 60 * 1000;
+    const recent = eventLog.filter(e => e.t >= hourAgo);
+    const counts = {};
+    let answerMsSum = 0, answerMsN = 0, ttftSum = 0, ttftN = 0;
+    for (const e of recent) {
+      counts[e.type] = (counts[e.type] || 0) + 1;
+      if (e.type === 'answer') {
+        if (typeof e.ms === 'number') { answerMsSum += e.ms; answerMsN++; }
+        if (typeof e.ttft === 'number' && e.ttft > 0) { ttftSum += e.ttft; ttftN++; }
+      }
+    }
+    res.json({
+      now,
+      uptimeSec: Math.round((now - SERVER_START) / 1000),
+      models: MODELS,
+      flags: {
+        streamLiveAnswers: process.env.STREAM_LIVE_ANSWERS !== '0',
+        growAnswers: process.env.GROW_ANSWERS !== '0'
+      },
+      lastHour: {
+        counts,
+        avgAnswerMs: answerMsN ? Math.round(answerMsSum / answerMsN) : null,
+        avgTtftMs: ttftN ? Math.round(ttftSum / ttftN) : null,
+        errors: recent.filter(e => e.type === 'error').slice(-20)
+      },
+      activeLiveSessions: (typeof activeLiveByUser !== 'undefined' && activeLiveByUser.size) || 0,
+      recent: eventLog.slice(-60)
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Helper: get full session object
 async function getFullSession(sessionId, userId) {
   const s = await pool.query('SELECT * FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, userId]);
@@ -3336,6 +3386,8 @@ wss.on('connection', (ws) => {
           const cm = await pool.query('SELECT name, title, stage FROM meetings WHERE session_id = $1 AND is_current = true LIMIT 1', [sessionId]);
           if (cm.rows.length) { interviewerName = cm.rows[0].name || ''; interviewerTitle = cm.rows[0].title || ''; interviewStage = cm.rows[0].stage || ''; }
         } catch(e) {}
+        // Stash interviewer identity so answers can be tailored to who's actually asking.
+        ws._interviewer = { name: interviewerName, title: interviewerTitle, stage: interviewStage };
         const tResult = await pool.query(
           'INSERT INTO live_transcripts (session_id, user_id, interviewer_name, interviewer_title, stage) VALUES ($1, $2, $3, $4, $5) RETURNING id',
           [sessionId, userId, interviewerName, interviewerTitle, interviewStage]
@@ -3464,6 +3516,7 @@ wss.on('connection', (ws) => {
             if (recentDetectedQs.length > 5) recentDetectedQs.shift();
 
             console.log('[AI Auto-Detect]', q.substring(0, 60));
+            logEvent('detect', { sessionId, q: q.substring(0, 60) });
             lastWsayMatchId = null;
             recentMatchedIds.clear();
             var qdMsg1 = { type: 'question_detected', text: q, source: 'auto' };
@@ -4048,7 +4101,8 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     try { ws.send(JSON.stringify(msg)); } catch (e) {}
     broadcastToSession(sessionId, msg, ws);
     console.log(`[Grow] Extended answer for Q ${active.id} (extension #${active._grows})`);
-  } catch (e) { console.error('[Grow]', e.message); }
+    logEvent('grow', { sessionId, qid: active.id, n: active._grows, chars: full.length });
+  } catch (e) { console.error('[Grow]', e.message); logEvent('error', { where: 'growLiveAnswer', msg: e.message }); }
 }
 
 // Generate answer for live question — questionId is the EXISTING DB row from fastMatchAndRespond
@@ -4074,7 +4128,12 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Session identity — critical for role-specific answers
     const company = session.company || 'the company';
     const role = session.role || 'this role';
-    const sessionHeader = `THIS INTERVIEW IS FOR: ${role} at ${company}\nThe candidate knows which role and company this is. If asked "why this role" or "why this company", reference ${company} and ${role} naturally — but NEVER parrot the JD. Only bring in personal experience when the question asks for it.\n`;
+    let sessionHeader = `THIS INTERVIEW IS FOR: ${role} at ${company}\nThe candidate knows which role and company this is. If asked "why this role" or "why this company", reference ${company} and ${role} naturally — but NEVER parrot the JD. Only bring in personal experience when the question asks for it.\n`;
+    // Tailor to whoever is actually asking (name/title/stage), when known.
+    const iv = ws._interviewer || {};
+    if (iv.name || iv.title || iv.stage) {
+      sessionHeader += `INTERVIEWER: ${iv.name || 'the interviewer'}${iv.title ? ', ' + iv.title : ''}${iv.stage ? ' — ' + iv.stage + ' round' : ''}. Pitch the answer to what someone in this role would care about (e.g. a hiring manager wants impact and ownership; an engineer wants technical depth). Never awkwardly name-drop them.\n`;
+    }
 
     const isTechnical = /sql|query|code|write|function|script|algorithm|regex|api|join|window function|python|javascript|html|css|excel|vba|dax|power query|etl|pipeline/i.test(questionText);
     const isExperienceQ = /tell me about a time|describe a (time|situation)|give (me )?(an )?example|in your (role|experience|career|previous|current|last)|at your (company|job|work)|how have you (used|done|handled|managed|dealt)|share an experience|walk me through.*(project|experience|time)|what('s| is) your experience/i.test(questionText);
@@ -4085,7 +4144,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
 
     let liveAddendum;
     if (isTechnical) {
-      liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: Code block FIRST with language tag. NO intro text before the code. After the code, ONE sentence max. The candidate is reading this on a tiny overlay — every extra word wastes space. If the question is conceptual (no code needed), answer in 2-4 direct sentences.` + COMMON_LIVE_RULES;
+      liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: Code block FIRST with language tag. NO intro text before the code. After the code, ONE sentence max. The candidate is reading this on a tiny overlay — every extra word wastes space. If the question is conceptual (no code needed), answer in 2-4 direct sentences.\n\nACCURACY GUARDRAIL: Before finalizing, silently sanity-check the code/syntax — correct function names, valid syntax, right approach. A confidently-wrong answer is worse than a simple one. If you are NOT sure something is correct, prefer the simplest approach you ARE sure of, and do not invent APIs, functions, or flags that may not exist.` + COMMON_LIVE_RULES;
     } else if (isExperienceQ) {
       liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Use STAR format if it fits.` + COMMON_LIVE_RULES;
     } else {
@@ -4170,6 +4229,7 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     }
     console.log(`[TIMING] generateLiveAnswer: ${Date.now() - tGen}ms`);
     console.log(`[LATENCY] gen streamed=${streamed} ttft=${ttft}ms total=${Date.now() - tGen}ms chars=${answer.length} q="${(questionText||'').substring(0,50)}"`);
+    logEvent('answer', { sessionId, qid: questionId, ms: Date.now() - tGen, ttft, streamed, chars: answer.length, q: (questionText || '').substring(0, 60) });
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT
     if (questionId) {
@@ -4198,6 +4258,7 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     });
   } catch (e) {
     console.error('[Live Answer Error]', e.message);
+    logEvent('error', { where: 'generateLiveAnswer', msg: e.message });
     ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate answer' }));
   }
 }
@@ -4440,6 +4501,7 @@ async function processTranscriptAfterInterview(sessionId, userId, transcriptId, 
       } catch (e) { console.error('[Learn] gen answer:', e.message); }
     }
     console.log(`[Learn] Added ${summary.added} new questions from transcript ${transcriptId}`);
+    logEvent('learn', { sessionId, added: summary.added, interviewer: summary.interviewer ? summary.interviewer.via : null });
     return summary;
   } catch (e) {
     console.error('[Learn] processTranscriptAfterInterview error:', e.message);
