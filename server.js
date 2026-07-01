@@ -4211,7 +4211,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     if (isTechnical) {
       liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: Code block FIRST with language tag. NO intro text before the code. After the code, ONE sentence max. The candidate is reading this on a tiny overlay — every extra word wastes space. If the question is conceptual (no code needed), answer in 2-4 direct sentences.\n\nACCURACY GUARDRAIL: Before finalizing, silently sanity-check the code/syntax — correct function names, valid syntax, right approach. A confidently-wrong answer is worse than a simple one. If you are NOT sure something is correct, prefer the simplest approach you ARE sure of, and do not invent APIs, functions, or flags that may not exist.` + COMMON_LIVE_RULES;
     } else if (isExperienceQ) {
-      liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Use STAR format if it fits.` + POINTER_RULE + COMMON_LIVE_RULES;
+      liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Hit the STAR beats BRIEFLY — one short line each (situation, action, result), NOT paragraphs. Keep the whole thing tight enough to finish in a few short lines.` + POINTER_RULE + COMMON_LIVE_RULES;
     } else {
       liveAddendum = `\n\nLIVE MODE — DIRECT ANSWER REQUIRED:
 THIS IS NOT AN EXPERIENCE QUESTION. The interviewer is asking a general/conceptual/process question.
@@ -4229,29 +4229,32 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
 
     // Response length control — user picks how concise answers should be
     // THIS OVERRIDES ALL OTHER LINE COUNT GUIDANCE IN THE STYLE PROMPTS
+    // Brevity is enforced by the PROMPT. Token caps only provide HEADROOM so the answer
+    // always finishes cleanly — never so tight they chop it mid-sentence.
     const maxSentences = ws._maxAnswerLines || 0;
     let lengthConstraint = '';
-    let tokenLimit = isTechnical ? 1200 : 600;
+    let tokenLimit = isTechnical ? 1100 : 550;
     if (maxSentences > 0) {
       if (maxSentences <= 3) {
-        lengthConstraint = `\n\n*** HARD LENGTH OVERRIDE — THIS SUPERSEDES ALL OTHER LINE COUNTS ABOVE ***\nMAXIMUM ${maxSentences} sentences total. NOT ${maxSentences} lines — ${maxSentences} SENTENCES. Count them. If your answer has more than ${maxSentences} sentences, you have FAILED.\nThis means: answer in ${maxSentences} short sentences. That's it. No preamble. No filler. No "additionally."\nIf code is needed, code block + 1 sentence only.\nIgnore any "4-8 lines" or "6-10 lines" guidance above — the limit is ${maxSentences}.`;
-        tokenLimit = isTechnical ? 500 : 80;
+        lengthConstraint = `\n\n*** HARD LENGTH — max ${maxSentences} short sentences. Lead with the answer, no preamble, no filler. Finish the thought — never stop mid-sentence. If code is needed, code block + 1 line.`;
+        tokenLimit = isTechnical ? 700 : 220;
       } else if (maxSentences <= 5) {
-        lengthConstraint = `\n\n*** HARD LENGTH OVERRIDE — THIS SUPERSEDES ALL OTHER LINE COUNTS ABOVE ***\nMAXIMUM ${maxSentences} sentences total. Count them. If you write more than ${maxSentences} sentences, you have FAILED.\nAnswer the question directly in ${maxSentences} short sentences. No intro, no setup, no conclusion.\nIf code is needed, code block + 1-2 sentence explanation only.\nIgnore any "4-8 lines" or "6-10 lines" guidance above — the limit is ${maxSentences}.`;
-        tokenLimit = isTechnical ? 600 : 150;
+        lengthConstraint = `\n\n*** HARD LENGTH — max ${maxSentences} short sentences. Answer directly, no intro or conclusion. Finish the thought — never stop mid-sentence. If code is needed, code block + 1-2 lines.`;
+        tokenLimit = isTechnical ? 800 : 340;
       } else if (maxSentences <= 8) {
-        lengthConstraint = `\n\n*** HARD LENGTH OVERRIDE — THIS SUPERSEDES ALL OTHER LINE COUNTS ABOVE ***\nMAXIMUM ${maxSentences} sentences. Lead with the answer. Each sentence must add new information. No filler.\nIf code is needed, code block + 2-3 sentence explanation.\nIgnore any line count guidance above that exceeds ${maxSentences}.`;
-        tokenLimit = isTechnical ? 800 : 250;
+        lengthConstraint = `\n\n*** LENGTH — max ${maxSentences} short sentences. Lead with the answer; each line adds new info; no filler. Finish the thought.`;
+        tokenLimit = isTechnical ? 1000 : 500;
       } else if (maxSentences <= 12) {
-        lengthConstraint = `\n\nRESPONSE LENGTH LIMIT: ${maxSentences} sentences maximum. Don't pad with filler. No intros or conclusions.`;
-        tokenLimit = isTechnical ? 1000 : 400;
+        lengthConstraint = `\n\nLENGTH — up to ${maxSentences} sentences, no filler, no intros/conclusions.`;
+        tokenLimit = isTechnical ? 1300 : 680;
       } else {
-        lengthConstraint = `\n\nRESPONSE LENGTH: Up to ${maxSentences} sentences. Be thorough where needed but don't pad with filler.`;
+        lengthConstraint = `\n\nLENGTH — up to ${maxSentences} sentences; be thorough but don't pad.`;
+        tokenLimit = isTechnical ? 1500 : 900;
       }
     } else {
-      // Even with no explicit limit, keep answers overlay-sized — not paragraphs
-      lengthConstraint = `\n\n*** IMPORTANT LENGTH GUIDANCE ***\nThis answer displays on a TINY overlay during a live interview. The candidate glances at it while talking.\nKeep to 4-6 sentences for simple questions, 6-8 for complex ones. NEVER write paragraphs.\nEach sentence = its own line. Short sentences only (max 15 words each).`;
-      tokenLimit = isTechnical ? 800 : 300;
+      // Default: overlay-sized. Brief AND complete.
+      lengthConstraint = `\n\n*** LENGTH — keep it overlay-sized: 4-6 short lines for simple questions, up to 8 for complex ones. NEVER write long paragraphs. Each line on its own line, short (max ~15 words). Most important: ALWAYS finish your last sentence — never cut off mid-thought.`;
+      tokenLimit = isTechnical ? 1000 : 500;
     }
 
     // Speak in THIS candidate's own voice (per-user profile), if we've learned it.
