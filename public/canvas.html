@@ -805,6 +805,12 @@ document.body.style.background='transparent';
     </div>
   </div>
 
+  <!-- Live coach — clean line-by-line points of the current answer; ticks off as you speak;
+       auto-hides after a while. 100% client-side (reads your mic transcript), no API calls. -->
+  <div id="coach-panel" style="display:none;padding:6px 12px;border-top:1px solid rgba(255,255,255,.07);transition:opacity .6s ease">
+    <div id="coach-lines"></div>
+  </div>
+
   <!-- Smart bottom bar -->
   <div class="bottom-bar">
     <!-- Secondary row for Record/Switch — hidden until needed -->
@@ -1219,6 +1225,8 @@ function connect() {
 
     // First genuine INTERVIEWER speech (system audio, not your mic/echo) = they've joined → capture names
     if (msg.type === 'interviewer_final' || (msg.type === 'transcript' && !msg.isEcho)) { try { onNameCapActivity(); } catch (e) {} }
+    // Live coach reads YOUR mic (read-only, no API) to tick off points as you say them
+    if (msg.type === 'user_transcript' && msg.text) { try { coachHeard(msg.text); } catch (e) {} }
 
     if (msg.type === 'match') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
@@ -1242,6 +1250,7 @@ function connect() {
       } else {
         addCard(msg.questionId, msg.questionText, msg.answer || '', 'matched', msg.similarity, false, scroll);
       }
+      if (msg.answer) { try { coachShow(msg.questionId, msg.answer); } catch (e) {} }
     }
     else if (msg.type === 'new_question') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
@@ -1304,6 +1313,7 @@ function connect() {
       }
       // Streaming finished for this question — clear the accumulation buffer
       if (answerStream) delete answerStream[msg.questionId];
+      try { coachShow(msg.questionId, msg.answer); } catch (e) {}
     }
     else if (msg.type === 'live_answer_delta') {
       // Progressive answer tokens — append and render in place as they stream in.
@@ -2452,8 +2462,55 @@ async function captureParticipantNames() {
   } catch (e) { /* silent — never disrupt the call */ }
 }
 
+// ===== LIVE COACH (lean) =====
+// Clean line-by-line points of the current answer; each dims as you cover it; auto-hides
+// after a while. 100% client-side (reads your already-separated mic stream) — no API calls,
+// no latency impact. Toggle with COACH_ON.
+var COACH_ON = true;
+var coach = null; // { qid, points:[{text,key,covered}], said, hideTimer }
+var COACH_HIDE_MS = 22000; // auto-disappear after this long
+var COACH_STOP = {the:1,and:1,for:1,that:1,this:1,with:1,your:1,you:1,they:1,them:1,have:1,has:1,are:1,was:1,were:1,will:1,would:1,from:1,into:1,about:1,what:1,when:1,which:1,their:1,there:1,then:1,been:1,being:1,also:1,more:1,most:1,some:1,such:1,just:1,like:1,here:1,does:1};
+function coachKeys(s){ var o={}; (String(s).toLowerCase().match(/\b[a-z]{4,}\b/g)||[]).forEach(function(w){ if(!COACH_STOP[w]) o[w]=1; }); return Object.keys(o).slice(0,6); }
+function coachShow(qid, answerText){
+  if(!COACH_ON || !answerText) return;
+  var lines = String(answerText).split('\n').map(function(l){ return l.replace(/^[\s>*\-•\d\.\)]+/,'').trim(); })
+    .filter(function(l){ return l.length>0 && l.split(/\s+/).length>=4 && !/^```/.test(l) && !/[{}();=]/.test(l); }).slice(0,5);
+  if(!lines.length){ coachHide(); return; }
+  if(coach && coach.hideTimer) clearTimeout(coach.hideTimer);
+  coach = { qid:qid, points: lines.map(function(l){ return { text:l, key:coachKeys(l), covered:false }; }), said:'', hideTimer:null };
+  coachRender();
+  var panel = document.getElementById('coach-panel'); if(panel) panel.style.opacity='1';
+  coach.hideTimer = setTimeout(coachHide, COACH_HIDE_MS);
+}
+function coachHeard(text){
+  if(!coach || !text) return;
+  coach.said += ' ' + text;
+  var said={}; (coach.said.toLowerCase().match(/\b[a-z]{4,}\b/g)||[]).forEach(function(w){ said[w]=1; });
+  var all=true;
+  coach.points.forEach(function(p){ if(!p.covered && p.key.length){ var hit=0; p.key.forEach(function(w){ if(said[w]) hit++; }); if(hit/p.key.length>=0.5) p.covered=true; } if(!p.covered) all=false; });
+  coachRender();
+  if(all){ if(coach.hideTimer) clearTimeout(coach.hideTimer); coach.hideTimer = setTimeout(coachHide, 1500); } // covered everything → fade soon
+}
+function coachRender(){
+  var box = document.getElementById('coach-lines'); var panel = document.getElementById('coach-panel');
+  if(!box || !panel || !coach){ if(panel) panel.style.display='none'; return; }
+  panel.style.display='block';
+  box.innerHTML = coach.points.map(function(p){
+    var s = p.text.length>60 ? p.text.substring(0,58)+'…' : p.text;
+    return p.covered
+      ? '<div style="font:400 11px/1.6 Inter,sans-serif;color:var(--text4);text-decoration:line-through">'+esc(s)+'</div>'
+      : '<div style="font:500 11px/1.6 Inter,sans-serif;color:#c4b5fd">• '+esc(s)+'</div>';
+  }).join('');
+}
+function coachHide(){
+  var panel = document.getElementById('coach-panel');
+  if(panel){ panel.style.opacity='0'; setTimeout(function(){ if(panel) panel.style.display='none'; }, 600); }
+  if(coach && coach.hideTimer) clearTimeout(coach.hideTimer);
+  coach = null;
+}
+
 function updateLiveUI(isLive) {
-  if (isLive) { try { armNameCapture(); } catch (e) {} } else { try { cancelNameCapture(); } catch (e) {} }
+  if (isLive) { try { armNameCapture(); } catch (e) {} } else { try { cancelNameCapture(); coachHide(); } catch (e) {} }
   var tb = $('btn-live-tb');
   if (tb) {
     if (isLive) {
