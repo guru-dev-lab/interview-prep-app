@@ -142,6 +142,8 @@ async function initDB() {
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS interviewer_title VARCHAR(255) DEFAULT '';
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS stage VARCHAR(255) DEFAULT '';
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS learned BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_profile TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_profile_updated_at TIMESTAMP;
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'build';
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS answer_style VARCHAR(50) DEFAULT 'conversational';
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS jd_requirements JSONB DEFAULT NULL;
@@ -3413,6 +3415,11 @@ wss.on('connection', (ws) => {
         } catch(e) {}
         // Stash interviewer identity so answers can be tailored to who's actually asking.
         ws._interviewer = { name: interviewerName, title: interviewerTitle, stage: interviewStage };
+        // Load THIS user's own voice profile (per-user) so answers sound like them.
+        try {
+          const vp = await pool.query('SELECT voice_profile FROM users WHERE id = $1', [userId]);
+          ws._voiceProfile = (process.env.VOICE_PROFILE !== '0' && vp.rows[0] && vp.rows[0].voice_profile) || '';
+        } catch (e) { ws._voiceProfile = ''; }
         const tResult = await pool.query(
           'INSERT INTO live_transcripts (session_id, user_id, interviewer_name, interviewer_title, stage) VALUES ($1, $2, $3, $4, $5) RETURNING id',
           [sessionId, userId, interviewerName, interviewerTitle, interviewStage]
@@ -4103,7 +4110,8 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
 
     const session = ws._sessionContext || {};
     const stylePrompt = getStylePrompt(session.answer_style); // SAME template as normal answers
-    const system = stylePrompt + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble. Just the next short, speakable sentence(s).';
+    const voiceBlock = ws._voiceProfile ? `\n\nSPEAK IN THE CANDIDATE'S OWN VOICE (sound like them, not generic AI):\n${ws._voiceProfile}` : '';
+    const system = stylePrompt + voiceBlock + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble. Just the next short, speakable sentence(s).';
     const userMsg = `QUESTION (now fuller):\n${fullerQuestion}\n\nANSWER ALREADY GIVEN (do NOT repeat any of this):\n${active.answer}\n\nOutput ONLY the additional sentence(s) to append:`;
 
     let addition = '';
@@ -4214,7 +4222,11 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
       tokenLimit = isTechnical ? 800 : 300;
     }
 
-    const system = basePrompt + liveAddendum + lengthConstraint;
+    // Speak in THIS candidate's own voice (per-user profile), if we've learned it.
+    const voiceBlock = ws._voiceProfile
+      ? `\n\nSPEAK IN THE CANDIDATE'S OWN VOICE — write the answer the way THIS specific candidate naturally talks, so it sounds like them and not generic AI:\n${ws._voiceProfile}\nMatch their rhythm, phrasing, and word choices — but keep it correct, on-point, and headline-first.`
+      : '';
+    const system = basePrompt + liveAddendum + lengthConstraint + voiceBlock;
     // Include recent transcript so AI sees the full buildup, not just the tail-end question
     const recentLines = ws._recentTranscript || [];
     const transcriptContext = recentLines.length > 0
@@ -4548,12 +4560,69 @@ async function processTranscriptAfterInterview(sessionId, userId, transcriptId, 
     }
     console.log(`[Learn] Added ${summary.added} new questions from transcript ${transcriptId}`);
     logEvent('learn', { sessionId, added: summary.added, interviewer: summary.interviewer ? summary.interviewer.via : null });
+    // Refresh this user's voice profile from their accumulated speech (only if stale).
+    maybeRebuildVoiceProfile(userId).catch(() => {});
     return summary;
   } catch (e) {
     console.error('[Learn] processTranscriptAfterInterview error:', e.message);
     return summary;
   }
 }
+
+// ===== PER-USER VOICE PROFILE =====
+// Learn how THIS user actually speaks, from their own [You] lines across their interviews,
+// and store a compact profile so answers can be generated in their voice. Strictly per-user:
+// every read/write is scoped to the authenticated user_id — never shared across users.
+async function buildVoiceProfile(userId) {
+  try {
+    if (process.env.VOICE_PROFILE === '0') return null;
+    const tr = await pool.query('SELECT transcript FROM live_transcripts WHERE user_id = $1 AND transcript IS NOT NULL ORDER BY created_at DESC LIMIT 20', [userId]);
+    const utts = [];
+    for (const row of tr.rows) {
+      let lines = []; try { lines = JSON.parse(row.transcript || '[]'); } catch (e) {}
+      lines.forEach(l => {
+        if (l && l.isUser) {
+          const t = (l.text || '').replace(/^\[You\]\s*/i, '').trim();
+          if (t.split(/\s+/).length >= 4) utts.push(t);
+        }
+      });
+    }
+    if (utts.length < 8) return null; // not enough of THIS user's speech to characterize yet
+    const sample = utts.slice(0, 60).join('\n').slice(0, 6000);
+    const system = 'You analyze how ONE specific person speaks in interviews, using transcripts of THEIR OWN spoken answers. Produce a SHORT reusable voice profile (5-7 sentences, no headers) that another AI can follow to write answers that sound like THIS person: their typical sentence length and rhythm, formality, directness, hedges/filler tendencies, favorite phrases or transitions, vocabulary level, and overall tone. Be specific and behavioral. Describe only HOW they talk, never the content of their answers. Output only the profile.';
+    const profile = (await callClaude(system, "This person's spoken answers:\n" + sample + "\n\nWrite their voice profile:", 300, MODEL_HAIKU)).trim();
+    if (profile.length < 20) return null;
+    await pool.query('UPDATE users SET voice_profile = $1, voice_profile_updated_at = NOW() WHERE id = $2', [profile, userId]);
+    logEvent('voice_profile', { userId, chars: profile.length, samples: utts.length });
+    console.log(`[Voice] Built profile for user ${userId} from ${utts.length} utterances`);
+    return profile;
+  } catch (e) { console.error('[Voice] build error:', e.message); return null; }
+}
+
+// Rebuild only when stale (>3 days) or missing — keeps it fresh without a Haiku call every interview.
+async function maybeRebuildVoiceProfile(userId) {
+  try {
+    const u = await pool.query('SELECT voice_profile_updated_at FROM users WHERE id = $1', [userId]);
+    const last = u.rows[0] && u.rows[0].voice_profile_updated_at;
+    if (last && (Date.now() - new Date(last).getTime()) < 3 * 24 * 60 * 60 * 1000) return;
+    await buildVoiceProfile(userId);
+  } catch (e) {}
+}
+
+// View / rebuild the current user's own voice profile
+app.get('/api/voice-profile', authMiddleware, async (req, res) => {
+  try {
+    const u = await pool.query('SELECT voice_profile, voice_profile_updated_at FROM users WHERE id = $1', [req.userId]);
+    res.json({ profile: u.rows[0] ? (u.rows[0].voice_profile || '') : '', updatedAt: u.rows[0] ? u.rows[0].voice_profile_updated_at : null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/voice-profile/rebuild', authMiddleware, async (req, res) => {
+  try {
+    const profile = await buildVoiceProfile(req.userId);
+    if (!profile) return res.json({ ok: false, message: 'Not enough of your interview speech yet — do a live interview or two first.' });
+    res.json({ ok: true, profile });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Manual re-run (e.g. a "Learn from this interview" button, or to process a past transcript)
 app.post('/api/sessions/:id/transcripts/:tid/learn', authMiddleware, async (req, res) => {
