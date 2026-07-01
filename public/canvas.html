@@ -712,6 +712,10 @@ document.body.style.background='transparent';
           <label class="toggle-switch"><input type="checkbox" id="s-light-mode" onchange="toggleLightMode()"><span class="toggle-slider"></span></label>
         </div>
         <div class="settings-row">
+          <div><div class="settings-label">Live Coach</div><div class="settings-desc">Line-by-line points that tick off as you speak, then fade</div></div>
+          <label class="toggle-switch"><input type="checkbox" id="s-live-coach" checked onchange="toggleLiveCoach()"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="settings-row">
           <div><div class="settings-label">Font Size</div><div class="settings-desc">Base text size for cards</div></div>
           <div class="settings-control">
             <button class="tb-btn" onclick="changeFontSize(-1)">A&#8722;</button>
@@ -2178,6 +2182,7 @@ function openSettings() {
   var sStyle = $('s-answer-style');
   var sTheme = $('s-theme');
   var sLight = $('s-light-mode');
+  var sCoach = $('s-live-coach'); if (sCoach) sCoach.checked = COACH_ON;
   var sFont = $('s-font-size');
   var sFollowups = $('s-followups');
   var sAutoScroll = $('s-auto-scroll');
@@ -2466,7 +2471,13 @@ async function captureParticipantNames() {
 // Clean line-by-line points of the current answer; each dims as you cover it; auto-hides
 // after a while. 100% client-side (reads your already-separated mic stream) — no API calls,
 // no latency impact. Toggle with COACH_ON.
-var COACH_ON = true;
+var COACH_ON = (function(){ try { return localStorage.getItem('xhire_coach') !== '0'; } catch(e){ return true; } })();
+function toggleLiveCoach() {
+  var cb = document.getElementById('s-live-coach');
+  COACH_ON = cb ? cb.checked : true;
+  try { localStorage.setItem('xhire_coach', COACH_ON ? '1' : '0'); } catch(e){}
+  if (!COACH_ON) coachHide();
+}
 var coach = null; // { qid, points:[{text,key,covered}], said, hideTimer }
 var COACH_HIDE_MS = 22000; // auto-disappear after this long
 var COACH_STOP = {the:1,and:1,for:1,that:1,this:1,with:1,your:1,you:1,they:1,them:1,have:1,has:1,are:1,was:1,were:1,will:1,would:1,from:1,into:1,about:1,what:1,when:1,which:1,their:1,there:1,then:1,been:1,being:1,also:1,more:1,most:1,some:1,such:1,just:1,like:1,here:1,does:1};
