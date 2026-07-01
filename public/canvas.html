@@ -1361,6 +1361,17 @@ function connect() {
       addCard('kicked-' + Date.now(), '⚠️ Live session ended', msg.message || 'Live started on another device. Only one live session allowed at a time.', 'system', 0, false, true);
       setStatus('Kicked — live on another device', 'off');
     }
+    else if (msg.type === 'coaching_points') {
+      // "Also hit" cues — extra beats to strengthen the answer, shown on its card
+      var ccEl = document.getElementById('card-' + msg.questionId);
+      if (ccEl && msg.points && msg.points.length) {
+        var cc = ccEl.querySelector('.sc-coach');
+        if (!cc) { cc = document.createElement('div'); cc.className = 'sc-coach'; cc.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.12);display:flex;flex-wrap:wrap;gap:5px;align-items:center'; ccEl.appendChild(cc); }
+        var ch = '<span style="font:700 8px Inter,sans-serif;text-transform:uppercase;letter-spacing:.5px;color:#a78bfa">Also hit</span>';
+        msg.points.forEach(function(p){ ch += '<span style="font:500 10px Inter,sans-serif;color:var(--text2);background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.25);border-radius:10px;padding:1px 7px">' + esc(p) + '</span>'; });
+        cc.innerHTML = ch;
+      }
+    }
     else if (msg.type === 'follow_up_predictions') {
       // Show predicted follow-up questions as chips below the answer card
       showFollowUpChips(msg.questionId, msg.predictions);
