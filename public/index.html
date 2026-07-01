@@ -789,10 +789,6 @@ body.canvas-open .prep-content{margin-right:480px}
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           Transcripts
         </button>
-        <button class="btn" id="btn-practice" onclick="startPractice()" style="gap:5px;padding:8px 14px" title="Rehearse with a mock interviewer">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
-          Practice
-        </button>
         <button class="btn" id="btn-live" onclick="toggleLiveMode()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);gap:6px;transition:all .2s">
           <span id="btn-live-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text3);display:inline-block;transition:all .2s"></span>
           <span id="btn-live-text" style="font-weight:700;letter-spacing:.3px">GO LIVE</span>
@@ -866,29 +862,6 @@ body.canvas-open .prep-content{margin-right:480px}
 <div style="margin-top:6px"><label style="font:500 11px Inter,sans-serif;color:var(--text3)">Or upload file:</label> <input type="file" id="ed-fi-jd" accept=".pdf,.docx,.doc,.txt" style="font-size:11px"></div></div>
 <div id="ed-warning" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;font:500 12px/1.5 Inter,sans-serif;color:#FBBF24"></div>
 <div class="mbtns" style="margin-top:14px"><button class="mc" onclick="hideM('edit-docs-m')">Cancel</button><button class="mk" id="ed-save-btn" onclick="saveEditDocs()">Save Changes</button></div>
-</div></div>
-<div class="ov" id="practice-m"><div class="mdl" style="max-width:680px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-    <h3 style="margin:0">Practice Mode</h3>
-    <span id="pr-progress" style="font:600 12px Inter,sans-serif;color:var(--text3)"></span>
-  </div>
-  <div style="font:500 12px/1.5 Inter,sans-serif;color:var(--text3);margin-bottom:14px">A mock interviewer reads a question aloud. Answer out loud, then reveal the model answer to compare.</div>
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-    <span style="width:9px;height:9px;border-radius:50%;background:var(--accent2);display:inline-block"></span>
-    <span style="font:700 11px Inter,sans-serif;text-transform:uppercase;letter-spacing:1px;color:var(--accent2)">Interviewer asks</span>
-  </div>
-  <div id="pr-question" style="font:600 18px/1.4 Inter,sans-serif;color:var(--text);min-height:52px;margin-bottom:14px"></div>
-  <div id="pr-answer-wrap" style="display:none;border-top:1px solid var(--glass-border);padding-top:12px">
-    <div style="font:700 11px Inter,sans-serif;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:8px">Model answer</div>
-    <div id="pr-answer" style="font:400 14px/1.7 Inter,sans-serif;color:var(--text);white-space:pre-wrap"></div>
-  </div>
-  <div class="mbtns" style="margin-top:16px;flex-wrap:wrap;gap:8px">
-    <button class="mc" onclick="practiceSpeak()"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;margin-right:4px"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 010 7"/></svg>Repeat</button>
-    <button class="mc" id="pr-reveal-btn" onclick="practiceReveal()">Reveal answer</button>
-    <button class="mc" onclick="practicePrev()">Previous</button>
-    <button class="mk" onclick="practiceNext()">Next question</button>
-    <button class="mc" onclick="stopPractice()" style="margin-left:auto">Done</button>
-  </div>
 </div></div>
 <div class="ov" id="mt-m"><div class="mdl"><h3 id="mt-m-title">Add Interview Round</h3>
 <div id="mt-m-person-fields">
@@ -2194,50 +2167,6 @@ async function addQ(){const t=$('mq').value.trim();if(!t){toast('Enter questions
     go('auth');
   }
 })();
-
-// ===== PRACTICE MODE =====
-// A mock interviewer: text-to-speech reads questions from the bank so the candidate can
-// rehearse out loud, then reveal the model answer. No backend, no audio capture needed.
-var _prQs = [], _prIdx = 0;
-function startPractice() {
-  if (!S || !S.questions || !S.questions.length) { toast('Add or generate some questions first', 1); return; }
-  _prQs = S.questions.filter(function(q){ return q && q.text; }).slice();
-  if (!_prQs.length) { toast('No questions to practice yet', 1); return; }
-  for (var i=_prQs.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=_prQs[i];_prQs[i]=_prQs[j];_prQs[j]=t; } // shuffle
-  _prIdx = 0;
-  showM('practice-m');
-  practiceRender();
-}
-function practiceRender() {
-  var q = _prQs[_prIdx]; if (!q) return;
-  $('pr-progress').textContent = 'Question ' + (_prIdx+1) + ' of ' + _prQs.length;
-  $('pr-question').textContent = q.text;
-  $('pr-answer-wrap').style.display = 'none';
-  $('pr-answer').textContent = q.answer || 'No prepared answer for this one yet — try answering from scratch.';
-  $('pr-reveal-btn').textContent = 'Reveal answer';
-  setTimeout(practiceSpeak, 250);
-}
-function practiceSpeak() {
-  try {
-    if (!('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    var q = _prQs[_prIdx]; if (!q) return;
-    var u = new SpeechSynthesisUtterance(q.text);
-    u.rate = 0.98; u.pitch = 1.0;
-    speechSynthesis.speak(u);
-  } catch(e) {}
-}
-function practiceReveal() {
-  var w = $('pr-answer-wrap');
-  if (w.style.display === 'none') { w.style.display = 'block'; $('pr-reveal-btn').textContent = 'Hide answer'; }
-  else { w.style.display = 'none'; $('pr-reveal-btn').textContent = 'Reveal answer'; }
-}
-function practiceNext() {
-  if (_prIdx < _prQs.length - 1) { _prIdx++; practiceRender(); }
-  else { toast('That was the last question — nice work'); stopPractice(); }
-}
-function practicePrev() { if (_prIdx > 0) { _prIdx--; practiceRender(); } }
-function stopPractice() { try { speechSynthesis.cancel(); } catch(e){} hideM('practice-m'); }
 
 // ===== LIVE MODE =====
 var liveWS = null;
