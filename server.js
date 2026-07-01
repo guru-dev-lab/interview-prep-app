@@ -3070,7 +3070,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       verified = topMatches[0];
     } else {
       const tVerify = Date.now();
-      verified = await verifyMatch(q, topMatches, ws._sessionContext);
+      verified = await verifyMatch(q, topMatches, ws._sessionContext, 1500); // tighter timeout — fail fast to the answer
       console.log(`[TIMING] verifyMatch: ${Date.now() - tVerify}ms`);
     }
 
@@ -3455,7 +3455,7 @@ wss.on('connection', (ws) => {
         let lastAiExtractedQ = ''; // prevent re-firing same extracted question
         let recentDetectedQs = []; // last 5 detected questions for fuzzy de-dup
         let aiExtractTimer = null; // debounce timer — wait for speech to settle before extracting
-        const AI_EXTRACT_DELAY = 1200; // 1.2s after last speechFinal before AI fires
+        const AI_EXTRACT_DELAY = 800; // wait after last speechFinal before AI fires (trimmed for speed)
         let userIsSpeaking = false; // Volume-based: true when user is talking into mic
         let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
@@ -4176,7 +4176,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     }
 
     // Use in-memory Q&A bank — include up to 15 answered questions for rich context
-    const answeredQs = (ws._sessionQuestions || []).filter(q => q.answer).slice(0, 15);
+    const answeredQs = (ws._sessionQuestions || []).filter(q => q.answer).slice(0, 8);
     const bankContext = answeredQs.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
 
     // User's recent speech for conversational context
@@ -4326,10 +4326,8 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
       console.error('[Follow-up prediction error]', e.message);
     });
 
-    // Fire-and-forget: coaching — extra points the candidate should ALSO hit to make this land
-    generateCoachingPoints(questionText, answer, session, ws, sessionId, questionId).catch(e => {
-      console.error('[Coaching points error]', e.message);
-    });
+    // (Removed) coaching "Also hit" points — off-mission (lectured instead of saying what to say)
+    // and an extra background AI call per answer. Dropped for speed and focus.
   } catch (e) {
     console.error('[Live Answer Error]', e.message);
     logEvent('error', { where: 'generateLiveAnswer', msg: e.message });
@@ -4362,27 +4360,8 @@ async function generateFollowUps(questionText, answerText, session, ws, sessionI
     };
     ws.send(JSON.stringify(followUpMsg));
     broadcastToSession(sessionId, followUpMsg, ws);
-
-    // PRE-GENERATE answers for the top predicted follow-ups so they appear INSTANTLY
-    // if the interviewer actually asks one. Background, capped, flag-gated for cost.
-    if (process.env.PREGEN_FOLLOWUPS !== '0' && ws) {
-      (async () => {
-        const stylePrompt = getStylePrompt(session.answer_style);
-        for (const fq of followUps.slice(0, 2)) {
-          if (typeof fq !== 'string' || fq.length < 8) continue;
-          ws._pregen = ws._pregen || [];
-          if (ws._pregen.some(p => stringSimilarity.compareTwoStrings(p.q.toLowerCase(), fq.toLowerCase()) > 0.8)) continue;
-          try {
-            const um = `RESUME:\n${session.resume || ''}\n\nJD:\n${session.jd || ''}\n\nQuestion:\n${fq}\n\nAnswer the question naturally, headline first. Only reference companies or roles if the question asks about experience.`;
-            const ans = await callClaude(stylePrompt, um, 500, MODEL_HAIKU);
-            ws._pregen = ws._pregen || [];
-            ws._pregen.push({ q: fq, answer: ans, ts: Date.now() });
-            if (ws._pregen.length > 6) ws._pregen.shift();
-            logEvent('pregen_ready', { sessionId, q: fq.substring(0, 60) });
-          } catch (e) {}
-        }
-      })();
-    }
+    // (Removed) pre-generation of follow-up answers — it fired 2 background AI calls per
+    // answer and never actually hit (pregen_hits=0), just clogging the pipe. Dropped for speed.
   } catch (parseErr) {
     console.error('[Follow-up parse error]', parseErr.message);
   }
