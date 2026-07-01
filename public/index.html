@@ -675,6 +675,13 @@ body.canvas-open .prep-content{margin-right:480px}
       <button class="btn" onclick="loadAdminUsers()"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> Reload Users</button>
     </div>
     <div class="admin-section">
+      <h2 style="display:flex;align-items:center;justify-content:space-between">
+        <span><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:6px"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Live health (last hour)</span>
+        <button class="btn" onclick="loadAdminHealth()" style="padding:5px 12px;font-size:12px"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-1px;margin-right:4px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>Refresh</button>
+      </h2>
+      <div id="admin-health"></div>
+    </div>
+    <div class="admin-section">
       <h2><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/></svg> Users</h2>
       <div id="admin-bulk-bar" style="display:none;padding:10px 14px;margin-bottom:8px;background:var(--surface2);border:1px solid var(--glass-border);border-radius:10px;align-items:center;gap:10px;flex-wrap:wrap">
         <span id="admin-bulk-count" style="font:700 13px Inter,sans-serif;color:var(--accent3)">0 selected</span>
@@ -3684,6 +3691,56 @@ async function showTranscripts() {
   }
 }
 
+// Delivery coaching — computed entirely from the saved transcript (candidate = [You] lines).
+function deliveryCardHTML(lines, durationMin) {
+  try {
+    var strip = function(t){ return (t || '').replace(/^\[(You|Echo)\]\s*/i, '').trim(); };
+    var cand = lines.filter(function(l){ return l && (l.isUser || /^\[You\]/i.test(l.text || '')); }).map(function(l){ return strip(l.text); }).filter(Boolean);
+    var intv = lines.filter(function(l){ return l && !l.isUser && !l.isEcho && !/^\[(You|Echo)\]/i.test(l.text || ''); }).map(function(l){ return strip(l.text); }).filter(Boolean);
+    if (!cand.length) return '';
+    var candText = cand.join(' ');
+    var wc = function(s){ return (s.match(/\b[\w']+\b/g) || []).length; };
+    var candWords = wc(candText), intvWords = wc(intv.join(' '));
+    var talk = (candWords + intvWords) ? Math.round(candWords / (candWords + intvWords) * 100) : 0;
+    var fillerRe = /\b(um+|uh+|er+|like|you know|sort of|kind of|basically|actually|literally|i mean|right)\b/gi;
+    var fillers = (candText.match(fillerRe) || []).length;
+    var fillerRate = candWords ? (fillers / candWords * 100) : 0;
+    var turns = cand.length;
+    var perTurn = turns ? Math.round(candWords / turns) : 0;
+    var wpm = (durationMin && durationMin > 0) ? Math.round(candWords / durationMin) : null;
+    // Prep usage: how much of each prepared answer's vocabulary showed up in what you said
+    var used = 0, totalPrep = 0;
+    if (typeof S !== 'undefined' && S && S.questions) {
+      var candSet = {}; (candText.toLowerCase().match(/\b[a-z]{4,}\b/g) || []).forEach(function(w){ candSet[w] = 1; });
+      S.questions.forEach(function(q){
+        if (!q.answer || q.answer.length < 20) return;
+        totalPrep++;
+        var aw = (q.answer.toLowerCase().match(/\b[a-z]{4,}\b/g) || []);
+        var uniq = {}; aw.forEach(function(w){ uniq[w] = 1; });
+        var keys = Object.keys(uniq); if (!keys.length) return;
+        var hit = 0; keys.forEach(function(w){ if (candSet[w]) hit++; });
+        if (hit / keys.length > 0.35) used++;
+      });
+    }
+    var fillerTint = fillerRate > 6 ? '#F87171' : (fillerRate > 3 ? '#FBBF24' : '#34D399');
+    function tile(val, label, tint) {
+      return '<div style="background:var(--surface2);border:1px solid var(--glass-border);border-radius:10px;padding:10px 12px;flex:1;min-width:92px">'
+        + '<div style="font:700 18px Inter,sans-serif;color:' + (tint || 'var(--text)') + '">' + val + '</div>'
+        + '<div style="font:500 10px Inter,sans-serif;color:var(--text3);margin-top:2px">' + label + '</div></div>';
+    }
+    var h = '<div style="margin-bottom:14px">';
+    h += '<div style="font:700 10px Inter,sans-serif;text-transform:uppercase;letter-spacing:1px;color:var(--accent2);margin-bottom:8px">Your delivery</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    h += tile(talk + '%', 'You talked', talk >= 40 && talk <= 70 ? '#34D399' : '#FBBF24');
+    h += tile(fillers + ' (' + fillerRate.toFixed(1) + '%)', 'Filler words', fillerTint);
+    h += tile(perTurn + ' wds', 'Avg per answer', perTurn > 90 ? '#FBBF24' : 'var(--text)');
+    if (wpm) h += tile('≈' + wpm, 'Words/min', wpm > 190 ? '#FBBF24' : (wpm < 110 ? '#FBBF24' : '#34D399'));
+    if (totalPrep) h += tile(used + '/' + totalPrep, 'Prep drawn on');
+    h += '</div></div>';
+    return h;
+  } catch (e) { return ''; }
+}
+
 function renderTranscriptList(transcripts) {
   var byDate = {};
   transcripts.forEach(function(t) {
@@ -3727,6 +3784,9 @@ function renderTranscriptList(transcripts) {
 
       // Expandable area with tabs: Transcript | Report
       html += '<div class="tx-detail" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--glass-border)">';
+
+      // Delivery coaching card (computed from the transcript)
+      html += deliveryCardHTML(lines, duration);
 
       // Tab bar
       html += '<div style="display:flex;gap:6px;margin-bottom:12px">';
@@ -3928,7 +3988,63 @@ function classifyQuestionFE(text) {
 function loadAdminPanel() {
   if (!USER || !USER.isAdmin) { go('home'); return; }
   loadAdminStats();
+  loadAdminHealth();
   loadAdminUsers();
+}
+
+async function loadAdminHealth() {
+  var box = $('admin-health'); if (!box) return;
+  box.innerHTML = '<div style="color:var(--text3);font:400 13px Inter,sans-serif;padding:8px">Loading…</div>';
+  try {
+    var r = await apiFetch('/api/admin/health');
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'failed');
+    var c = d.lastHour ? (d.lastHour.counts || {}) : {};
+    function tile(label, val, tint) {
+      return '<div style="background:var(--surface2);border:1px solid var(--glass-border);border-radius:10px;padding:12px 14px;min-width:110px">'
+        + '<div style="font:700 22px Inter,sans-serif;color:' + (tint || 'var(--text)') + '">' + val + '</div>'
+        + '<div style="font:500 11px Inter,sans-serif;color:var(--text3);margin-top:2px">' + label + '</div></div>';
+    }
+    var errCount = (d.lastHour && d.lastHour.errors) ? d.lastHour.errors.length : 0;
+    var h = '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">';
+    h += tile('Questions detected', c.detect || 0);
+    h += tile('Answers generated', c.answer || 0);
+    h += tile('Avg answer', (d.lastHour && d.lastHour.avgAnswerMs != null ? d.lastHour.avgAnswerMs + ' ms' : '—'));
+    h += tile('Avg first token', (d.lastHour && d.lastHour.avgTtftMs != null ? d.lastHour.avgTtftMs + ' ms' : '—'));
+    h += tile('Answers grown', c.grow || 0);
+    h += tile('Pre-gen hits', c.pregen_hit || 0);
+    h += tile('Learned Qs', c.learn || 0);
+    h += tile('Errors', errCount, errCount ? '#F87171' : '#34D399');
+    h += tile('Live now', d.activeLiveSessions || 0);
+    h += '</div>';
+    // Flags + models
+    var f = d.flags || {};
+    h += '<div style="font:500 12px Inter,sans-serif;color:var(--text3);margin-bottom:10px">'
+      + 'Streaming: <b style="color:' + (f.streamLiveAnswers ? '#34D399' : '#F87171') + '">' + (f.streamLiveAnswers ? 'on' : 'off') + '</b> · '
+      + 'Grow: <b style="color:' + (f.growAnswers ? '#34D399' : '#F87171') + '">' + (f.growAnswers ? 'on' : 'off') + '</b> · '
+      + 'uptime ' + Math.round((d.uptimeSec || 0) / 60) + ' min · '
+      + 'sonnet=' + esc((d.models && d.models.sonnet) || '?') + '</div>';
+    // Errors
+    if (errCount) {
+      h += '<div style="font:700 11px Inter,sans-serif;color:#F87171;margin:6px 0">Recent errors</div>';
+      d.lastHour.errors.slice(-8).forEach(function(e) {
+        h += '<div style="font:400 12px/1.5 monospace;color:var(--text2);background:rgba(248,113,113,.06);border-radius:6px;padding:4px 8px;margin-bottom:4px">' + esc((e.where || '') + ': ' + (e.msg || '')) + '</div>';
+      });
+    }
+    // Recent event feed
+    var recent = (d.recent || []).slice(-14).reverse();
+    if (recent.length) {
+      h += '<div style="font:700 11px Inter,sans-serif;color:var(--text3);margin:12px 0 6px">Recent activity</div>';
+      recent.forEach(function(e) {
+        var tm = new Date(e.t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        var extra = e.q ? ' — ' + esc(e.q) : (e.ms != null ? ' — ' + e.ms + 'ms' : '');
+        h += '<div style="display:flex;gap:8px;font:400 12px Inter,sans-serif;color:var(--text3);margin-bottom:3px"><span style="min-width:64px;color:var(--text4)">' + tm + '</span><span style="min-width:90px;color:var(--accent2);font-weight:600">' + esc(e.type) + '</span><span style="color:var(--text2)">' + extra + '</span></div>';
+      });
+    } else {
+      h += '<div style="color:var(--text4);font:400 12px Inter,sans-serif;padding:8px">No activity yet — run a live interview and it\'ll show here.</div>';
+    }
+    box.innerHTML = h;
+  } catch (e) { box.innerHTML = '<div style="color:var(--red);font:400 13px Inter,sans-serif;padding:8px">Health failed: ' + esc(e.message) + '</div>'; }
 }
 
 async function loadAdminStats() {
