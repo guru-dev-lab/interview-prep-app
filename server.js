@@ -2839,6 +2839,17 @@ function isLowValueQuestion(text) {
   return false;
 }
 
+// Does the buffer already contain a COMPLETE question? Used for eager detection so we can
+// answer without waiting for the interviewer to pause (e.g. a video that never stops talking).
+function looksLikeCompleteQuestion(buf) {
+  const t = (buf || '').trim();
+  const words = t.split(/\s+/).length;
+  if (words < 4) return false;
+  if (/\?\s*$/.test(t)) return true; // punctuate=true adds '?' at question end
+  if (words >= 6 && /^(can you|could you|tell me|what|how|why|when|where|which|walk me through|describe|explain|do you|have you|would you|give me)\b/i.test(t)) return true;
+  return false;
+}
+
 function classifyQuestion(text) {
   const t = text.toLowerCase();
   if (/(tell me about yourself|background|experience|walk me through your)/.test(t)) return 'Background';
@@ -3459,6 +3470,7 @@ wss.on('connection', (ws) => {
         let userIsSpeaking = false; // Volume-based: true when user is talking into mic
         let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
+        let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
@@ -3629,39 +3641,44 @@ wss.on('connection', (ws) => {
               console.log(`[DIAG-DG] Ch1 transcript: "${text.substring(0,60)}" isFinal=${isFinal} speechFinal=${speechFinal}`);
               if (!text.trim()) return;
 
+              // Commit an interviewer utterance: echo-check, push to transcript, schedule detection.
+              // `eager` = fired mid-stream on a complete question (short debounce); else = on a pause.
+              const commitInterviewer = (fullUtterance, eager) => {
+                const isEcho = isEchoOfUser(fullUtterance);
+                ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true, isEcho: isEcho }));
+                if (!isEcho) broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
+                transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
+                ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+                if (!isEcho) {
+                  if (aiExtractTimer) clearTimeout(aiExtractTimer);
+                  aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
+                  setTimeout(() => recentMatchedIds.clear(), 5000);
+                }
+              };
+
               if (isFinal) {
                 resetIdleTimer();
                 interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
                 ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
+                // EAGER: a complete question is already on the table — don't wait for a pause.
+                // Rate-limited so continuous speech commits at most ~once/1.5s; dedup handles repeats.
+                if (process.env.EAGER_DETECT !== '0' && looksLikeCompleteQuestion(interviewerBuffer) && Date.now() - lastCommitTs > 1500) {
+                  lastCommitTs = Date.now();
+                  const fu = interviewerBuffer.trim();
+                  interviewerBuffer = '';
+                  commitInterviewer(fu, true);
+                }
               } else {
                 const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
                 ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
               }
 
+              // Pause detected — commit whatever's left (the normal path for real interviews).
               if (speechFinal && interviewerBuffer.trim()) {
+                lastCommitTs = Date.now();
                 const fullUtterance = interviewerBuffer.trim();
                 interviewerBuffer = '';
-                const wasFired = questionFiredForBuffer;
-                questionFiredForBuffer = false;
-
-                // ECHO CHECK: Compare this Ch1 transcript against recent Ch2 (user mic) transcripts.
-                // If it matches, this is the user's own voice echoing through system audio.
-                // Still send it to the UI as transcript (for display) but SKIP question detection.
-                const isEcho = isEchoOfUser(fullUtterance);
-
-                ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true, isEcho: isEcho }));
-                if (!isEcho) {
-                  // Only broadcast to co-pilot / canvas if it's real interviewer speech
-                  broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
-                }
-                transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
-                ws._recentTranscript = transcript.slice(-6).map(t => t.text);
-
-                if (!isEcho && !wasFired) {
-                  if (aiExtractTimer) clearTimeout(aiExtractTimer);
-                  aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY);
-                }
-                if (!isEcho) setTimeout(() => recentMatchedIds.clear(), 5000);
+                commitInterviewer(fullUtterance, false);
               }
             },
             (err) => {
