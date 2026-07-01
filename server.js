@@ -3021,6 +3021,11 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       ws.send(JSON.stringify(matchMsg));
       broadcastToSession(sessionId, matchMsg, ws);
       recentMatchedIds.add(verified.question.id);
+      // Track as active thread so continued detail can grow it on-screen.
+      // _prepped:true → growth updates the display but never overwrites the bank answer in the DB.
+      if (verified.question.answer) {
+        ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: verified.question.answer, _grows: 0, _prepped: true };
+      }
       return verified.question.id;
     }
     // Haiku said NONE — keyword matches were false positives, create new question
@@ -3356,7 +3361,12 @@ wss.on('connection', (ws) => {
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
-          if (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN) return;
+          const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
+          const growEnabled = process.env.GROW_ANSWERS !== '0';
+          // While cooling down we still run detection, but ONLY to catch the interviewer
+          // elaborating on the answer already on screen (so we can grow it). If growth is
+          // off or nothing is active, keep the original cheap early-return.
+          if (inCooldown && (!growEnabled || !ws._activeAnswer)) return;
 
           // VOLUME GUARD: If user is currently speaking or JUST stopped speaking,
           // skip extraction — this is the user's answer, not the interviewer's question.
@@ -3425,6 +3435,15 @@ wss.on('connection', (ws) => {
               return;
             }
 
+            // CONTINUATION: the interviewer is elaborating on the SAME question we're already
+            // answering → grow that answer in place (append), instead of a new card. This
+            // bypasses the recent-question dedup and the cooldown on purpose.
+            if (growEnabled && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
+              console.log('[Grow] Continuation detected — extending active answer');
+              growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
+              return;
+            }
+
             // Don't re-fire if this is the same or a subset of a recently detected question
             const qLow = q.toLowerCase();
             for (var ri = 0; ri < recentDetectedQs.length; ri++) {
@@ -3436,6 +3455,10 @@ wss.on('connection', (ws) => {
                 return;
               }
             }
+            // Genuinely different question — respect the cooldown so we don't refocus onto
+            // side-topics and throw junk on screen while the candidate is still answering.
+            if (inCooldown) { console.log('[AI Auto-Detect] Different question during cooldown — holding'); return; }
+
             lastAiExtractedQ = q;
             recentDetectedQs.push(q);
             if (recentDetectedQs.length > 5) recentDetectedQs.shift();
@@ -3976,6 +3999,58 @@ app.post('/api/sessions/:id/canvas-ask', authMiddleware, async (req, res) => {
   }
 });
 
+// Is `q` a continuation of the question we're already answering (same thread)?
+// Used to decide GROW (extend the current answer) vs a brand-new question.
+function isSameThread(q, active) {
+  if (!active || !active.questionText) return false;
+  const a = String(active.questionText).toLowerCase().trim();
+  const b = String(q).toLowerCase().trim();
+  if (!a || !b || a === b) return false;              // identical = nothing new to add
+  if (a.includes(b) || b.includes(a)) return true;    // one extends the other
+  return stringSimilarity.compareTwoStrings(a, b) >= 0.45; // clearly related topic
+}
+
+// GROW: the interviewer added detail to the same question → append 1–2 new sentences to
+// the answer already on screen. Append-only by construction (we keep the existing text
+// byte-for-byte and tack the model's new sentences on), so nothing the candidate is
+// mid-sentence on ever changes. Uses the session's answer-style TEMPLATE, same as normal
+// answers. Capped in count and length so the overlay never overflows.
+async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
+  try {
+    if (!active || !active.id) return;
+    active._grows = active._grows || 0;
+    if (active._grows >= 3) return;                       // cap extensions per question
+    if ((active.answer || '').length > 700) return;       // cap total length (overlay space)
+    if ((active.answer || '').trim().length < 4) return;  // nothing to extend yet
+
+    const session = ws._sessionContext || {};
+    const stylePrompt = getStylePrompt(session.answer_style); // SAME template as normal answers
+    const system = stylePrompt + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble. Just the next short, speakable sentence(s).';
+    const userMsg = `QUESTION (now fuller):\n${fullerQuestion}\n\nANSWER ALREADY GIVEN (do NOT repeat any of this):\n${active.answer}\n\nOutput ONLY the additional sentence(s) to append:`;
+
+    let addition = '';
+    try { addition = (await callClaude(system, userMsg, 200, MODEL_HAIKU)).trim(); } catch (e) { return; }
+    addition = addition.replace(/^["']|["']$/g, '').trim();
+    if (!addition || addition.length < 4) return;
+
+    // Append-only: keep existing text exactly, add the new part.
+    const full = (active.answer || '').replace(/\s+$/, '') + ' ' + addition;
+    active.answer = full;
+    active.questionText = fullerQuestion;
+    active._grows++;
+
+    // Persist only for answers we generated live — never overwrite a user's prepped bank answer.
+    if (active.id && !active._prepped) {
+      pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [full, active.id]).catch(() => {});
+    }
+
+    const msg = { type: 'live_answer', questionId: active.id, questionText: active.questionText, answer: full, isNew: false, grew: true };
+    try { ws.send(JSON.stringify(msg)); } catch (e) {}
+    broadcastToSession(sessionId, msg, ws);
+    console.log(`[Grow] Extended answer for Q ${active.id} (extension #${active._grows})`);
+  } catch (e) { console.error('[Grow]', e.message); }
+}
+
 // Generate answer for live question — questionId is the EXISTING DB row from fastMatchAndRespond
 async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId, forceNavigate) {
   try {
@@ -4006,7 +4081,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
 
     // Use the full ANSWER_PROMPT for strategic framing — not a watered-down version
     // Add a speed note for live context + technical override when needed
-    const COMMON_LIVE_RULES = `\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`;
+    const COMMON_LIVE_RULES = `\n\nHEADLINE-FIRST: Your FIRST sentence must be a direct, immediately-speakable answer to the question — something the candidate can start saying out loud right away. Put the supporting detail AFTER that. Never open with preamble or setup.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`;
 
     let liveAddendum;
     if (isTechnical) {
@@ -4101,6 +4176,9 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
       pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, questionId])
         .catch(e => console.error('[Update answer error]', e.message));
     }
+
+    // Mark this as the active answer thread so continued interviewer detail grows THIS answer.
+    ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: false };
 
     // Send answer to client with the SAME questionId the client already knows about
     const liveAnswerMsg = {
