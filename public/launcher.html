@@ -51,13 +51,6 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 .s-info{flex:1;min-width:0}
 .session-item .s-company{font:600 13px Inter,sans-serif;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .session-item .s-role{font:400 11px Inter,sans-serif;color:#64748b;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
-.jobscout-card{padding:12px 14px;border:1px solid rgba(16,185,129,.35);border-radius:12px;background:linear-gradient(135deg,rgba(16,185,129,.10),rgba(6,182,212,.08));cursor:pointer;text-align:left;transition:all .2s ease;display:flex;align-items:center;gap:12px}
-.jobscout-card:hover{border-color:rgba(16,185,129,.6);background:linear-gradient(135deg,rgba(16,185,129,.16),rgba(6,182,212,.14));transform:translateY(-1px);box-shadow:0 4px 14px rgba(6,182,212,.18)}
-.jobscout-card:active{transform:translateY(0)}
-.jobscout-card .js-avatar{width:36px;height:36px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#10B981,#06B6D4);color:#fff}
-.jobscout-card .s-company{font:600 13px Inter,sans-serif;color:#e2e8f0}
-.jobscout-card .s-role{font:400 11px Inter,sans-serif;color:#7dd3c0;margin-top:3px}
-.jobscout-card .js-arrow{color:#10B981;flex-shrink:0;margin-left:auto}
 .s-role-icon{opacity:.5;flex-shrink:0}
 .s-avatar-img{width:100%;height:100%;object-fit:contain;border-radius:8px;padding:4px}
 .s-avatar-letter{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
@@ -103,18 +96,7 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 
     <!-- Step 2: Pick Session -->
     <div id="step-sessions" class="step">
-      <!-- Xhire Suite: Job Scout entry (opens ScoutPilot) -->
-      <div class="jobscout-card" onclick="openJobScout()" title="Find your next role with Job Scout">
-        <div class="js-avatar">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        </div>
-        <div class="s-info">
-          <div class="s-company">Job Scout</div>
-          <div class="s-role">Find &amp; track your next role</div>
-        </div>
-        <svg class="js-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </div>
-      <div class="sub" style="margin-top:16px">Select a session:</div>
+      <div class="sub">Select a session:</div>
       <div id="session-list" class="sessions"></div>
       <button class="back-btn" onclick="showStep('step-login')">&larr; Back</button>
     </div>
@@ -131,19 +113,6 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 <script>
 var SERVER = '';
 var authToken = '';
-// Xhire Suite — Job Scout (ScoutPilot). Phase 2 will switch this to the
-// same-domain '/jobs' proxy with JWT SSO; the xhire_token param is passed
-// now so SSO works automatically once ScoutPilot validates it.
-var JOBS_URL = 'https://web-production-e1ffee.up.railway.app';
-function openJobScout() {
-  var sep = JOBS_URL.indexOf('?') > -1 ? '&' : '?';
-  var url = JOBS_URL + (authToken ? sep + 'xhire_token=' + encodeURIComponent(authToken) : '');
-  if (window.electronAPI && window.electronAPI.loadCanvas) {
-    window.electronAPI.loadCanvas(url);
-  } else {
-    window.location.href = url;
-  }
-}
 var userId = '';
 var GOOGLE_CLIENT_ID = '';
 
