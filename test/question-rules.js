@@ -41,8 +41,21 @@ const NOT_QUESTIONS = [
   'And then after that we moved the reports to Tableau',
   'Thanks so much for your time today',
 ];
+// questionPartOf / cleanQuestionText live outside the block — grab them by name from the same source
+function grab(name) { const i = src.indexOf('function ' + name + '('); let d = 0, j = src.indexOf('{', i); for (let k = j; k < src.length; k++) { if (src[k] === '{') d++; else if (src[k] === '}') { d--; if (!d) return src.slice(i, k + 1); } } }
+const questionPartOf = new Function(block + grab('cleanQuestionText') + grab('questionPartOf') + '\nreturn questionPartOf;')();
 let fail = 0;
 for (const q of QUESTIONS) if (!isQuestion(q)) { fail++; console.log('MISSED question :', q); }
 for (const q of NOT_QUESTIONS) if (isQuestion(q)) { fail++; console.log('FALSE question  :', q); }
+// Fast route: clear interviewer questions come back (with their context), everything else → null (AI route decides)
+const FAST = [
+  ['How would you speed up a slow query in our environment?', 'How would you speed up a slow query in our environment?'],
+  ['A lot of our clients use Salesforce. How comfortable are you with it?', 'A lot of our clients use Salesforce. How comfortable are you with it?'],
+  ['Okay. So how would you handle a missed deadline?', 'How would you handle a missed deadline?'],
+  ['I built the dashboards in Power BI for our regional team.', null],
+  ['Thanks for joining again.', null],
+  ['Great, so what does the team structure look like for this role?', 'What does the team structure look like for this role?'],
+];
+for (const [inp, want] of FAST) { const got = questionPartOf(inp); if ((got === null) !== (want === null) || (want && got.toLowerCase() !== want.toLowerCase())) { fail++; console.log('FAST ROUTE wrong:', inp, '→', got); } }
 console.log(fail ? `${fail} FAILED` : `ALL PASS (${QUESTIONS.length} questions caught, ${NOT_QUESTIONS.length} non-questions rejected)`);
 process.exit(fail ? 1 : 0);

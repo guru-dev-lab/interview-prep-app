@@ -2104,6 +2104,11 @@ function rAns(t){
       continue;
     }
     if(inCode){codeLines.push(line);continue;}
+    // Live answer contract: ↳ employer line = dim + skippable; ▸ = story heading
+    var empM=line.match(/^\s*↳\s*(.*)$/);
+    if(empM){h+='<div class="ln xh-emp" style="opacity:.62;font-style:italic;border-left:2px solid rgba(148,163,184,.55);padding:2px 0 2px 8px;margin-top:6px">'+processLine(empM[1])+'</div>';continue;}
+    var headM=line.match(/^\s*▸\s*(.*)$/);
+    if(headM){h+='<div class="xh-emp-head" style="font:700 10px Inter,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#34D399;margin:0 0 3px">'+esc(headM[1])+'</div>';continue;}
     // STAR section labels — render as colored badges
     var starMatch=line.match(/^\*?\*?(Situation|Action|Result|Context|Task)\s*[:—\-]\s*/i);
     if(starMatch){
@@ -2953,6 +2958,11 @@ function formatCanvasAnswer(text) {
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
+    // Live answer contract (server LIVE ANSWER COMPOSER): ↳ employer line = dim + skippable; ▸ = story heading
+    var empM = line.match(/^\s*↳\s*(.*)$/);
+    if (empM) { closeList(); html += '<div class="xh-emp" style="opacity:.62;font-style:italic;border-left:2px solid rgba(148,163,184,.55);padding:2px 0 2px 8px;margin-top:6px">' + processInline(empM[1]) + '</div>'; continue; }
+    var headM = line.match(/^\s*▸\s*(.*)$/);
+    if (headM) { closeList(); html += '<div class="xh-emp-head" style="font:700 10px Inter,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#34D399;margin:0 0 3px">' + esc(headM[1]) + '</div>'; continue; }
 
     // Bullet points
     var bulletMatch = line.match(/^\s*[-*•]\s+(.+)/);
@@ -3556,6 +3566,11 @@ function formatPopOutAnswer(text) {
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
+    // Live answer contract: ↳ employer line = dim + skippable; ▸ = story heading
+    var empM = line.match(/^\s*↳\s*(.*)$/);
+    if (empM) { html += '<div class="xh-emp" style="opacity:.62;font-style:italic;border-left:2px solid rgba(148,163,184,.55);padding:2px 0 2px 8px;margin-top:6px">' + esc(empM[1]).replace(/`([^`]+)`/g, '<code>$1</code>') + '</div>'; continue; }
+    var headM = line.match(/^\s*▸\s*(.*)$/);
+    if (headM) { html += '<div class="xh-emp-head" style="font:700 10px Inter,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#34D399;margin:0 0 3px">' + esc(headM[1]) + '</div>'; continue; }
     var processed = esc(line).replace(/`([^`]+)`/g, '<code>$1</code>');
     if (line.trim() === '') html += '<div class="po-lb"></div>';
     else html += '<div class="po-ln">' + processed + '</div>';

@@ -1,0 +1,21 @@
+Senior Data Analyst — Keystone Logistics (Hybrid, Chicago)
+
+About us: Keystone runs 40 regional warehouses and a fleet of 600 trucks moving freight for retailers across the Midwest. Our analytics team of six supports operations, finance and sales, and we are rebuilding our reporting on Snowflake.
+
+What you'll do
+- Own reporting and analysis for warehouse operations: throughput, dock-to-stock time, labor productivity, on-time shipments and claims.
+- Build and maintain data models in Snowflake and dbt; improve performance of slow queries over large shipment and inventory tables.
+- Partner with the demand planning team on weekly demand forecasts by warehouse and customer, and track forecast accuracy.
+- Design Power BI dashboards for operations leaders and present insights monthly to the VP of Operations.
+- Investigate data issues end to end across our WMS, TMS and ERP sources and fix root causes, not symptoms.
+- Mentor two junior analysts and help set team standards for SQL, testing and documentation.
+
+What you bring
+- 4+ years in data analytics, ideally in logistics, supply chain, retail or operations.
+- Advanced SQL; hands-on Snowflake and dbt experience.
+- Strong Power BI (DAX, data modeling) skills.
+- Experience with forecasting concepts and measuring forecast accuracy (MAPE, bias).
+- Comfortable working independently in an environment where data is spread across several systems and documentation is thin.
+- Clear communicator who can explain analysis to operations managers and executives.
+
+Nice to have: Python, Airflow, experience with warehouse management systems, SnowPro certification.

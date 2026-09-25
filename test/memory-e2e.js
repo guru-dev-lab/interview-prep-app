@@ -88,7 +88,7 @@ Interviewer: Great. Here we use Snowflake to forecast demand for our forty wareh
       return call(a, ['Thanks for joining again.', 'How would you speed up a slow query in our environment?']); }],
     ['NEXT CALL, bank question', async a => { await call(a, call1, { waitMs: 6000 }); return call(a, ['Thanks for joining again.', 'Tell me about your Snowflake experience.']); }],
   ];
-  const RL_RESUME = `Ridwan Akanbi — Data Analyst, R&L Carriers (2022–present). Freight & operations reporting.
+  const RL_RESUME = `Ridwan Akanbi — Data Analyst, R&L Carriers (Mar 2022–present). Freight & operations reporting.
 - Build SQL and Power BI reporting on freight shipments, terminals and claims.
 - Reconcile data across legacy AS/400 tables and newer SQL Server marts.
 - Automated weekly terminal KPI pack (Excel → Power BI), saving ops managers ~6 hours/week.

@@ -387,9 +387,9 @@ function logEvent(type, data) {
   } catch (e) {}
 }
 
-function _callClaudeOnce(system, user, maxTokens, model) {
+function _callClaudeOnce(system, user, maxTokens, model, extras) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
+    const body = JSON.stringify(Object.assign({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }, extras || {}));
     const req = https.request({
       hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
       agent: anthropicAgent,
@@ -405,10 +405,10 @@ function _callClaudeOnce(system, user, maxTokens, model) {
 }
 
 // Retry on 'Overloaded' — up to 3 attempts with exponential backoff
-async function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET) {
+async function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET, extras) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      return await _callClaudeOnce(system, user, maxTokens, model);
+      return await _callClaudeOnce(system, user, maxTokens, model, extras);
     } catch (e) {
       if (e.message === 'Overloaded' && attempt < 3) {
         const delay = attempt * 1500; // 1.5s, 3s
@@ -426,9 +426,9 @@ async function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET) 
 // appear immediately instead of waiting for the whole completion.
 // SAFETY: on ANY error this rejects, and the caller falls back to buffered callClaude,
 // so behavior can never be worse than the non-streaming path.
-function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta) {
+function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta, extras) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ model, max_tokens: maxTokens, system, stream: true, messages: [{ role: 'user', content: user }] });
+    const body = JSON.stringify(Object.assign({ model, max_tokens: maxTokens, system, stream: true, messages: [{ role: 'user', content: user }] }, extras || {}));
     const req = https.request({
       hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
       agent: anthropicAgent,
@@ -445,6 +445,7 @@ function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta) {
       }
       let full = '';
       let sseBuffer = '';
+      const seenBlocks = []; let stopReason = '';
       res.setEncoding('utf8');
       res.on('data', chunk => {
         sseBuffer += chunk;
@@ -460,13 +461,25 @@ function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta) {
             if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
               const t = evt.delta.text || '';
               if (t) { full += t; try { onDelta(t); } catch (e) {} }
+            } else if (evt.type === 'content_block_start') {
+              seenBlocks.push(evt.content_block?.type || '?');
+            } else if (evt.type === 'message_delta' && evt.delta?.stop_reason) {
+              stopReason = evt.delta.stop_reason;
+            } else if (evt.type === 'message_start' && Array.isArray(system)) {
+              // Prompt caching check (live answers send system as blocks with a cache marker)
+              const u = evt.message?.usage || {};
+              console.log(`[Cache] ${model} input=${u.input_tokens} cached_read=${u.cache_read_input_tokens || 0} cache_write=${u.cache_creation_input_tokens || 0}`);
             } else if (evt.type === 'error') {
               reject(new Error(evt.error?.message || 'stream error'));
             }
           } catch (e) { /* ignore keep-alive / partial lines */ }
         }
       });
-      res.on('end', () => resolve(full));
+      res.on('end', () => {
+        if (!full) console.log(`[Stream] ${model} ended with NO text — stop_reason=${stopReason || 'none'} blocks=[${seenBlocks.join(',')}]`);
+        else if (Array.isArray(system)) console.log(`[Stream] ${model} blocks=[${seenBlocks.join(',')}] stop=${stopReason}`);
+        resolve(full);
+      });
     });
     req.on('error', reject);
     req.setTimeout(90000, () => { req.destroy(); reject(new Error('timeout')); });
@@ -477,11 +490,11 @@ function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta) {
 // Retry wrapper — only retries on Overloaded BEFORE any text has streamed, so we
 // never emit duplicate deltas. Once streaming has begun, an error rejects and the
 // caller falls back to the buffered path.
-async function callClaudeStream(system, user, maxTokens = 600, model = MODEL_SONNET, onDelta = () => {}) {
+async function callClaudeStream(system, user, maxTokens = 600, model = MODEL_SONNET, onDelta = () => {}, extras) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     let emitted = false;
     try {
-      return await _callClaudeStreamOnce(system, user, maxTokens, model, (t) => { emitted = true; onDelta(t); });
+      return await _callClaudeStreamOnce(system, user, maxTokens, model, (t) => { emitted = true; onDelta(t); }, extras);
     } catch (e) {
       if (e.message === 'Overloaded' && !emitted && attempt < 3) {
         await new Promise(r => setTimeout(r, attempt * 1500));
@@ -2151,6 +2164,8 @@ app.put('/api/sessions/:id/answer-style', authMiddleware, async (req, res) => {
     if (!style || !ANSWER_STYLES[style]) return res.status(400).json({ error: 'Invalid style' });
     const result = await pool.query('UPDATE sessions SET answer_style = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3 RETURNING id', [style, req.params.id, req.userId]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+    // A live call already running for this session picks up the new style on its NEXT answer (it caches the session).
+    (sessionClients.get(req.params.id) || new Set()).forEach(c => { if (c._sessionContext) c._sessionContext.answer_style = style; });
 
     // Generate a sample answer — pick a random question from this session
     const s = await pool.query('SELECT resume, jd FROM sessions WHERE id = $1', [req.params.id]);
@@ -2770,6 +2785,25 @@ function cleanQuestionText(text) {
   // Basic leading filler strip
   t = t.replace(/^(okay so[,:]?\s*|alright[,:]?\s*|so[,:]?\s*|now[,:]?\s*|um[,:]?\s*|uh[,:]?\s*|well[,:]?\s*|and[,:]?\s*|but[,:]?\s*|the next question is[,:]?\s*|let me ask you[,:]?\s*|here's (?:a|another) question[,:]?\s*|moving on[,:]?\s*|next[,:]?\s*)/i, '').trim();
   if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
+  return t;
+}
+
+// The question in an interviewer's line, or null if the line isn't clearly a question (then the AI route decides).
+// Short lines are kept whole (context like "A lot of our clients use Salesforce." matters); long ones are trimmed to
+// start at the first sentence that begins the question.
+function questionPartOf(text) {
+  let t = cleanQuestionText((text || '').trim());
+  // strip spoken lead-ins ("Okay. So…", "Great, so…") with the shared filler rule, keep the question's own casing
+  const leadRe = new RegExp(LEAD_FILLER_RE.source, 'i'); let prev;
+  do { prev = t; t = t.replace(leadRe, ''); } while (t !== prev && t);
+  if (t) t = t.charAt(0).toUpperCase() + t.slice(1);
+  if (!t || !isQuestion(t)) return null;
+  if (t.split(/\s+/).length <= 35) return t;
+  const sentences = t.split(/(?<=[.?!])\s+/);
+  for (let i = 0; i < sentences.length; i++) {
+    const tail = sentences.slice(i).join(' ');
+    if (isQuestion(sentences[i]) || (i === sentences.length - 1 && isQuestion(tail))) return tail;
+  }
   return t;
 }
 
@@ -3459,7 +3493,7 @@ wss.on('connection', (ws) => {
           // Load questions so canvas can handle what_should_i_say and canvas_question
           const [qResult, sResult] = await Promise.all([
             pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId]),
-            pool.query('SELECT resume, jd, company, role FROM sessions WHERE id = $1', [sessionId])
+            pool.query('SELECT resume, jd, company, role, answer_style FROM sessions WHERE id = $1', [sessionId])
           ]);
           sessionQuestions = qResult.rows;
           questionIndex = buildQuestionIndex(sessionQuestions);
@@ -3477,7 +3511,7 @@ wss.on('connection', (ws) => {
         // Load session questions + session context (cached for fast answer generation)
         const [qResult, sResult] = await Promise.all([
           pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId]),
-          pool.query('SELECT resume, jd, company, role FROM sessions WHERE id = $1', [sessionId])
+          pool.query('SELECT resume, jd, company, role, answer_style FROM sessions WHERE id = $1', [sessionId])
         ]);
         sessionQuestions = qResult.rows;
         questionIndex = buildQuestionIndex(sessionQuestions);
@@ -3532,6 +3566,67 @@ wss.on('connection', (ws) => {
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
         let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
         let ch1BufStartWall = null; // server time the current interviewer utterance started (shared clock)
+
+        // ONE door for an auto-detected question (both the fast route and the AI route): quality filter, continuation →
+        // grow, stay-silent, de-dup, cooldown, then match/answer. Only ever called with INTERVIEWER speech.
+        function fireDetectedQuestion(q, via) {
+          const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
+          const growEnabled = process.env.GROW_ANSWERS !== '0';
+
+          // Post-filter: even after AI extraction, run isQuestion() to catch false positives
+          if (!isQuestion(q)) {
+            console.log('[AI Auto-Detect] Post-filter rejected:', q.substring(0, 60));
+            return;
+          }
+
+          // CONTINUATION: the interviewer is elaborating on the SAME question we're already
+          // answering → grow that answer in place (append), instead of a new card. This
+          // bypasses the recent-question dedup and the cooldown on purpose.
+          if (growEnabled && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
+            console.log('[Grow] Continuation detected — extending active answer');
+            growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
+            return;
+          }
+
+          // STAY SILENT: don't clutter the overlay with clearly non-substantive interviewer
+          // talk (rapport, logistics, "does that make sense?", closing). Conservative + flagged.
+          if (process.env.STAY_SILENT !== '0' && isLowValueQuestion(q)) {
+            console.log('[Stay Silent] Skipping low-value question:', q.substring(0, 50));
+            logEvent('stay_silent', { sessionId, q: q.substring(0, 50) });
+            return;
+          }
+
+          // Don't re-fire if this is the same or a subset of a recently detected question
+          const qLow = q.toLowerCase();
+          for (var ri = 0; ri < recentDetectedQs.length; ri++) {
+            var prev = recentDetectedQs[ri].toLowerCase();
+            // Exact match, substring either way, or high similarity
+            if (qLow === prev || prev.includes(qLow) || qLow.includes(prev) ||
+                stringSimilarity.compareTwoStrings(qLow, prev) > 0.6) {
+              console.log('[AI Auto-Detect] Skipping duplicate of recent:', prev.substring(0, 50));
+              return;
+            }
+          }
+          // Genuinely different question — respect the cooldown so we don't refocus onto
+          // side-topics and throw junk on screen while the candidate is still answering.
+          if (inCooldown) { console.log('[AI Auto-Detect] Different question during cooldown — holding'); return; }
+
+          lastAiExtractedQ = q;
+          recentDetectedQs.push(q);
+          if (recentDetectedQs.length > 5) recentDetectedQs.shift();
+
+          console.log(`[AI Auto-Detect] (${via})`, q.substring(0, 60));
+          logEvent('detect', { sessionId, q: q.substring(0, 60) });
+          lastWsayMatchId = null;
+          recentMatchedIds.clear();
+          var qdMsg1 = { type: 'question_detected', text: q, source: 'auto' };
+          ws.send(JSON.stringify(qdMsg1));
+          broadcastToSession(sessionId, qdMsg1, ws);
+          const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
+          fastMatchAndRespond(q, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, rebuildIdx, false, false, true).then(newLastId => {
+            if (newLastId) { lastMatchedQId = newLastId; lastAutoMatchTime = Date.now(); }
+          });
+        }
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
@@ -3606,60 +3701,7 @@ wss.on('connection', (ws) => {
             if (!firstLine || firstLine.length < 10) return;
             // AI extraction already returns a clean question — just basic trim, skip redundant Haiku call
             const q = cleanQuestionText(firstLine);
-
-            // Post-filter: even after AI extraction, run isQuestion() to catch false positives
-            if (!isQuestion(q)) {
-              console.log('[AI Auto-Detect] Post-filter rejected:', q.substring(0, 60));
-              return;
-            }
-
-            // CONTINUATION: the interviewer is elaborating on the SAME question we're already
-            // answering → grow that answer in place (append), instead of a new card. This
-            // bypasses the recent-question dedup and the cooldown on purpose.
-            if (growEnabled && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
-              console.log('[Grow] Continuation detected — extending active answer');
-              growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
-              return;
-            }
-
-            // STAY SILENT: don't clutter the overlay with clearly non-substantive interviewer
-            // talk (rapport, logistics, "does that make sense?", closing). Conservative + flagged.
-            if (process.env.STAY_SILENT !== '0' && isLowValueQuestion(q)) {
-              console.log('[Stay Silent] Skipping low-value question:', q.substring(0, 50));
-              logEvent('stay_silent', { sessionId, q: q.substring(0, 50) });
-              return;
-            }
-
-            // Don't re-fire if this is the same or a subset of a recently detected question
-            const qLow = q.toLowerCase();
-            for (var ri = 0; ri < recentDetectedQs.length; ri++) {
-              var prev = recentDetectedQs[ri].toLowerCase();
-              // Exact match, substring either way, or high similarity
-              if (qLow === prev || prev.includes(qLow) || qLow.includes(prev) ||
-                  stringSimilarity.compareTwoStrings(qLow, prev) > 0.6) {
-                console.log('[AI Auto-Detect] Skipping duplicate of recent:', prev.substring(0, 50));
-                return;
-              }
-            }
-            // Genuinely different question — respect the cooldown so we don't refocus onto
-            // side-topics and throw junk on screen while the candidate is still answering.
-            if (inCooldown) { console.log('[AI Auto-Detect] Different question during cooldown — holding'); return; }
-
-            lastAiExtractedQ = q;
-            recentDetectedQs.push(q);
-            if (recentDetectedQs.length > 5) recentDetectedQs.shift();
-
-            console.log('[AI Auto-Detect]', q.substring(0, 60));
-            logEvent('detect', { sessionId, q: q.substring(0, 60) });
-            lastWsayMatchId = null;
-            recentMatchedIds.clear();
-            var qdMsg1 = { type: 'question_detected', text: q, source: 'auto' };
-            ws.send(JSON.stringify(qdMsg1));
-            broadcastToSession(sessionId, qdMsg1, ws);
-            const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-            fastMatchAndRespond(q, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, rebuildIdx, false, false, true).then(newLastId => {
-              if (newLastId) { lastMatchedQId = newLastId; lastAutoMatchTime = Date.now(); }
-            });
+            fireDetectedQuestion(q, 'ai');
           } catch (e) {
             // Timeout or error — silent, don't block
             console.log('[AI Auto-Detect] Skip:', e.message);
@@ -3728,7 +3770,11 @@ wss.on('connection', (ws) => {
                 if (!isEcho) refreshBridgesSoon(ws);
                 if (!isEcho) {
                   if (aiExtractTimer) clearTimeout(aiExtractTimer);
-                  aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
+                  // FAST ROUTE: the interviewer's own line is already a clear question → answer now (skips the 0.8 s wait +
+                  // ~0.6 s AI extraction). Unclear lines take the AI route exactly as before. FAST_DETECT=0 turns it off.
+                  const fastQ = process.env.FAST_DETECT !== '0' ? questionPartOf(fullUtterance) : null;
+                  if (fastQ) fireDetectedQuestion(fastQ, 'fast');
+                  else aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
                   setTimeout(() => recentMatchedIds.clear(), 5000);
                 }
               };
@@ -4341,7 +4387,7 @@ const BRIDGES_SYSTEM = `You prepare a job candidate for the rest of their interv
 Format, one per line (max 6 lines, most important first):
 THEY: <what they care about, paraphrased> → PROOF: <a specific real example from the candidate's resume or earlier answers — employer, project, number/result> → SAY IT AS: <one plain sentence in the candidate's own everyday words, with no words borrowed from the interviewer>
 Then one line: CLAIMS: <the candidate's own stated claims to stay consistent with (tools, years, level)>.
-Then one line: AVOID: <the interviewers' distinctive words and phrases, comma-separated — the labels and expressions they used for what they want or their situation, e.g. "dig in", "messy", "ownership">.
+Then one line: AVOID: <the interviewers' distinctive phrases for what they VALUE or how they describe things, comma-separated, e.g. "dig in", "messy", "ownership" — NOT concrete nouns like their tables, tools or team, which are fine to name>.
 Rules: proof comes ONLY from the candidate's resume or their own earlier answers; never invent employers, titles, dates, years, degrees or numbers; never say the candidate did the company's own use case. If nothing has been said about what they care about yet, output NONE.`;
 
 function refreshBridgesSoon(ws) {
@@ -4394,7 +4440,8 @@ USE THE CONVERSATION (everything said in this interview session is below the res
 - Stay CONSISTENT with what the candidate already said — the same tools, years, level and numbers. Build on it ("as I mentioned…" is fine); never contradict it; don't retell a story already told unless asked.
 - Use what the INTERVIEWER explained (their stack, use cases, problems) to pick WHICH of the candidate's experiences to lead with and to say how it transfers to their situation.
 - ADDRESS WHAT THEY CARE ABOUT: if anyone in this interview process — this call or an earlier one, the same or a different interviewer — said what they value, what worries them, or what their environment is like, and this question gives room for it, make the answer SHOW that quality through a matching situation from the candidate's OWN workplace (e.g. they said their data is hard to navigate → the candidate describes how their own environment is also messy and how they work through it before raising anything). Settle the concern without pointing at it — no "since you said…".
-- SHOW, DON'T ECHO: never reuse the interviewers' words or labels (their phrases, or tags like "ownership", "independent", "dig in") — if the BRIDGES list an AVOID line, none of those words may appear in the answer. Never restate their sentence, and never say "you mentioned" / "since you said". Prove the quality with what the candidate actually does, in the candidate's own everyday words (e.g. "I'd rather trace it back myself first" instead of "I dig in before escalating").
+- SHOW, DON'T ECHO: never borrow the interviewers' phrases for what they VALUE or how they describe things (tags like "ownership", "independent", "dig in", "messy") — if the BRIDGES list an AVOID line, none of those phrases may appear. Never restate their sentence, and never say "you mentioned" / "since you said". Prove the quality with what the candidate actually does, in the candidate's own everyday words (e.g. "I'd rather trace it back myself first" instead of "I dig in before escalating").
+- NAMING THEIR THINGS IS GOOD: their concrete nouns — their tables, systems, tools, product, customers, warehouses, team — should be named plainly when the answer is about them ("on your shipment tables", "for the warehouse forecasts"). That shows listening; it is not echoing. "Our/your environment/data/team" in a question means what the interviewers described — refer to it concretely.
 - The candidate's own situations may be framed to parallel theirs, but hard facts NEVER change: employers, titles, dates, years of experience, degrees, certifications, and numbers already stated stay exactly as in the resume or earlier answers. Never claim the candidate did the company's own use case.`;
 
 async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
@@ -4406,9 +4453,9 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     if ((active.answer || '').trim().length < 4) return;  // nothing to extend yet
 
     const session = ws._sessionContext || {};
-    const stylePrompt = getStylePrompt(session.answer_style); // SAME template as normal answers
-    const voiceBlock = ws._voiceProfile ? `\n\nSPEAK IN THE CANDIDATE'S OWN VOICE (sound like them, not generic AI):\n${ws._voiceProfile}` : '';
-    const system = stylePrompt + voiceBlock + MEMORY_RULES + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble. Just the next short, speakable sentence(s).';
+    const growShape = active.shape || classifyQuestionShape(fullerQuestion).shape;
+    const stylePrompt = composeLiveSystemPrompt({ shape: growShape, technical: classifyQuestionShape(fullerQuestion).technical, styleKey: session.answer_style, maxLines: 0, voiceProfile: ws._voiceProfile, withConversation: false, questionText: fullerQuestion }); // SAME composer as the answer
+    const system = stylePrompt + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style, each on its own line starting with "• ". Never add a ↳ employer line or a heading. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble.';
     const convo = buildConversationContext(ws);
     const userMsg = `${convo ? convo + '\n\n' : ''}QUESTION (now fuller):\n${fullerQuestion}\n\nANSWER ALREADY GIVEN (do NOT repeat any of this):\n${active.answer}\n\nOutput ONLY the additional sentence(s) to append:`;
 
@@ -4417,8 +4464,8 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     addition = addition.replace(/^["']|["']$/g, '').trim();
     if (!addition || addition.length < 4) return;
 
-    // Append-only: keep existing text exactly, add the new part.
-    const full = (active.answer || '').replace(/\s+$/, '') + ' ' + addition;
+    // Append-only: keep existing lines exactly; new "• " lines go above the ↳ employer line.
+    const full = appendToLiveAnswer(active.answer || '', addition, growShape);
     active.answer = full;
     active.questionText = fullerQuestion;
     active._grows++;
@@ -4436,6 +4483,172 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
   } catch (e) { console.error('[Grow]', e.message); logEvent('error', { where: 'growLiveAnswer', msg: e.message }); }
 }
 
+// ===== LIVE ANSWER COMPOSER (one place for how a live answer is shaped) =====
+// Owner's design (25 Sep): full sentences he can read out loud, one per line; the LAYOUT is fixed by the question
+// type; the style picker changes WORDING only; his employer appears only on a separate, dimmed, skippable line —
+// and only when a real example of his helps. Output contract (drawn by canvas.html formatAnswer, index.html rAns +
+// formatCanvasAnswer):
+//   "• <sentence>"                     one sayable sentence per line
+//   "↳ At <Employer> — <sentence>"     optional proof line, always LAST (general / code / pitch)
+//   "▸ At <Employer>"                  story heading, always FIRST (story questions)
+//   ```lang … ```                       code questions: the code block comes first
+const TECH_TERMS_RE = /\b(sql|query|queries|code|script|function|algorithm|regex|api|join|joins|window function|cte|index|indexes|schema|python|javascript|html|css|excel|vba|dax|power query|power bi|tableau|looker|snowflake|bigquery|redshift|databricks|spark|dbt|airflow|etl|elt|pipeline|clustering key|partition|where|having|group by|primary key|foreign key|vlookup|xlookup|pivot|measure|calculated column|normaliz\w*|regression|p-value|a\/b test)\b/i;
+const SHAPE_PITCH_RE = /\b(tell (me|us) (a (little )?(bit )?)?about yourself|walk (me|us) through your (resume|background|career)|introduce yourself|why (do you want|are you interested|this (role|company|job|position|team)|us\b|should we hire)|why (are you )?(leaving|looking)|what are you looking for|where do you see yourself|what('s| is| are) your (greatest |biggest )?(strengths?|weakness(es)?)|what makes you (a good fit|unique|stand out))/i;
+const SHAPE_STORY_RE = /\b(tell (me|us) about a (time|situation|project)|describe a (time|situation)|give (me |us )?an example of a time|share (an|a) (experience|time|example)|a time (when|you)|have you ever (had|dealt|faced|handled|worked through)|what did you do when|how did you (handle|deal with|resolve))\b/i;
+const SHAPE_CODE_RE = /\b(write|code|script|formula|syntax|implement)\b|\b(in sql|sql query|a query|using sql)\b|^(how (would|do|can) you) (find|get|calculate|compute|remove|dedupe|de-dupe|rank|pivot|count|return|select|pull)\b/i;
+
+function classifyQuestionShape(questionText) {
+  const q = (questionText || '').trim();
+  const technical = TECH_TERMS_RE.test(q);
+  let shape = 'general';
+  if (SHAPE_PITCH_RE.test(q)) shape = 'pitch';
+  else if (SHAPE_STORY_RE.test(q)) shape = 'story';
+  else if (technical && SHAPE_CODE_RE.test(q)) shape = 'code';
+  return { shape, technical };
+}
+
+const LIVE_CORE = `You write what a job candidate says out loud in a LIVE interview, shown on a tiny overlay they read from.
+QUALITY:
+- Plain English, contractions, sound like a person talking. No jargon or buzzwords (never: leverage, utilize, robust, synergy, facilitate, holistic, scalable, cross-functional).
+- The FIRST line answers the question directly — something they can start saying immediately. No preamble ("Great question", "So basically"), no closing summary, no headers or labels unless the layout below asks for them, no markdown bold.
+- Never fabricate. Facts about the candidate come only from the resume, the Q&A bank, and what they said earlier.
+- The question came from live speech transcription and may be garbled — never ask for clarification; answer the most likely intent.
+- Never quote the candidate's own sentences back, but stay consistent with the facts they stated about themselves.`;
+
+const LIVE_ACCURACY = `
+ACCURACY (technical): silently sanity-check every function name, syntax and platform fact before writing. A confidently-wrong answer loses the interview. If unsure, give the simplest approach you ARE sure of; never invent functions, commands, flags or features.`;
+
+// Style → layout parameters (the only way a style may touch the layout). Everything else a style changes is wording.
+const STYLE_LAYOUT = {
+  executive: { maxLines: 2 },
+  direct: { maxLines: 3 },
+  keywords: { unit: 'cue' },
+  star: { storyLabels: true },
+};
+const LIVE_LINE_WORDS = 20; // one sayable sentence per line — longer thoughts become two lines
+
+function liveLayout(shape, { maxLines, unit, storyLabels, employerLineAllowed }) {
+  const lineUnit = unit === 'cue'
+    ? `"• " + a 3–6 word CUE the candidate expands out loud — never more than 6 words, no full sentences, no commas (e.g. "• Unblock ops first")`
+    : `"• " + ONE complete sentence of at most ${LIVE_LINE_WORDS} words the candidate can read out loud word for word (split a longer thought into two lines)`;
+  const n = (lo, hi) => maxLines ? `1–${Math.min(maxLines, hi)}` : `${lo}–${hi}`;
+  const employer = employerLineAllowed
+    ? `EMPLOYER LINE (optional, skippable): ONLY if a real example of the candidate's clearly helps — the question asks about their own experience, or something said earlier in this interview process makes one of their examples worth giving — add ONE final line in exactly this form:
+↳ At <employer where it happened> — <one sentence of at most ${LIVE_LINE_WORDS} words: what they did there and the result>
+Use the employer from the resume where that example happened. If no example clearly helps, leave the line out.`
+    : `NO employer line and no employer name — this question doesn't call for the candidate's own example.`;
+  if (shape === 'code') return `LAYOUT — fixed:
+- Start with the code block (\`\`\`sql … \`\`\` or the right language). Nothing before it.
+- Then ${n(1, 2)} lines, each ${lineUnit}, saying why it works (the key choice). Do NOT name any employer.
+- ${employer}`;
+  if (shape === 'story') return `LAYOUT — fixed:
+- First line exactly: ▸ At <employer where the story happened, from the resume>
+- Then ${storyLabels
+      ? `the story as labelled lines, each starting with its label instead of "• ": "Situation: …", "Action: …" (one or two), "Result: …" — each ONE sentence of at most ${LIVE_LINE_WORDS} words`
+      : `${n(3, 5)} lines, each ${lineUnit}, telling the story in order: the situation → what the candidate did and how → the result (a real number if there is one)`}.
+- No separate employer line — the heading is it. Use a real example from the resume, Q&A bank or their earlier answers; never invent one.`;
+  if (shape === 'pitch') return `LAYOUT — fixed:
+- ${n(3, 5)} lines, each ${lineUnit}, in this order: who they are now (role and focus) → one real proof (a result from the resume) → why this role and team.
+- The employer can be named naturally inside these lines. No separate employer line.`;
+  return `LAYOUT — fixed:
+- ${n(2, 4)} lines, each ${lineUnit}, that answer the question. If the interviewer described their own situation (their tables, tools, problem, team), aim these lines at it, in the candidate's words. Do NOT name any employer in these lines — they must stand on their own.
+- If the question asks about the candidate's experience with something the interviewers said THEY use or struggle with, the last of these lines says how that experience carries over to their use (e.g. "…which is the same kind of tuning your shipment queries need").
+- ${employer}`;
+}
+
+// Style = tone only (wording). Layout parameters for a style live in STYLE_LAYOUT above.
+const LIVE_TONES = {
+  conversational: 'Plain spoken sentences, like talking to the interviewer across the table.',
+  technical: 'Precise: name the exact tools, methods and real metrics in each line.',
+  executive: 'Bottom line first; punchy; every line proves competence.',
+  star: 'Clear and concrete; on story questions follow the Situation / Action / Result labels exactly.',
+  storytelling: 'On STORY questions, the first story line is a hook — the moment or the problem — then tell it as a story. Elsewhere, plain spoken sentences.',
+  datadriven: 'Lead each line with the real number when one exists ("20 minutes, down from 4 hours…"). Never invent numbers.',
+  direct: 'The answer only — fewest words.',
+  framework: 'Organize the lines as clear steps: the first line states the approach, the next lines start "First,", "Second,", "And third,".',
+  leadership: 'Show what the candidate noticed, decided and moved forward — initiative and outcomes, in plain words (not the label "ownership").',
+  teacher: 'Define it simply first, then one everyday comparison that makes it click.',
+  keywords: 'Ultra-short cues only — nouns and verbs, no filler.',
+};
+
+// Questions that ask for the candidate's own experience (employer line allowed even with no earlier conversation).
+const OWN_EXPERIENCE_RE = /\b(your experience|have you (used|worked|done|built|led|handled|managed)|how have you|in your (current |last |previous )?(role|job|position|experience|work)|at your (current |last |previous )?(company|job|work)|what did you|what have you)\b/i;
+
+function liveLengthRule(maxLines) {
+  if (!maxLines) return `LENGTH: the line counts above; every line at most ${LIVE_LINE_WORDS} words; always finish the last sentence.`;
+  return `LENGTH (user setting — overrides the line counts above): at most ${maxLines} "• " lines (the heading, the employer line and code do not count); every line at most ${LIVE_LINE_WORDS} words. Always finish the last sentence.`;
+}
+
+// The line cap actually in force: the stricter of the style's cap and the user's length setting.
+function liveLineCap(styleKey, userMaxLines) {
+  const caps = [(STYLE_LAYOUT[styleKey] || {}).maxLines, userMaxLines].filter(x => x > 0);
+  return caps.length ? Math.min(...caps) : 0;
+}
+
+function composeLiveSystemPrompt({ shape, technical, styleKey, maxLines, voiceProfile, withConversation, questionText }) {
+  const sp = STYLE_LAYOUT[styleKey] || {};
+  const cap = liveLineCap(styleKey, maxLines);
+  const employerLineAllowed = !!withConversation || OWN_EXPERIENCE_RE.test(questionText || '');
+  const parts = [LIVE_CORE];
+  if (technical) parts.push(LIVE_ACCURACY);
+  parts.push('\n' + liveLayout(shape, { maxLines: cap, unit: sp.unit, storyLabels: sp.storyLabels && shape === 'story', employerLineAllowed }));
+  parts.push(`\nTONE (${(ANSWER_STYLES[styleKey] || ANSWER_STYLES.conversational).name}) — wording only, never the layout: ${LIVE_TONES[styleKey] || LIVE_TONES.conversational}`);
+  parts.push('\n' + liveLengthRule(cap));
+  if (voiceProfile) parts.push(`\nSOUND LIKE THIS CANDIDATE (rhythm and word choice only — layout and accuracy come first):\n${voiceProfile}`);
+  parts.push(MEMORY_RULES);
+  if (withConversation) {
+    parts.push(`\n\nCONNECT TO WHAT WAS SAID: decide whether anything said earlier in this interview process relates to this question — the same topic, tool or problem, OR a value, concern or environment an interviewer described that this question lets the candidate show. If it does, the candidate's own proof goes where the LAYOUT puts it: the ↳ employer line (general/code), the story itself (story), or the proof line (pitch) — use the fitting BRIDGE's PROOF, in the candidate's own words. If nothing earlier relates, leave the employer line out.`);
+  }
+  return parts.join('');
+}
+
+// Enforce the output contract deterministically (the model is usually right; this makes "usually" into "always"):
+// bullets on sentence lines, at most one ↳ line and it goes last, one ▸ heading and it goes first.
+// opts.cap: max "• " lines (style/length setting); opts.employerLineAllowed === false strips any ↳ line;
+// opts.cueOnly (Keyword Triggers style): prose lines (> 10 words) are dropped — the style's contract is cues only.
+function normalizeLiveAnswer(text, shape, opts = {}) {
+  if (!text) return text;
+  const lines = text.replace(/\r/g, '').split('\n');
+  const body = []; let heading = null; let employer = null; let inCode = false;
+  for (let raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (/^\s*```/.test(line)) { inCode = !inCode; body.push(line.trim()); continue; }
+    if (inCode) { body.push(line); continue; }
+    const t = line.trim();
+    if (!t) continue;
+    if (/^▸/.test(t)) { if (!heading) heading = '▸ ' + t.replace(/^▸\s*/, ''); continue; }
+    if (/^↳/.test(t)) { employer = '↳ ' + t.replace(/^↳\s*/, ''); continue; } // keep the last one
+    if (/^(Situation|Task|Action|Result)\s*:/i.test(t)) { body.push(t); continue; }
+    body.push(/^[•\-*]\s+/.test(t) ? '• ' + t.replace(/^[•\-*]\s+/, '') : '• ' + t.replace(/^\*\*|\*\*$/g, ''));
+  }
+  if (inCode) body.push('```'); // close an unterminated block
+  if (opts.cueOnly) {
+    for (let i = 0; i < body.length; i++) if (body[i].startsWith('• ') && body[i].split(/\s+/).length - 1 > 10) {
+      console.log('[Layout] Dropped a prose line from a cue-only answer:', body[i].slice(0, 60)); body.splice(i, 1); i--;
+    }
+  }
+  if (opts.cap > 0) { // keep the first N sentence lines (headline-first, so the first lines matter most)
+    let kept = 0;
+    for (let i = 0; i < body.length; i++) if (body[i].startsWith('• ') && ++kept > opts.cap) { body.splice(i, 1); i--; }
+  }
+  if (opts.employerLineAllowed === false) employer = null;
+  const out = [];
+  if (heading && shape === 'story') out.push(heading);
+  else if (heading) body.unshift('• ' + heading.replace(/^▸\s*/, '')); // a heading outside a story reads as a line
+  out.push(...body);
+  if (employer && shape !== 'story') out.push(employer);
+  return out.join('\n');
+}
+
+// Grow: new sentences go above the ↳ employer line, as normal "• " lines.
+function appendToLiveAnswer(answer, addition, shape) {
+  const add = (addition || '').split('\n').map(x => x.trim()).filter(Boolean).map(x => /^[•\-*]\s+/.test(x) ? '• ' + x.replace(/^[•\-*]\s+/, '') : '• ' + x);
+  const lines = (answer || '').split('\n');
+  const idx = lines.findIndex(l => /^↳/.test(l.trim()));
+  if (idx === -1) lines.push(...add); else lines.splice(idx, 0, ...add);
+  return normalizeLiveAnswer(lines.join('\n'), shape);
+}
+
 // Generate answer for live question — questionId is the EXISTING DB row from fastMatchAndRespond
 // opts.bankAnswer: a prepared answer to ADAPT to the conversation (shown on the same card; never written back to the bank)
 async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId, forceNavigate, opts = {}) {
@@ -4450,7 +4663,8 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     }
 
     // Use in-memory Q&A bank — include up to 15 answered questions for rich context
-    const answeredQs = (ws._sessionQuestions || []).filter(q => q.answer).slice(0, 8);
+    // Stable order (DB rows come back unordered) so this block stays byte-identical across answers → prompt cache hits
+    const answeredQs = (ws._sessionQuestions || []).filter(q => q.answer).sort((a, b) => String(a.id).localeCompare(String(b.id))).slice(0, 8);
     const bankContext = answeredQs.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
 
 
@@ -4466,92 +4680,55 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
       sessionHeader += `INTERVIEWER: ${iv.name || 'the interviewer'}${iv.title ? ', ' + iv.title : ''}${iv.stage ? ' — ' + iv.stage + ' round' : ''}. Pitch the answer to what someone in this role would care about (e.g. a hiring manager wants impact and ownership; an engineer wants technical depth). Never awkwardly name-drop them.\n`;
     }
 
-    const isTechnical = /sql|query|code|write|function|script|algorithm|regex|api|join|window function|python|javascript|html|css|excel|vba|dax|power query|etl|pipeline/i.test(questionText);
-    const isExperienceQ = /tell me about a time|describe a (time|situation)|give (me )?(an )?example|in your (role|experience|career|previous|current|last)|at your (company|job|work)|how have you (used|done|handled|managed|dealt)|share an experience|walk me through.*(project|experience|time)|what('s| is) your experience/i.test(questionText);
-
-    // Use the full ANSWER_PROMPT for strategic framing — not a watered-down version
-    // Add a speed note for live context + technical override when needed
-    const COMMON_LIVE_RULES = `\n\nHEADLINE-FIRST: Your FIRST sentence must be a direct, immediately-speakable answer to the question — something the candidate can start saying out loud right away. Put the supporting detail AFTER that. Never open with preamble or setup.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. Never quote or read back the candidate's own sentences — but DO stay consistent with the facts they already stated about themselves (see USE THE CONVERSATION).`;
-
-    // POINTERS: most people riff from the answer in their own words rather than read it
-    // verbatim — so for non-technical questions, format as short scannable beats they can
-    // expand naturally. Technical answers stay exact (wording matters for code).
-    const POINTER_RULE = (process.env.POINTERS !== '0')
-      ? `\n\nFORMAT AS POINTERS: Give 3-5 SHORT beats, ONE per line, each leading with the key point — cues the candidate expands in their OWN words, not a paragraph to read aloud. First beat is the direct headline answer.`
-      : '';
-
-    let liveAddendum;
-    if (isTechnical) {
-      liveAddendum = `\n\nLIVE MODE — TECHNICAL QUESTION: Code block FIRST with language tag. NO intro text before the code. After the code, ONE sentence max. The candidate is reading this on a tiny overlay — every extra word wastes space. If the question is conceptual (no code needed), answer in 2-4 direct sentences.\n\nACCURACY GUARDRAIL: Before finalizing, silently sanity-check the code/syntax — correct function names, valid syntax, right approach. A confidently-wrong answer is worse than a simple one. If you are NOT sure something is correct, prefer the simplest approach you ARE sure of, and do not invent APIs, functions, or flags that may not exist.` + COMMON_LIVE_RULES;
-    } else if (isExperienceQ) {
-      liveAddendum = `\n\nLIVE MODE — EXPERIENCE QUESTION: This question IS asking about personal experience. Use the Q&A bank and resume to reference real companies, projects, and outcomes. Hit the STAR beats BRIEFLY — one short line each (situation, action, result), NOT paragraphs. Keep the whole thing tight enough to finish in a few short lines.` + POINTER_RULE + COMMON_LIVE_RULES;
-    } else {
-      liveAddendum = `\n\nLIVE MODE — DIRECT ANSWER REQUIRED:
-THIS IS NOT AN EXPERIENCE QUESTION. The interviewer is asking a general/conceptual/process question.
-ANSWER IT DIRECTLY. Do NOT bring in personal stories, company names, or "At [company] I did X" framing.
-WRONG: "At R&L, I tracked adoption by looking at active user counts..."
-RIGHT: "I track adoption by looking at active user counts, dashboard refresh frequency, and drill-through depth."
-WRONG: "When I was at Wells Fargo, I implemented row-level security..."
-RIGHT: "Row-level security works by filtering data based on the user's identity, so each person only sees what's relevant to them."
-Just answer the question plainly. Use "I" naturally but do NOT attach it to a specific company or role.
-The Q&A bank and resume are for CONTEXT about what tools the candidate knows — NOT for injecting stories into every answer.
-Only reference specific companies if the question EXPLICITLY asks "tell me about a time" or "at your previous role" or similar.` + POINTER_RULE + COMMON_LIVE_RULES;
-    }
-
-    const basePrompt = getStylePrompt(session.answer_style);
-
-    // Response length control — user picks how concise answers should be
-    // THIS OVERRIDES ALL OTHER LINE COUNT GUIDANCE IN THE STYLE PROMPTS
-    // Brevity is enforced by the PROMPT. Token caps only provide HEADROOM so the answer
-    // always finishes cleanly — never so tight they chop it mid-sentence.
+    // LIVE ANSWER COMPOSER: question type → fixed layout; style → tone only; + length, voice, session memory.
+    const { shape, technical } = classifyQuestionShape(questionText);
+    const isTechnical = technical; // accuracy guardrail + model choice
+    // Token caps are HEADROOM only (brevity comes from the prompt) — never so tight they chop a sentence.
     const maxSentences = ws._maxAnswerLines || 0;
-    let lengthConstraint = '';
-    let tokenLimit = isTechnical ? 1100 : 550;
+    let tokenLimit = shape === 'code' ? 1000 : 500;
     if (maxSentences > 0) {
-      if (maxSentences <= 3) {
-        lengthConstraint = `\n\n*** HARD LENGTH — max ${maxSentences} short sentences. Lead with the answer, no preamble, no filler. Finish the thought — never stop mid-sentence. If code is needed, code block + 1 line.`;
-        tokenLimit = isTechnical ? 700 : 220;
-      } else if (maxSentences <= 5) {
-        lengthConstraint = `\n\n*** HARD LENGTH — max ${maxSentences} short sentences. Answer directly, no intro or conclusion. Finish the thought — never stop mid-sentence. If code is needed, code block + 1-2 lines.`;
-        tokenLimit = isTechnical ? 800 : 340;
-      } else if (maxSentences <= 8) {
-        lengthConstraint = `\n\n*** LENGTH — max ${maxSentences} short sentences. Lead with the answer; each line adds new info; no filler. Finish the thought.`;
-        tokenLimit = isTechnical ? 1000 : 500;
-      } else if (maxSentences <= 12) {
-        lengthConstraint = `\n\nLENGTH — up to ${maxSentences} sentences, no filler, no intros/conclusions.`;
-        tokenLimit = isTechnical ? 1300 : 680;
-      } else {
-        lengthConstraint = `\n\nLENGTH — up to ${maxSentences} sentences; be thorough but don't pad.`;
-        tokenLimit = isTechnical ? 1500 : 900;
-      }
-    } else {
-      // Default: overlay-sized. Brief AND complete.
-      lengthConstraint = `\n\n*** LENGTH — keep it overlay-sized: 4-6 short lines for simple questions, up to 8 for complex ones. NEVER write long paragraphs. Each line on its own line, short (max ~15 words). Most important: ALWAYS finish your last sentence — never cut off mid-thought.`;
-      tokenLimit = isTechnical ? 1000 : 500;
+      if (maxSentences <= 3) tokenLimit = shape === 'code' ? 700 : 260;
+      else if (maxSentences <= 5) tokenLimit = shape === 'code' ? 800 : 380;
+      else if (maxSentences <= 8) tokenLimit = shape === 'code' ? 1000 : 540;
+      else if (maxSentences <= 12) tokenLimit = shape === 'code' ? 1300 : 700;
+      else tokenLimit = shape === 'code' ? 1500 : 900;
     }
-
-    // Speak in THIS candidate's own voice (per-user profile), if we've learned it.
-    const voiceBlock = ws._voiceProfile
-      ? `\n\nSPEAK IN THE CANDIDATE'S OWN VOICE — write the answer the way THIS specific candidate naturally talks, so it sounds like them and not generic AI:\n${ws._voiceProfile}\nMatch their rhythm, phrasing, and word choices — but keep it correct, on-point, and headline-first.`
-      : '';
-    // Something said earlier may matter → the MODEL judges relevance (same topic, or a value/concern an interviewer
-    // raised that this question lets the candidate show). Keyword matching missed "stuck" ↔ "dig in before escalating".
-    const proofRule = hasConversation(ws)
-      ? `\n\nCONNECT TO WHAT WAS SAID: first decide whether anything said earlier in this interview process relates to this question — the same topic, tool or problem, OR a value, concern or environment an interviewer described that this question lets the candidate show. It usually does when the topic or problem was discussed. If it does, the answer MUST include ONE line with a SPECIFIC example from the candidate's OWN resume or earlier answers (name the real project, number or result) that proves it and fits their situation — when a BRIDGE fits this question, use its PROOF, said in the candidate's own words. This overrides any "no personal stories" rule above for this answer. If nothing earlier relates, just answer the question.`
-      : '';
-    const system = basePrompt + liveAddendum + lengthConstraint + voiceBlock + MEMORY_RULES + proofRule;
+    const withConversation = hasConversation(ws);
+    const system = composeLiveSystemPrompt({
+      shape, technical, styleKey: session.answer_style, maxLines: maxSentences,
+      voiceProfile: ws._voiceProfile, withConversation, questionText,
+    });
+    const layoutRules = { cap: liveLineCap(session.answer_style, maxSentences), employerLineAllowed: withConversation || OWN_EXPERIENCE_RE.test(questionText),
+      cueOnly: (STYLE_LAYOUT[session.answer_style] || {}).unit === 'cue' && shape !== 'code' };
     // Everything said in this interview session (earlier calls + this call) — see SESSION MEMORY
     const convo = buildConversationContext(ws);
     const conversationContext = convo ? `\n\nTHE CONVERSATION:\n${convo}` : '';
     const preparedBlock = opts.bankAnswer
-      ? `\n\nCANDIDATE'S PREPARED ANSWER to this question (their own facts — keep them; adapt the angle to the conversation):\n${opts.bankAnswer}\n\nIf nothing said earlier in this interview process would make this prepared answer better, output exactly KEEP and nothing else.`
+      ? `\n\nCANDIDATE'S PREPARED ANSWER to this question (their own facts — keep them; adapt the angle to the conversation):\n${opts.bankAnswer}\n\nRewrite it in the LAYOUT above, aimed at what was said in this interview. Output exactly KEEP (and nothing else) ONLY if nothing said earlier in this interview relates to this question at all.`
       : '';
 
-    const userPrompt = `${sessionHeader}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}${conversationContext}${preparedBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
+    // PROMPT CACHING: the session material (who/what/resume/JD/bank) is identical for every answer in a call, so it
+    // goes FIRST as its own cached system block; the per-question rules (layout/tone vary by question type), today's
+    // date, the conversation and the question come after it. Any byte change before the marker = no reuse.
+    const sessionMaterial = `${sessionHeader.replace(todayLine, '')}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}`;
+    const systemBlocks = [
+      Object.assign({ type: 'text', text: `SESSION MATERIAL — the candidate and the job:\n${sessionMaterial}` },
+        process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), // PROMPT_CACHE=0 = off
+      { type: 'text', text: system },
+    ];
+    // AIM: what they've said they care about, right next to the question (proximity makes the model actually use it)
+    const theyCare = (ws._bridges || '').split('\n').map(l => l.trim()).filter(l => /^THEY:/i.test(l))
+      .map(l => '- ' + l.replace(/^THEY:\s*/i, '').split('→')[0].trim()).filter(l => l.length > 3).slice(0, 4);
+    console.log(`[Memory] Answer context: aim=${theyCare.length} bridges=${ws._bridges ? 'yes' : 'no'} priorCalls=${ws._priorMemory ? 'yes' : 'no'} q="${(questionText || '').slice(0, 40)}"`);
+    const aimBlock = theyCare.length ? `\n\nWHAT THIS INTERVIEW HAS TOLD YOU THEY CARE ABOUT (aim the answer at whichever fits this question — in the candidate's words, never theirs):\n${theyCare.join('\n')}` : '';
+    const userPrompt = `${todayLine}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
     // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
     const answerModel = isTechnical ? (MODELS[process.env.LIVE_TECH_MODEL || 'sonnet'] || MODEL_SONNET) : MODEL_HAIKU;
+    // Sonnet 5 decides on its own to "think" first — measured 25 Sep: with a thinking block first words took 1.3–3.3 s,
+    // without 0.6–0.9 s. Live answers turn it off; LIVE_THINKING=adaptive puts it back. (Haiku doesn't think by default.)
+    const answerExtras = (answerModel !== MODEL_HAIKU && process.env.LIVE_THINKING !== 'adaptive') ? { thinking: { type: 'disabled' } } : undefined;
     const tGen = Date.now();
     let answer = '';
     let ttft = 0;
@@ -4559,7 +4736,7 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0' && !opts.bankAnswer; // kill switch: '0' = buffered. Adapted prepared answers swap in whole.
     if (streamEnabled) {
       try {
-        answer = await callClaudeStream(system, userPrompt, tokenLimit, answerModel, (chunk) => {
+        answer = await callClaudeStream(systemBlocks, userPrompt, tokenLimit, answerModel, (chunk) => {
           if (!ttft) ttft = Date.now() - tGen;
           const deltaMsg = {
             type: 'live_answer_delta',
@@ -4571,15 +4748,24 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
           };
           try { ws.send(JSON.stringify(deltaMsg)); } catch (e) {}
           broadcastToSession(sessionId, deltaMsg, ws);
-        });
+        }, answerExtras);
         streamed = true;
       } catch (streamErr) {
         // Any streaming failure → fall back to the exact buffered behavior as before.
         console.error('[Stream] fell back to buffered:', streamErr.message);
-        answer = await callClaude(system, userPrompt, tokenLimit, answerModel);
+        answer = await callClaude(systemBlocks, userPrompt, tokenLimit, answerModel, answerExtras);
       }
     } else {
-      answer = await callClaude(system, userPrompt, tokenLimit, answerModel);
+      answer = await callClaude(systemBlocks, userPrompt, tokenLimit, answerModel, answerExtras);
+    }
+    if (!answer || !answer.trim()) {
+      console.log('[Live Answer] Empty answer from the model — retrying once (buffered)');
+      logEvent('error', { where: 'generateLiveAnswer', msg: 'empty answer — retry' });
+      try { answer = await callClaude(systemBlocks, userPrompt, tokenLimit, answerModel, answerExtras); } catch (e) { answer = ''; }
+      if (!answer || !answer.trim()) {
+        try { ws.send(JSON.stringify({ type: 'error', message: 'Could not get an answer — try again' })); } catch (e) {}
+        return;
+      }
     }
     console.log(`[TIMING] generateLiveAnswer: ${Date.now() - tGen}ms`);
     console.log(`[LATENCY] gen streamed=${streamed} ttft=${ttft}ms total=${Date.now() - tGen}ms chars=${answer.length} q="${(questionText||'').substring(0,50)}"`);
@@ -4588,6 +4774,7 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
       console.log('[Memory] Prepared answer kept as written (nothing earlier improves it)');
       return;
     }
+    answer = normalizeLiveAnswer(answer, shape, layoutRules); // enforce the layout contract before it's saved or shown
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT.
     // An adapted prepared answer is for this conversation only — the bank answer stays as the user wrote it.
@@ -4597,7 +4784,7 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     }
 
     // Mark this as the active answer thread so continued interviewer detail grows THIS answer.
-    ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: !!opts.bankAnswer };
+    ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: !!opts.bankAnswer, shape };
 
     // Send answer to client with the SAME questionId the client already knows about
     const liveAnswerMsg = {

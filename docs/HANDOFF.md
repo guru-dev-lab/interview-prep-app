@@ -1,5 +1,27 @@
 # Handoff
 
+## 25 Sep 2026 (late) — answer STRUCTURE + speed (feat/session-memory, NOT live)
+- Owner's design: full read-aloud sentences, one per line; layout fixed by question type (general / code / story /
+  pitch); the style picker changes WORDING only; employer on a separate dimmed "↳ At <Employer> — …" line, only when
+  a real example helps (never on plain concept questions); story questions get a "▸ At <Employer>" heading.
+- Built LIVE ANSWER COMPOSER (server.js, one block): classifyQuestionShape, liveLayout (style → STYLE_LAYOUT params:
+  executive ≤2, direct ≤3, keywords = cues, star = S/A/R labels), LIVE_TONES for all 11 styles, output contract +
+  normalizeLiveAnswer (enforces line cap, strips ↳ when not allowed, drops prose in cue style), growth inserts above ↳.
+  Renderers: canvas formatAnswer, index rAns / formatCanvasAnswer / formatPopOutAnswer draw ↳ (dim) and ▸ (label).
+- Bugs found+fixed on the way: (1) the style picker NEVER applied to live answers (answer_style not loaded into the
+  call cache) — now loaded, and a mid-call switch reaches the running call; (2) Sonnet 5 "thinks" on its own → 1.3–3.3 s
+  first-word spikes; thinking off for live answers (LIVE_THINKING=adaptive reverts) — accuracy 19/20 & 18/20 with it
+  off vs 15/20 on; (3) empty answers can't reach the screen (retry once, else a visible error; stream logs why).
+- Echo rule narrowed: their VALUE phrases are banned ("dig in", "ownership"), their concrete things (shipment tables,
+  warehouses) are named on purpose. Aim note ("what they care about", from BRIDGES) sits next to the question.
+- Speed: FAST route — a clear interviewer question fires immediately (skips 0.8 s wait + AI extraction), everything
+  else takes the AI route; ONE door fireDetectedQuestion for both. FAST_DETECT=0 reverts. Prompt caching of session
+  material (saves cost; no measurable speed change). PROMPT_CACHE=0 reverts.
+- Final proof: unit all pass; structure 9/9; live-e2e 16/16; memory 8/10 (both misses 7/8); accuracy 18/20;
+  delay (realistic session, interviewer stops → first words) ~0.95 s, prepared answer 0.78 s (live app ~1.5–1.9 s).
+- Open: occasional tenure miscount ("3.5 yrs" for Mar 2022–now); "tell me about your X experience" sometimes skips
+  the tie-in to their use; web switch_tab path lacks the echo check.
+
 ## 25 Sep 2026 (pm) — values/concerns across interviewers + technical accuracy (feat/session-memory, NOT live)
 - Owner's 2nd example: HM said she likes people who dig in before escalating + their data is messy; next day her
   boss asked something close → answer should settle THEIR concern through HIS workplace (R&L is messy too, so he

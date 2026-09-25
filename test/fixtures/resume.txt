@@ -1,0 +1,27 @@
+JORDAN LEE
+Chicago, IL · jordan.lee@example.com · linkedin.com/in/jordanlee-example
+
+SUMMARY
+Data analyst with 4+ years turning messy retail sales and CRM data into reporting that regional managers actually use. Strong in SQL, Snowflake, dbt and Power BI; comfortable owning a pipeline from raw source to executive dashboard, and at explaining numbers to non-technical teams.
+
+EXPERIENCE
+Data Analyst — Northwind Retail, Chicago, IL (Mar 2021 – Present)
+- Own daily Snowflake + dbt pipelines for sales, returns and CRM data across 120 stores; 40+ models, tested and documented.
+- Cut the weekly sales report refresh from 4 hours to 20 minutes by rewriting SQL joins, adding clustering keys to the two largest fact tables, and moving heavy logic into incremental dbt models.
+- Built Power BI dashboards for 14 regional sales managers (sales vs target, margin, basket size, promo lift); weekly active use went from 3 to 14 managers in two months.
+- Cleaned and de-duplicated 2M Salesforce customer records (standardized addresses, merged duplicates with fuzzy matching in Python), raising email match rate from 61% to 88%.
+- Partnered with finance to reconcile POS sales to the general ledger monthly; found and fixed a returns double-count worth $1.2M of overstated revenue per year.
+- Set up data quality checks (row counts, freshness, not-null, accepted values) in dbt that alert in Slack; incidents reaching dashboards dropped by about 70%.
+- Trained 30 store and regional staff on self-serve reporting; wrote the team's SQL style guide.
+
+Junior Data Analyst — Lakeview Health Partners, Evanston, IL (Jun 2019 – Feb 2021)
+- Produced weekly operational reports on clinic visits, no-show rates and wait times in SQL Server and Excel.
+- Automated a manual Excel no-show report with SQL + Power Query, saving the operations team about 5 hours a week.
+- Built a simple no-show risk score (logistic regression in Python) used to target reminder calls; no-shows fell 9% in the pilot clinics.
+
+EDUCATION
+B.S. Business Analytics — University of Illinois Chicago, 2019
+
+SKILLS
+SQL (Snowflake, SQL Server, Postgres), dbt, Power BI (DAX, Power Query), Python (pandas), Excel, Salesforce data, Git, basic Airflow.
+Certifications: Microsoft PL-300 (Power BI Data Analyst), SnowPro Core.

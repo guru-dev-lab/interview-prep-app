@@ -18,8 +18,13 @@ function speech(text, voice) {
 }
 async function seed() {
   const u = (await pool.query("INSERT INTO users (email, name, plan) VALUES ($1,'Lat','pro') RETURNING id", ['lat-' + Date.now() + Math.random() + '@local.test'])).rows[0];
-  const s = (await pool.query("INSERT INTO sessions (user_id, company, role, resume, jd) VALUES ($1,'Keystone Logistics','Senior Data Analyst','Data Analyst, Northwind Retail. Snowflake, dbt, SQL, Power BI. Cut weekly sales report from 4h to 20 min.','Senior Data Analyst — Snowflake, SQL, forecasting.') RETURNING id", [u.id])).rows[0];
+  // LAT_REALISTIC=1: real-size resume + JD + 8 prepared answers (~2.5k tokens), like a real session
+  const big = process.env.LAT_REALISTIC === '1';
+  const resume = big ? fs.readFileSync(path.join(__dirname, 'fixtures', 'resume.txt'), 'utf8') : 'Data Analyst, Northwind Retail. Snowflake, dbt, SQL, Power BI. Cut weekly sales report from 4h to 20 min.';
+  const jd = big ? fs.readFileSync(path.join(__dirname, 'fixtures', 'jd.txt'), 'utf8') : 'Senior Data Analyst — Snowflake, SQL, forecasting.';
+  const s = (await pool.query("INSERT INTO sessions (user_id, company, role, resume, jd) VALUES ($1,'Keystone Logistics','Senior Data Analyst',$2,$3) RETURNING id", [u.id, resume, jd])).rows[0];
   await pool.query('INSERT INTO questions (session_id, text, answer) VALUES ($1,$2,$3)', [s.id, 'How do you approach query performance tuning?', 'I start with the query profile, fix the heaviest scans and joins first, and add clustering on the columns we filter by most.']);
+  if (big) for (const [q, a] of JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'bank.json'), 'utf8'))) await pool.query('INSERT INTO questions (session_id, text, answer) VALUES ($1,$2,$3)', [s.id, q, a]);
   return { token: jwt.sign({ userId: u.id, name: 'Lat', email: 'x', plan: 'pro' }, process.env.JWT_SECRET, { expiresIn: '1h' }), sessionId: s.id };
 }
 async function run(lines, question) {
