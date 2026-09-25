@@ -2794,34 +2794,47 @@ async function aiCleanQuestion(rawText) {
   }
 }
 
-function isQuestion(text) {
-  const t = text.trim().toLowerCase();
-  const words = t.split(/\s+/).length;
-  // Minimum: 3 words, 15 chars
-  if (words < 3 || t.length < 15) return false;
-  // === REJECTION FILTERS ===
-  // Reject self-referencing (interviewee/candidate talking about themselves)
-  if (/^(i |i'm |i've |i'd |i'll |i was |i did |i do |i think |i would |i could |i should |i used |i built |i have |i had |i made |i learned |i managed |i led |i created |i developed |i worked |i helped |i started |i ran |i set up |i implemented |i designed |i analyzed |i handled |i owned |i drove |so i |yeah i |and i |we |we're |we've |we had |we did |we used |we built |we were |my |at my |in my |on my |with my |during my |let me |if i |when i |that's |that is |it's |it is |this is |this was |there |the |a |an |at |for |from |like |actually |basically |just |one thing |one of |another thing |specifically )/.test(t)) return false;
-  // Reject filler/agreement/casual speech
-  if (/^(yeah|yes|no|okay|sure|right|exactly|absolutely|definitely|great|good|thanks|thank you|sorry|so basically|um |uh |well |hmm|oh |and |but |or |also |then |so |awesome|perfect|wonderful|fantastic|sounds good|makes sense|got it|fair enough|interesting|nice|cool|alright|let's |now |moving on|next |going to |to answer |to give |to be |in terms of |because |since |as a |as an |which |that |the way |the reason |what happened |what we )/.test(t)) return false;
-  // Reject mid-answer continuation patterns (candidate elaborating)
-  if (/^(and then |so then |after that |from there |eventually |ultimately |overall |in the end |long story short |to summarize |the result |the outcome |the impact |the challenge |the problem |the solution |the key |the main |the biggest |the first |the second |the third )/.test(t)) return false;
-  // Reject casual small-talk / pleasantries
-  if (/^(how are you|how's it going|how have you been|nice to meet|good to meet|good morning|good afternoon|good evening|hey |hi |hello |what time|what's your time|where are you (based|located|calling|joining)|are you (doing well|ready)|can you hear me|is (my|the) (audio|video|screen)|one (moment|second|sec)|bear with me|sorry about|apologies for)/.test(t)) return false;
-  // Reject scheduling/logistics
-  if (/^(do you have any questions|any questions (for|from) (me|us)|that's (all|it|everything)|we('re| are) (running|almost)|let's (wrap|move|end)|before we (end|wrap|go))/.test(t)) return false;
-  // === PASS FILTERS — must match a specific question pattern ===
-  // Question mark with at least 5 words — real questions
-  if (/\?/.test(t) && words >= 5) return true;
-  // Direct interview commands (3+ words): "Explain X", "Tell me about X", "Describe X"
-  if (words >= 3 && /^(explain |define |describe |compare |walk me through |tell me |give me an example |give me a scenario )/.test(t)) return true;
-  // Common interviewer question starters (4+ words) — speech-to-text rarely adds "?"
-  if (words >= 4 && /^(can you |could you |have you |had you |do you |did you |would you |are you |were you |is there |was there |have there been )/.test(t)) return true;
-  // Wh- question openers (5+ words)
-  if (words >= 5 && /^(what |how |why |when |where |who |which )/.test(t)) return true;
-  // Nothing matched — NOT a question
+// === QUESTION RULES (one place — used by isQuestion, live auto-detect, and test/question-rules.js) ===
+// Candidate talking about themselves / mid-answer — never an interview question.
+const CANDIDATE_SPEECH_RE = /^(i |i'm |i've |i'd |i'll |i was |i did |i do |i think |i would |i could |i should |i used |i built |i have |i had |i made |i learned |i managed |i led |i created |i developed |i worked |i helped |i started |i ran |i set up |i implemented |i designed |i analyzed |i handled |i owned |i drove |we |we're |we've |we had |we did |we used |we built |we were |my |at my |in my |on my |with my |during my |if i |when i |one thing |one of the things i |another thing |the way i |the reason i |what happened was |what we did |and then |so then |after that |from there |long story short |to summarize |in the end )/;
+// Interviewer asking in first person ("I'd love to hear how you…") — would otherwise look like candidate speech.
+const INTERVIEWER_ASK_RE = /\b(i('d| would) (like|love) to (know|hear|understand|learn|see)|i want(ed)? to (ask|know|hear|understand)|i'm (curious|interested|wondering)|my (next |last |final |first )?question (is|would be)|the next question is|let me ask you|can you (tell|walk|talk|share|give|explain|describe)|could you (tell|walk|talk|share|give|explain|describe))\b/;
+// Leading filler/acknowledgement the interviewer says before the real question ("Okay. So…", "Great question,").
+const LEAD_FILLER_RE = /^(okay|ok|so|now|well|great question|good question|great|alright|all right|right|yeah|yes|sure|cool|awesome|perfect|good|nice|and|but|also|then|um|uh|hmm|oh|next|moving on|thanks|thank you|got it|makes sense|interesting|fair enough|sounds good|absolutely|definitely|exactly|actually|basically|just)\b[,.!:;]?\s*/;
+function stripLeadFiller(t) { let prev; do { prev = t; t = t.replace(LEAD_FILLER_RE, ''); } while (t !== prev && t); return t; }
+function isQuestionClause(s) {
+  s = stripLeadFiller(s.trim());
+  const words = s ? s.split(/\s+/).length : 0;
+  if (words < 3) return false;
+  if (CANDIDATE_SPEECH_RE.test(s)) return false;
+  // "What I did was…", "How we solved it…" — a statement, not a question
+  if (/^(what|how|why|when|where|who|which) (i|we|they|he|she|it|this|that)\b/.test(s)) return false;
+  // Small talk / logistics / wrap-up
+  if (/^(how are you|how's it going|how have you been|nice to meet|good to meet|good morning|good afternoon|good evening|hey |hi |hello |what time|what's your time|where are you (based|located|calling|joining)|are you (doing well|ready)|can you hear me|is (my|the) (audio|video|screen)|one (moment|second|sec)|bear with me|sorry about|apologies for|do you have any questions|any questions (for|from) (me|us)|that's (all|it|everything)|we('re| are) (running|almost)|let's (wrap|move|end)|before we (end|wrap|go))/.test(s)) return false;
+  // Candidate mid-answer continuation
+  if (/^(eventually |ultimately |overall |the result |the outcome |the impact |the challenge |the problem |the solution |the key |the main |the biggest |the first |the second |the third )/.test(s)) return false;
+  if (/\?$/.test(s) && words >= 4) return true;
+  // Imperative interview prompts: "Please describe…", "Talk me through…", "Share an example…"
+  if (/^(please |kindly )?(explain|define|describe|compare|contrast|walk (me|us) through|talk (me|us) through|talk (to (me|us) )?about|tell (me|us)|give (me|us)|share|show (me|us)|outline|discuss|elaborate|summarize|list|name|provide|imagine|suppose|say you|let's say|what if|pretend|think of|think about|how about)\b/.test(s)) return true;
+  if (words >= 4 && /^(can you |could you |have you |had you |do you |did you |would you |will you |are you |were you |should you |is there |was there |have there been |what's |how's |where's |who's )/.test(s)) return true;
+  if (words >= 5 && /^(what |how |why |when |where |who |which )/.test(s)) return true;
   return false;
 }
+function isQuestion(text) {
+  const t = text.trim().toLowerCase();
+  if (t.split(/\s+/).length < 3 || t.length < 15) return false;
+  if (/\byou(r|'re|'ve|'d)?\b/.test(t) && INTERVIEWER_ASK_RE.test(t)) return true;
+  // The utterance opens as the candidate talking about themselves → not a question.
+  if (CANDIDATE_SPEECH_RE.test(stripLeadFiller(t))) return false;
+  // Any sentence — or the tail after a lead-in clause ("In your current role, what…") — can carry the question.
+  for (const sentence of t.split(/(?<=[.?!;])\s+|\s+[—–]\s+|\s+-\s+/)) {
+    if (isQuestionClause(sentence)) return true;
+    let i = sentence.indexOf(',');
+    while (i !== -1) { if (isQuestionClause(sentence.slice(i + 1))) return true; i = sentence.indexOf(',', i + 1); }
+  }
+  return false;
+}
+// === END QUESTION RULES ===
 
 // "Stay silent" filter — clearly NON-substantive interviewer utterances that can slip past
 // isQuestion (rapport, logistics, comprehension check-ins, closing). Conservative on purpose:
@@ -3062,8 +3075,13 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
   const startMs = Date.now();
   const tClean = Date.now();
   const q = skipClean ? utterance.trim() : await aiCleanQuestion(utterance.trim());
-  if (!q || q.length < 5) return lastMatchedQId;
-  if (!skipFilter && !isQuestion(q)) return lastMatchedQId;
+  // forceNavigate = the user asked for this (What should I say / typed / clicked a line): never filter
+  // it away, and never end silently — tell them why nothing came back.
+  if (!q || q.length < 5) {
+    if (forceNavigate) ws.send(JSON.stringify({ type: 'error', message: 'Could not identify a question from the conversation' }));
+    return lastMatchedQId;
+  }
+  if (!skipFilter && !forceNavigate && !isQuestion(q)) return lastMatchedQId;
   if (!skipClean) console.log(`[TIMING] aiCleanQuestion: ${Date.now() - tClean}ms`);
 
   // Get top 3 keyword candidates, excluding already-matched questions
@@ -3260,6 +3278,9 @@ wss.on('connection', (ws) => {
     }, IDLE_TIMEOUT);
   }
   let sentenceCountSinceReset = 0; // track sentences in current utterance
+  // Volume-based self-voice state, per connection (was an accidental global shared across ALL users).
+  let userIsSpeaking = false; // true when user is talking into mic
+  let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
 
   // Helper: send to this client AND broadcast to all canvas listeners for same session
   function sendAndBroadcast(data) {
@@ -3467,8 +3488,6 @@ wss.on('connection', (ws) => {
         let recentDetectedQs = []; // last 5 detected questions for fuzzy de-dup
         let aiExtractTimer = null; // debounce timer — wait for speech to settle before extracting
         const AI_EXTRACT_DELAY = 800; // wait after last speechFinal before AI fires (trimmed for speed)
-        let userIsSpeaking = false; // Volume-based: true when user is talking into mic
-        let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
         let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
 
@@ -3483,11 +3502,14 @@ wss.on('connection', (ws) => {
 
           // VOLUME GUARD: If user is currently speaking or JUST stopped speaking,
           // skip extraction — this is the user's answer, not the interviewer's question.
-          if (userIsSpeaking) {
+          // Off by default (it never actually ran before — the flag was written to a global). Without
+          // headphones the mic hears the interviewer, so turning this on can mute detection. USER_SPEECH_GUARD=1 enables.
+          const speechGuardOn = process.env.USER_SPEECH_GUARD === '1';
+          if (speechGuardOn && userIsSpeaking) {
             console.log('[AI Auto-Detect] Skipping — user is speaking (volume high)');
             return;
           }
-          if (Date.now() - userStoppedSpeakingAt < USER_SPEECH_GUARD) {
+          if (speechGuardOn && Date.now() - userStoppedSpeakingAt < USER_SPEECH_GUARD) {
             console.log('[AI Auto-Detect] Skipping — user just stopped speaking (' + Math.round((Date.now() - userStoppedSpeakingAt)/1000) + 's ago)');
             return;
           }
@@ -3505,14 +3527,15 @@ wss.on('connection', (ws) => {
 
           // LENGTH GUARD: Very long utterances (50+ words) are almost certainly the candidate
           // giving an extended answer, not the interviewer asking a question.
+          // Interviewers often set a question up at length — only skip a long one if no sentence in it is a question.
           const wordCount = lastUtterance.trim().split(/\s+/).length;
-          if (wordCount > 50) {
+          if (wordCount > 50 && !isQuestion(lastUtterance)) {
             console.log('[AI Auto-Detect] Pre-filter: too long (' + wordCount + ' words), likely candidate answer');
             return;
           }
           const lastLow = lastUtterance.trim().toLowerCase();
-          // Reject if it starts with obvious candidate self-reference
-          if (/^(i |i'm |i've |i'd |i'll |i was |i did |i do |i think |i would |i could |i used |i built |i have |i had |i made |i worked |i helped |i started |i led |i created |i developed |i analyzed |i handled |we |we're |we've |we had |we did |we used |we built |my |at my |in my |so i |yeah i |and i |yeah |yes |no |okay |sure |right |exactly |absolutely |definitely |great |good |thanks |sorry |so basically |um |uh |well |hmm|actually |basically |just |and then |so then |after that |from there |the way i |the reason |what happened was |what we did )/.test(lastLow)) {
+          // Reject if it opens as candidate self-reference (after "Okay, so…" style lead-ins) — shared rule
+          if (CANDIDATE_SPEECH_RE.test(stripLeadFiller(lastLow)) && !INTERVIEWER_ASK_RE.test(lastLow)) {
             console.log('[AI Auto-Detect] Pre-filter: candidate speech, skipping');
             return;
           }
@@ -3768,6 +3791,9 @@ wss.on('connection', (ws) => {
           const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
           fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true).then(newLastId => {
             if (newLastId) lastMatchedQId = newLastId;
+          }).catch(e => {
+            console.error('[ManualMatch] failed:', e.message);
+            try { ws.send(JSON.stringify({ type: 'error', message: 'Could not get an answer — try again' })); } catch (_) {}
           });
         }
       }
@@ -3811,6 +3837,9 @@ wss.on('connection', (ws) => {
         const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
         fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, true, true).then(newLastId => {
           if (newLastId) lastMatchedQId = newLastId;
+        }).catch(e => {
+          console.error('[Canvas] Manual question failed:', e.message);
+          try { ws.send(JSON.stringify({ type: 'error', message: 'Could not get an answer — try again' })); } catch (_) {}
         });
       }
 
@@ -3901,6 +3930,10 @@ wss.on('connection', (ws) => {
         fastMatchAndRespond(questionText, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true, true).then(newLastId => {
           lastWsayMatchId = newLastId || null;
           if (newLastId) lastMatchedQId = newLastId;
+          console.log('[WhatShouldISay] done:', newLastId ? 'matched bank question' : 'new/updated live question');
+        }).catch(e => {
+          console.error('[WhatShouldISay] failed:', e.message);
+          try { ws.send(JSON.stringify({ type: 'error', message: 'Could not get an answer — try again' })); } catch (_) {}
         });
       }
 

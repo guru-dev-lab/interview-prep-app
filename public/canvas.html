@@ -1369,6 +1369,10 @@ function connect() {
     }
     else if (msg.type === 'error') {
       console.warn('[WS Error]', msg.message);
+      // Show it — a silent failure reads as a dead button (web app does the same in index.html)
+      var ebtn = $('btn-wsay');
+      if (ebtn && ebtn.classList.contains('loading')) { ebtn.classList.remove('loading'); ebtn.innerHTML = wsayDefaultHTML; }
+      showToast(msg.message || 'Something went wrong', '', 3500);
     }
     else if (msg.type === 'kicked') {
       // Another device went live — show alert and stop
