@@ -4341,6 +4341,7 @@ const BRIDGES_SYSTEM = `You prepare a job candidate for the rest of their interv
 Format, one per line (max 6 lines, most important first):
 THEY: <what they care about, paraphrased> → PROOF: <a specific real example from the candidate's resume or earlier answers — employer, project, number/result> → SAY IT AS: <one plain sentence in the candidate's own everyday words, with no words borrowed from the interviewer>
 Then one line: CLAIMS: <the candidate's own stated claims to stay consistent with (tools, years, level)>.
+Then one line: AVOID: <the interviewers' distinctive words and phrases, comma-separated — the labels and expressions they used for what they want or their situation, e.g. "dig in", "messy", "ownership">.
 Rules: proof comes ONLY from the candidate's resume or their own earlier answers; never invent employers, titles, dates, years, degrees or numbers; never say the candidate did the company's own use case. If nothing has been said about what they care about yet, output NONE.`;
 
 function refreshBridgesSoon(ws) {
@@ -4393,7 +4394,7 @@ USE THE CONVERSATION (everything said in this interview session is below the res
 - Stay CONSISTENT with what the candidate already said — the same tools, years, level and numbers. Build on it ("as I mentioned…" is fine); never contradict it; don't retell a story already told unless asked.
 - Use what the INTERVIEWER explained (their stack, use cases, problems) to pick WHICH of the candidate's experiences to lead with and to say how it transfers to their situation.
 - ADDRESS WHAT THEY CARE ABOUT: if anyone in this interview process — this call or an earlier one, the same or a different interviewer — said what they value, what worries them, or what their environment is like, and this question gives room for it, make the answer SHOW that quality through a matching situation from the candidate's OWN workplace (e.g. they said their data is hard to navigate → the candidate describes how their own environment is also messy and how they work through it before raising anything). Settle the concern without pointing at it — no "since you said…".
-- SHOW, DON'T ECHO: never reuse the interviewers' words or labels (their phrases, or tags like "ownership", "independent", "dig in"), never restate their sentence, and never say "you mentioned" / "since you said". Prove the quality with what the candidate actually does, in the candidate's own everyday words.
+- SHOW, DON'T ECHO: never reuse the interviewers' words or labels (their phrases, or tags like "ownership", "independent", "dig in") — if the BRIDGES list an AVOID line, none of those words may appear in the answer. Never restate their sentence, and never say "you mentioned" / "since you said". Prove the quality with what the candidate actually does, in the candidate's own everyday words (e.g. "I'd rather trace it back myself first" instead of "I dig in before escalating").
 - The candidate's own situations may be framed to parallel theirs, but hard facts NEVER change: employers, titles, dates, years of experience, degrees, certifications, and numbers already stated stay exactly as in the resume or earlier answers. Never claim the candidate did the company's own use case.`;
 
 async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
