@@ -142,6 +142,7 @@ async function initDB() {
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS interviewer_title VARCHAR(255) DEFAULT '';
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS stage VARCHAR(255) DEFAULT '';
       ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS learned BOOLEAN DEFAULT false;
+      ALTER TABLE live_transcripts ADD COLUMN IF NOT EXISTS memory TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_profile TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_profile_updated_at TIMESTAMP;
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'build';
@@ -2229,7 +2230,7 @@ app.post('/api/sessions/:id/transcripts/:tid/report', authMiddleware, async (req
     );
     if (!t.rows.length) return res.status(404).json({ error: 'Transcript not found' });
     const tx = t.rows[0];
-    const lines = typeof tx.transcript === 'string' ? JSON.parse(tx.transcript) : (tx.transcript || []);
+    const lines = transcriptLines(tx.transcript);
     if (lines.length < 3) return res.status(400).json({ error: 'Transcript too short for a report' });
 
     // Get session context
@@ -3123,6 +3124,13 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       // _prepped:true → growth updates the display but never overwrites the bank answer in the DB.
       if (verified.question.answer) {
         ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: verified.question.answer, _grows: 0, _prepped: true };
+        // SESSION MEMORY: the prepared answer shows instantly; if this session already discussed the topic, stream a
+        // version adapted to what was said onto the SAME card (the bank itself is never changed).
+        if (conversationRelatesTo(ws, q + ' ' + verified.question.text)) {
+          console.log('[Memory] Adapting prepared answer to the conversation');
+          generateLiveAnswer(verified.question.text, sessionId, userId, ws, verified.question.id, !!forceNavigate, { bankAnswer: verified.question.answer })
+            .catch(e => console.error('[Memory] adapt failed:', e.message));
+        }
       }
       return verified.question.id;
     }
@@ -3300,6 +3308,7 @@ wss.on('connection', (ws) => {
   // ONE rule: only the interviewer's committed lines may ever be read as a question — never the user's
   // own mic ([You]) or their voice leaking into call audio ([Echo]). Used by auto-detect AND "What should I say".
   const interviewerLines = () => transcript.filter(t => !t.isUser && !t.isEcho);
+  ws._getTranscript = () => transcript; // SESSION MEMORY reads this call through here (transcript is reassigned per call)
   // Volume-based self-voice state, per connection (was an accidental global shared across ALL users).
   let userIsSpeaking = false; // true when user is talking into mic
   let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
@@ -3498,6 +3507,13 @@ wss.on('connection', (ws) => {
         );
         transcriptId = tResult.rows[0].id;
         transcript = [];
+        // SESSION MEMORY: fresh notes for this call; load what was said in earlier calls of this session (background)
+        ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = '';
+        const _memT0 = Date.now(), _memTid = transcriptId;
+        loadPriorCallsMemory(sessionId, userId, _memTid).then(m => {
+          ws._priorMemory = m;
+          console.log(`[Memory] Earlier calls loaded: ${m ? m.length + ' chars' : 'none'} in ${Date.now() - _memT0}ms`);
+        }).catch(e => console.error('[Memory] load failed:', e.message));
         lastMatchedQId = null;
         let lastAutoMatchTime = 0; // Timestamp of last auto-detected match
         const AUTO_MATCH_COOLDOWN = 15000; // 15s cooldown — responsive detection while avoiding rapid switching
@@ -3706,6 +3722,7 @@ wss.on('connection', (ws) => {
                 if (!isEcho) broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
                 transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+                maybeDigestCurrentCall(ws);
                 if (!isEcho) {
                   if (aiExtractTimer) clearTimeout(aiExtractTimer);
                   aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
@@ -3782,6 +3799,7 @@ wss.on('connection', (ws) => {
                   broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true }, ws);
                   transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
                   ws._recentTranscript = transcript.slice(-6).map(t => t.text);
+                  maybeDigestCurrentCall(ws);
 
                   // Store for echo detection — Ch1 transcripts will be compared against these
                   recentUserUtterances.push({ text: fullUtterance, ts: Date.now(), startWall: userBufStartWall });
@@ -4220,6 +4238,124 @@ function isSameThread(q, active) {
 // byte-for-byte and tack the model's new sentences on), so nothing the candidate is
 // mid-sentence on ever changes. Uses the session's answer-style TEMPLATE, same as normal
 // answers. Capped in count and length so the overlay never overflows.
+// A stored live transcript as an array of lines. Postgres returns the JSONB column already parsed (an array);
+// JSON.parse on that array throws → callers saw 0 lines → finished calls were deleted as "empty". ONE reader for all.
+function transcriptLines(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') { try { const v = JSON.parse(value || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+  return [];
+}
+
+// ===== SESSION MEMORY (one place — every live answer path reads buildConversationContext) =====
+// Owner's rule: answers must use everything said in this interview session — the candidate's own claims and the
+// interviewer's explanations, this call AND earlier calls — so they stay consistent with what the candidate said and
+// aligned to how the company works, while the proof stays in the candidate's own experience and domain.
+const MEMORY_RAW_CHARS = 6000;   // newest part of this call, passed word-for-word
+const MEMORY_DIGEST_KEEP = 3000; // when digesting, keep this much of the newest text raw
+
+// Transcript entries → "Interviewer: …" / "Candidate: …". Drops [Echo] (Ch1 copy of the candidate — the [You] line is
+// kept) and drops mic lines that are the INTERVIEWER leaking into the mic (same words on Ch1 within 10 s), so the
+// interviewer's words can never be remembered as the candidate's claims.
+function labelTranscript(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i];
+    if (!t || !t.text || t.isEcho) continue;
+    const text = t.text.replace(/^\[(You|Echo)\]\s*/i, '').trim();
+    if (!text) continue;
+    if (t.isUser) {
+      const bleed = lines.some(o => o && !o.isUser && !o.isEcho && Math.abs((o.ts || 0) - (t.ts || 0)) < 10000 &&
+        stringSimilarity.compareTwoStrings(text.toLowerCase(), (o.text || '').toLowerCase()) > 0.6);
+      if (bleed) continue;
+      out.push('Candidate: ' + text);
+    } else out.push('Interviewer: ' + text);
+  }
+  return out;
+}
+
+const MEMORY_DIGEST_SYSTEM = `You keep interview notes for a candidate's live copilot. From the conversation, write compact notes in exactly these sections (short bullets, facts only, no advice):
+CANDIDATE SAID — every claim the candidate made about themselves: skills, tools, years, level ("I do X daily", "I'm strong in Y"), numbers, stories/examples already told.
+INTERVIEWER SAID — what the company does and uses: their stack, use cases, problems/pain points, priorities, team, expectations.
+COVERED — questions already asked, each with the gist of the candidate's answer.
+Never attribute the interviewer's statements to the candidate. Keep names, numbers and tools exactly. Max 220 words.`;
+
+async function digestConversation(labeledText, previousNotes) {
+  const user = (previousNotes ? `EXISTING NOTES (merge into them, keep everything still true):\n${previousNotes}\n\n` : '') + `CONVERSATION:\n${labeledText}\n\nNotes:`;
+  return (await callClaude(MEMORY_DIGEST_SYSTEM, user, 450, MODEL_HAIKU)).trim();
+}
+
+// Notes for every EARLIER call in this session (cached per call in live_transcripts.memory).
+async function loadPriorCallsMemory(sessionId, userId, currentTranscriptId) {
+  const r = await pool.query(
+    `SELECT id, transcript, memory, interviewer_name, interviewer_title, stage, started_at FROM live_transcripts
+     WHERE session_id = $1 AND user_id = $2 AND id != $3 AND transcript IS NOT NULL ORDER BY started_at ASC`,
+    [sessionId, userId, currentTranscriptId || '00000000-0000-0000-0000-000000000000']);
+  const parts = [];
+  for (const row of r.rows.slice(-5)) { // last 5 calls is plenty; keeps the prompt small
+    let notes = row.memory;
+    if (!notes) {
+      const lines = transcriptLines(row.transcript);
+      const labeled = labelTranscript(lines).join('\n');
+      if (labeled.replace(/\s+/g, '').length < 40) continue;
+      try {
+        notes = await digestConversation(labeled.slice(-24000));
+        pool.query('UPDATE live_transcripts SET memory = $1 WHERE id = $2', [notes, row.id]).catch(e => console.error('[Memory] save failed:', e.message));
+      } catch (e) { console.error('[Memory] digest of earlier call failed:', e.message); continue; }
+    }
+    const who = [row.interviewer_name, row.interviewer_title, row.stage].filter(Boolean).join(', ');
+    parts.push(`EARLIER CALL (${new Date(row.started_at).toISOString().slice(0, 10)}${who ? ' — ' + who : ''}):\n${notes}`);
+  }
+  return parts.join('\n\n');
+}
+
+// Keep this call's older part as notes so long calls fit; the newest MEMORY_RAW_CHARS stay word-for-word.
+function maybeDigestCurrentCall(ws) {
+  if (ws._digesting || !ws._getTranscript) return;
+  const labeled = labelTranscript(ws._getTranscript());
+  const from = ws._digestedLines || 0;
+  const pending = labeled.slice(from);
+  if (pending.join('\n').length <= MEMORY_RAW_CHARS) return;
+  // digest everything except the newest ~MEMORY_DIGEST_KEEP chars
+  let keep = 0, chars = 0;
+  while (keep < pending.length && chars + pending[pending.length - 1 - keep].length < MEMORY_DIGEST_KEEP) { chars += pending[pending.length - 1 - keep].length + 1; keep++; }
+  const toDigest = pending.slice(0, pending.length - keep);
+  if (!toDigest.length) return;
+  ws._digesting = true;
+  digestConversation(toDigest.join('\n'), ws._callNotes || '').then(notes => {
+    ws._callNotes = notes; ws._digestedLines = from + toDigest.length;
+    console.log(`[Memory] Digested ${toDigest.length} lines of this call (${notes.length} chars of notes)`);
+  }).catch(e => console.error('[Memory] digest failed:', e.message)).finally(() => { ws._digesting = false; });
+}
+
+function buildConversationContext(ws) {
+  const parts = [];
+  if (ws._priorMemory) parts.push(`FROM EARLIER CALLS IN THIS INTERVIEW PROCESS:\n${ws._priorMemory}`);
+  if (ws._callNotes) parts.push(`EARLIER IN THIS CALL (notes):\n${ws._callNotes}`);
+  const labeled = ws._getTranscript ? labelTranscript(ws._getTranscript()).slice(ws._digestedLines || 0) : [];
+  let raw = labeled.join('\n');
+  if (raw.length > MEMORY_RAW_CHARS) raw = raw.slice(-MEMORY_RAW_CHARS).replace(/^[^\n]*\n/, '');
+  if (raw) parts.push(`THIS CALL SO FAR (word for word, newest last):\n${raw}`);
+  return parts.join('\n\n');
+}
+
+// Does anything said in this session relate to the question? (gates the extra AI call for prepared answers)
+const MEMORY_STOPWORDS = new Set('about after again also always another any because been before being could describe does doing done each experience explain from give have having into just know like more most much other over please should some tell than that their them then there these they thing think this those through time very walk want well were what when where which while will with would your yours'.split(' '));
+function conversationRelatesTo(ws, questionText) {
+  const ctx = ((ws._priorMemory || '') + '\n' + (ws._callNotes || '') + '\n' +
+    (ws._getTranscript ? labelTranscript(ws._getTranscript()).join('\n') : '')).toLowerCase();
+  if (ctx.replace(/\s+/g, '').length < 40) return false;
+  const terms = (questionText.toLowerCase().match(/[a-z][a-z0-9+#.]{3,}/g) || []).filter(w => !MEMORY_STOPWORDS.has(w));
+  return terms.some(w => ctx.includes(w));
+}
+
+const MEMORY_RULES = `
+
+USE THE CONVERSATION (everything said in this interview session is below the resume):
+- Stay CONSISTENT with what the candidate already said — the same tools, years, level and numbers. Build on it ("as I mentioned…" is fine); never contradict it; don't retell a story already told unless asked.
+- Use what the INTERVIEWER explained (their stack, use cases, problems) to pick WHICH of the candidate's experiences to lead with and to say how it transfers to their situation.
+- Any example must be the candidate's OWN (resume or earlier answers). Never claim the candidate did the company's use case.
+- Refer to their situation in the candidate's own words — never restate the interviewer's sentence or open with "you mentioned…".`;
+
 async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
   try {
     if (!active || !active.id) return;
@@ -4231,8 +4367,9 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     const session = ws._sessionContext || {};
     const stylePrompt = getStylePrompt(session.answer_style); // SAME template as normal answers
     const voiceBlock = ws._voiceProfile ? `\n\nSPEAK IN THE CANDIDATE'S OWN VOICE (sound like them, not generic AI):\n${ws._voiceProfile}` : '';
-    const system = stylePrompt + voiceBlock + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble. Just the next short, speakable sentence(s).';
-    const userMsg = `QUESTION (now fuller):\n${fullerQuestion}\n\nANSWER ALREADY GIVEN (do NOT repeat any of this):\n${active.answer}\n\nOutput ONLY the additional sentence(s) to append:`;
+    const system = stylePrompt + voiceBlock + MEMORY_RULES + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble. Just the next short, speakable sentence(s).';
+    const convo = buildConversationContext(ws);
+    const userMsg = `${convo ? convo + '\n\n' : ''}QUESTION (now fuller):\n${fullerQuestion}\n\nANSWER ALREADY GIVEN (do NOT repeat any of this):\n${active.answer}\n\nOutput ONLY the additional sentence(s) to append:`;
 
     let addition = '';
     try { addition = (await callClaude(system, userMsg, 200, MODEL_HAIKU)).trim(); } catch (e) { return; }
@@ -4259,7 +4396,8 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
 }
 
 // Generate answer for live question — questionId is the EXISTING DB row from fastMatchAndRespond
-async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId, forceNavigate) {
+// opts.bankAnswer: a prepared answer to ADAPT to the conversation (shown on the same card; never written back to the bank)
+async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId, forceNavigate, opts = {}) {
   try {
     // Use cached session context — no DB lookup needed
     const session = ws._sessionContext || {};
@@ -4274,9 +4412,6 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     const answeredQs = (ws._sessionQuestions || []).filter(q => q.answer).slice(0, 8);
     const bankContext = answeredQs.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
 
-    // User's recent speech for conversational context
-    const userLines = ws._userRecentLines || [];
-    const userContext = userLines.length > 0 ? `\n\nCANDIDATE'S RECENT RESPONSES (build on this, don't repeat):\n${userLines.join('\n')}` : '';
 
     // Session identity — critical for role-specific answers
     const company = session.company || 'the company';
@@ -4293,7 +4428,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
 
     // Use the full ANSWER_PROMPT for strategic framing — not a watered-down version
     // Add a speed note for live context + technical override when needed
-    const COMMON_LIVE_RULES = `\n\nHEADLINE-FIRST: Your FIRST sentence must be a direct, immediately-speakable answer to the question — something the candidate can start saying out loud right away. Put the supporting detail AFTER that. Never open with preamble or setup.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. The candidate's recent speech is provided FOR CONTEXT ONLY to understand conversation flow. NEVER use the candidate's own words as part of the answer. NEVER quote or paraphrase what the candidate said. The answer must come ONLY from your knowledge, the Q&A bank, resume, and JD. The candidate's speech tells you what they're discussing so you can stay relevant — that's ALL.`;
+    const COMMON_LIVE_RULES = `\n\nHEADLINE-FIRST: Your FIRST sentence must be a direct, immediately-speakable answer to the question — something the candidate can start saying out loud right away. Put the supporting detail AFTER that. Never open with preamble or setup.\n\nIMPORTANT: The question was captured via live speech transcription and may be slightly garbled. NEVER ask for clarification. Interpret the most likely intent and answer confidently. Never quote or read back the candidate's own sentences — but DO stay consistent with the facts they already stated about themselves (see USE THE CONVERSATION).`;
 
     // POINTERS: most people riff from the answer in their own words rather than read it
     // verbatim — so for non-technical questions, format as short scannable beats they can
@@ -4356,14 +4491,21 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     const voiceBlock = ws._voiceProfile
       ? `\n\nSPEAK IN THE CANDIDATE'S OWN VOICE — write the answer the way THIS specific candidate naturally talks, so it sounds like them and not generic AI:\n${ws._voiceProfile}\nMatch their rhythm, phrasing, and word choices — but keep it correct, on-point, and headline-first.`
       : '';
-    const system = basePrompt + liveAddendum + lengthConstraint + voiceBlock;
-    // Include recent transcript so AI sees the full buildup, not just the tail-end question
-    const recentLines = ws._recentTranscript || [];
-    const transcriptContext = recentLines.length > 0
-      ? `\n\nRECENT CONVERSATION (the interviewer's speech leading up to the question — use this to understand the FULL context):\n${recentLines.join('\n')}`
+    // Topic already came up in this interview → one proof line from the candidate's own work (overrides DIRECT MODE's
+    // no-stories rule for THIS answer only; unrelated conceptual questions stay plain).
+    const topicDiscussed = conversationRelatesTo(ws, questionText);
+    const proofRule = topicDiscussed
+      ? `\n\nTHIS TOPIC ALREADY CAME UP IN THIS INTERVIEW: after the direct answer, add ONE short line with a concrete example from the candidate's OWN work (a real project, number or result from the resume or their earlier answers) and a few words on how it carries over to their situation. This overrides any "no personal stories" rule above for this answer.`
+      : '';
+    const system = basePrompt + liveAddendum + lengthConstraint + voiceBlock + MEMORY_RULES + proofRule;
+    // Everything said in this interview session (earlier calls + this call) — see SESSION MEMORY
+    const convo = buildConversationContext(ws);
+    const conversationContext = convo ? `\n\nTHE CONVERSATION:\n${convo}` : '';
+    const preparedBlock = opts.bankAnswer
+      ? `\n\nCANDIDATE'S PREPARED ANSWER to this question (their own facts — keep them; adapt the angle to the conversation):\n${opts.bankAnswer}`
       : '';
 
-    const userPrompt = `${sessionHeader}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}${userContext}${transcriptContext}\n\nQUESTION (detected from speech — may be just the tail end, use RECENT CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
+    const userPrompt = `${sessionHeader}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}${conversationContext}${preparedBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
 
     const tGen = Date.now();
     let answer = '';
@@ -4398,14 +4540,15 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     console.log(`[LATENCY] gen streamed=${streamed} ttft=${ttft}ms total=${Date.now() - tGen}ms chars=${answer.length} q="${(questionText||'').substring(0,50)}"`);
     logEvent('answer', { sessionId, qid: questionId, ms: Date.now() - tGen, ttft, streamed, chars: answer.length, q: (questionText || '').substring(0, 60) });
 
-    // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT
-    if (questionId) {
+    // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT.
+    // An adapted prepared answer is for this conversation only — the bank answer stays as the user wrote it.
+    if (questionId && !opts.bankAnswer) {
       pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, questionId])
         .catch(e => console.error('[Update answer error]', e.message));
     }
 
     // Mark this as the active answer thread so continued interviewer detail grows THIS answer.
-    ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: false };
+    ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: !!opts.bankAnswer };
 
     // Send answer to client with the SAME questionId the client already knows about
     const liveAnswerMsg = {
@@ -4570,7 +4713,7 @@ async function processTranscriptAfterInterview(sessionId, userId, transcriptId, 
     if (row.learned && !force) return summary; // already processed
 
     let lines = [];
-    try { lines = JSON.parse(row.transcript || '[]'); } catch (e) { lines = []; }
+    lines = transcriptLines(row.transcript);
 
     const interviewerLines = lines
       .filter(l => l && !l.isUser && !l.isEcho)
@@ -4589,6 +4732,13 @@ async function processTranscriptAfterInterview(sessionId, userId, transcriptId, 
 
     // Mark processed up-front so overlapping triggers (stop + close) don't double-run
     await pool.query('UPDATE live_transcripts SET learned = true WHERE id = $1', [transcriptId]);
+
+    // SESSION MEMORY: notes for this call, so the next call in this session starts with them
+    try {
+      const notes = await digestConversation(labelTranscript(lines).join('\n').slice(-24000));
+      await pool.query('UPDATE live_transcripts SET memory = $1 WHERE id = $2', [notes, transcriptId]);
+      console.log(`[Memory] Saved notes for call ${transcriptId} (${notes.length} chars)`);
+    } catch (e) { console.error('[Memory] notes for finished call failed:', e.message); }
 
     const session = (await pool.query('SELECT resume, jd, company, role, answer_style FROM sessions WHERE id = $1', [sessionId])).rows[0];
     if (!session) return summary;
@@ -4717,7 +4867,7 @@ async function buildVoiceProfile(userId) {
     const tr = await pool.query('SELECT transcript FROM live_transcripts WHERE user_id = $1 AND transcript IS NOT NULL ORDER BY created_at DESC LIMIT 20', [userId]);
     const utts = [];
     for (const row of tr.rows) {
-      let lines = []; try { lines = JSON.parse(row.transcript || '[]'); } catch (e) {}
+      const lines = transcriptLines(row.transcript);
       lines.forEach(l => {
         if (l && l.isUser) {
           const t = (l.text || '').replace(/^\[You\]\s*/i, '').trim();

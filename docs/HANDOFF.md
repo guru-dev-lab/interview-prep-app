@@ -1,5 +1,26 @@
 # Handoff
 
+## 25 Sep 2026 — session memory on branch feat/session-memory (stacked on fix/question-detection; NOT live)
+- Owner's rule: every answer uses everything said in the interview session (his claims + interviewer's
+  explanations, this call AND earlier calls) — consistent with what he said, aligned to their use case, proof
+  from HIS own experience/domain, never their words.
+- Before: answers saw only the last 6 transcript lines; the "candidate's recent responses" block was dead
+  (`ws._userRecentLines` never set); earlier calls unused; prepared bank answers shown verbatim.
+- DATA-LOSS BUG FOUND + FIXED: post-call step JSON.parse'd the JSONB transcript (pg already returns an array)
+  → 0 lines → EVERY finished call's transcript was DELETED as "empty"; post-call learning and the voice profile
+  never ran. One reader now: `transcriptLines()`. Could not measure prod damage — a read-only prod count was
+  blocked by permissions; owner can allow it.
+- Built (SESSION MEMORY block in server.js, one place): `labelTranscript` (drops echo + interviewer bleed in
+  the mic so their words are never "his"), per-call notes (`live_transcripts.memory`, ADD COLUMN only),
+  earlier-call notes loaded at call start, long-call digest, `buildConversationContext` used by new answers,
+  grow, and prepared answers (adapted on the same card when the topic came up; bank never overwritten).
+  Proof line only when the topic already came up (overrides DIRECT MODE's no-stories rule for that answer).
+- Proof: `node test/memory-e2e.js` (judge = Sonnet): before 0/3; after 3/3 twice + finished call kept.
+  `test/live-e2e.js` 16/16 and question-rules still pass on this branch.
+- Delay (`node test/latency-bench.js`, interviewer stops → first words, median of 3): live 1.54–1.89 s,
+  fix#1 1.52–1.61 s, memory 1.63–1.76 s. Prepared answer: 1.7 s on all; adapted version replaces it ~3.3 s.
+- Open: `ANALYZE TABLE` suggested for Snowflake (not a real command) — accuracy guard issue, not touched.
+
 ## 25 Sep 2026 — #1 fixed on branch fix/question-detection (NOT live yet)
 - Bug: Electron sometimes missed a question, and "What should I say" did nothing.
 - Cause (proven): `isQuestion()` threw away normal questions ("Please describe…", "Talk me through…", "Share an
