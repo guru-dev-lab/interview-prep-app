@@ -41,9 +41,29 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
   await new Promise(r => ws.on('open', r));
   ws.send(JSON.stringify({ type: 'start', token, sessionId, mode: 'full', platform: 'electron', dualStream: true }));
   await sleep(1500);
-  const pcm = Buffer.concat([silence(500), ...lines.flatMap(l => [speech(l), silence(700)]), silence(2500)]);
-  for (let o = 0; o < pcm.length; o += 3200) { // 100 ms packets, real time
-    ws.send(Buffer.concat([Buffer.from([1]), pcm.slice(o, o + 3200)]));
+  // Build both channels. Interviewer lines (strings) → Ch1 only. Your lines ({ you }) → Ch2 (mic) AND a quieter,
+  // 200 ms-late copy on Ch1 — your voice leaking into the call audio (no headphones), the hard case.
+  let ch1 = [silence(500)], ch2 = [silence(500)];
+  for (const l of lines) {
+    if (l && l.bleed) { // interviewer from your speakers leaks into your mic (no headphones): Ch1 clean, Ch2 quieter 40 ms late
+      const a = speech(l.bleed), leak = Buffer.alloc(a.length);
+      for (let i = 0; i < a.length; i += 2) leak.writeInt16LE(Math.round(a.readInt16LE(i) * 0.35), i);
+      ch1.push(a, silence(740)); ch2.push(silence(40), leak, silence(700));
+    }
+    else if (typeof l === 'string') { const a = speech(l); ch1.push(a, silence(700)); ch2.push(silence(a.length / 32), silence(700)); }
+    else {
+      const a = speech(l.you, 'Daniel'), echo = Buffer.alloc(a.length);
+      for (let i = 0; i < a.length; i += 2) echo.writeInt16LE(Math.round(a.readInt16LE(i) * 0.5), i);
+      ch2.push(a, silence(900)); ch1.push(silence(200), echo, silence(700));
+    }
+  }
+  ch1 = Buffer.concat([...ch1, silence(2500)]); ch2 = Buffer.concat([...ch2, silence(2500)]);
+  const len = Math.max(ch1.length, ch2.length);
+  const pad = b => Buffer.concat([b, Buffer.alloc(len - b.length)]);
+  ch1 = pad(ch1); ch2 = pad(ch2);
+  for (let o = 0; o < len; o += 3200) { // 100 ms packets per channel, real time
+    ws.send(Buffer.concat([Buffer.from([1]), ch1.slice(o, o + 3200)]));
+    ws.send(Buffer.concat([Buffer.from([2]), ch2.slice(o, o + 3200)]));
     await sleep(100);
   }
   if (click) { await sleep(1000); got.push({ type: '— CLICK what_should_i_say —' }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
@@ -59,7 +79,7 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
   console.log('  detected :', detected ? `${detected.source}: "${detected.text}"` : '— none —');
   console.log('  card     :', card ? `${card.type}: "${card.questionText}"` : '— NOTHING ON SCREEN —');
   if (errs.length) console.log('  errors   :', errs.join(' | '));
-  return { detected: !!detected, card: !!card, errs };
+  return { detected: !!detected, card: !!card, cardText: card ? (card.questionText || '') : '', errs };
 }
 
 (async () => {
@@ -71,13 +91,21 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
     ['CLICK "Please describe…"', { lines: ['Please describe your experience with Power BI.'], click: true }],
     ['NONE  candidate answering', { lines: ['I built a sales dashboard in Power BI for the regional team, and it cut reporting time by twenty percent.'], expectNone: true }],
     ['NONE  small talk', { lines: ['Hi, how are you doing today?', 'Can you hear me okay?'], expectNone: true }],
+    ['YOU   answering (echo leaks)', { lines: [{ you: 'Yeah, so in my last role I built the sales dashboards in Power BI, and it cut reporting time by twenty percent.' }], expectNone: true }],
+    ['YOU   asking them a question (echo)', { lines: [{ you: 'Great, so what does the team structure look like for this role?' }], expectNone: true }],
+    ['YOU   asking, filler lead-in (echo)', { lines: [{ you: 'Okay. How do you measure success in the first ninety days?' }], expectNone: true }],
+    ['YOU   rhetorical mid-answer (echo)', { lines: [{ you: 'And why did that matter? Because the finance team needed numbers by Monday.' }], expectNone: true }],
+    ['CLICK after only YOU spoke', { lines: [{ you: 'Great, so what does the team structure look like for this role?' }], click: true, expectNone: true, waitMs: 7000 }],
+    ['CLICK them, then YOU answer', { lines: ['Talk me through how you would clean a messy sales dataset.', { you: 'Sure. So first I would check for duplicates. Why? Because duplicates inflate revenue.' }], click: true, expectText: /messy|clean/i }],
+    ['BLEED interviewer leaks into mic', { lines: [{ bleed: 'Please describe your experience with Power BI.' }] }],
+    ['BLEED interviewer leaks, wh- question', { lines: [{ bleed: 'How would you handle a missed deadline on a client report?' }] }],
     ['CLICK nothing asked yet', { lines: [], click: true, waitMs: 5000 }],
   ];
   const only = process.env.ONLY; let fails = 0;
   for (const [n, c] of cases) {
     if (only && !n.includes(only)) continue;
     const r = await scenario(n, c);
-    const ok = c.expectNone ? !r.card : c.lines.length ? r.card : r.errs.length > 0; // spoken question → card; candidate/small talk → no card; nothing spoken → a visible reason
+    const ok = c.expectNone ? !r.card : c.expectText ? r.card && c.expectText.test(r.cardText) : c.lines.length ? r.card : r.errs.length > 0; // spoken question → card; candidate/small talk → no card; nothing spoken → a visible reason
     if (!ok) fails++; console.log('  RESULT   :', ok ? 'PASS' : 'FAIL');
   }
   await pool.end(); fs.rmSync(tmp, { recursive: true, force: true });

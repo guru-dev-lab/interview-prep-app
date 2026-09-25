@@ -3222,6 +3222,23 @@ function openDeepgramStream(onTranscript, onError) {
   const dgWs = new WebSocket('wss://api.deepgram.com/v1/listen?' + params, {
     headers: { 'Authorization': 'Token ' + DEEPGRAM_API_KEY }
   });
+  // Timeline: map Deepgram's audio seconds (restart per stream) to server arrival time, so the interviewer
+  // channel and the mic channel can be compared on ONE clock ("who started speaking first?").
+  const rawSend = dgWs.send.bind(dgWs);
+  let audioSec = 0; const timeline = []; // [audioSecondsAtEndOfPacket, arrivalMs]
+  dgWs.send = (data, ...rest) => {
+    if (Buffer.isBuffer(data)) {
+      audioSec += data.length / 32000; // linear16 mono 16 kHz
+      timeline.push([audioSec, data._wall || Date.now()]);
+      if (timeline.length > 3000) timeline.shift();
+    }
+    return rawSend(data, ...rest);
+  };
+  const wallAt = (sec) => {
+    if (typeof sec !== 'number') return null;
+    for (let i = 0; i < timeline.length; i++) if (timeline[i][0] >= sec) return Math.round(timeline[i][1] - (timeline[i][0] - sec) * 1000);
+    return null;
+  };
   let _dgMsgCount = 0;
   dgWs.on('open', () => {
     console.log('[Deepgram] Stream connected — ready to receive audio');
@@ -3236,7 +3253,9 @@ function openDeepgramStream(onTranscript, onError) {
       }
       if (msg.type === 'Results' && msg.channel?.alternatives?.[0]) {
         const text = msg.channel.alternatives[0].transcript || '';
-        if (text.trim()) onTranscript(text, msg.is_final, msg.speech_final);
+        // When speech began = first WORD's start (msg.start is the result window, which can include leading silence)
+        const w0 = msg.channel.alternatives[0].words && msg.channel.alternatives[0].words[0];
+        if (text.trim()) onTranscript(text, msg.is_final, msg.speech_final, { startWall: wallAt(w0 ? w0.start : msg.start) });
       }
     } catch (e) { console.error('[Deepgram] Parse error:', e.message); }
   });
@@ -3278,6 +3297,9 @@ wss.on('connection', (ws) => {
     }, IDLE_TIMEOUT);
   }
   let sentenceCountSinceReset = 0; // track sentences in current utterance
+  // ONE rule: only the interviewer's committed lines may ever be read as a question — never the user's
+  // own mic ([You]) or their voice leaking into call audio ([Echo]). Used by auto-detect AND "What should I say".
+  const interviewerLines = () => transcript.filter(t => !t.isUser && !t.isEcho);
   // Volume-based self-voice state, per connection (was an accidental global shared across ALL users).
   let userIsSpeaking = false; // true when user is talking into mic
   let userStoppedSpeakingAt = 0; // Timestamp when user stopped speaking
@@ -3299,6 +3321,7 @@ wss.on('connection', (ws) => {
     if (rawData instanceof Buffer && rawData.length > 1 && rawData[0] !== 0x7b) {
       const channel = rawData[0];
       const audio = rawData.slice(1);
+      audio._wall = Date.now(); // arrival time — survives buffering, read by the Deepgram timeline
 
       _audioPktCount[channel] = (_audioPktCount[channel] || 0) + 1;
       // Log every 100th packet with full state
@@ -3490,6 +3513,7 @@ wss.on('connection', (ws) => {
         const AI_EXTRACT_DELAY = 800; // wait after last speechFinal before AI fires (trimmed for speed)
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
         let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
+        let ch1BufStartWall = null; // server time the current interviewer utterance started (shared clock)
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
@@ -3516,7 +3540,7 @@ wss.on('connection', (ws) => {
 
           // CRITICAL: Only use INTERVIEWER utterances for question detection.
           // Filter out [You] (user's own voice) and [Echo] (user voice echoing through system audio).
-          const interviewerOnly = transcript.filter(t => !t.isUser && !t.isEcho);
+          const interviewerOnly = interviewerLines();
           const recent = interviewerOnly.slice(-4);
           if (recent.length < 1) return;
 
@@ -3632,7 +3656,10 @@ wss.on('connection', (ws) => {
         const ECHO_WINDOW_MS = 6000; // Compare against user speech from last 6 seconds
         const ECHO_SIMILARITY_THRESHOLD = 0.45; // Similarity above this = echo
 
-        function isEchoOfUser(ch1Text) {
+        // Echo vs bleed cutoff, measured through Deepgram (25 Sep): your echo → mic first by 122–245 ms; interviewer
+        // bleed into mic → call audio first by 83–163 ms. Any mic lead = you. Ties go to "you" (never answer the user).
+        const ECHO_MIN_LEAD_MS = 0;
+        function isEchoOfUser(ch1Text, ch1StartWall) {
           const now = Date.now();
           const ch1Lower = ch1Text.toLowerCase().trim();
           // Check against recent user utterances
@@ -3645,12 +3672,19 @@ wss.on('connection', (ws) => {
               (ch1Lower.includes(u.text.toLowerCase().substring(0, Math.min(30, u.text.length))) ||
                u.text.toLowerCase().includes(ch1Lower.substring(0, Math.min(30, ch1Lower.length))));
             if (sim > ECHO_SIMILARITY_THRESHOLD || isSubstring) {
-              console.log(`[Echo Detect] Ch1 matched Ch2 (sim=${sim.toFixed(2)}): "${ch1Text.substring(0,40)}" ≈ "${u.text.substring(0,40)}"`);
+              // Same words on both channels. Whoever started FIRST said it: if the call audio started at the same
+              // time or earlier, it's the INTERVIEWER leaking into your mic (speakers) — keep it as their speech.
+              if (ch1StartWall && u.startWall && u.startWall > ch1StartWall - ECHO_MIN_LEAD_MS) {
+                console.log(`[Echo Detect] Same words, but call audio started first (${u.startWall - ch1StartWall}ms) — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0,40)}"`);
+                continue;
+              }
+              console.log(`[Echo Detect] Ch1 matched Ch2 (mic led by ${ch1StartWall && u.startWall ? (ch1StartWall - u.startWall) + 'ms' : 'n/a'}) (sim=${sim.toFixed(2)}): "${ch1Text.substring(0,40)}" ≈ "${u.text.substring(0,40)}"`);
               return true;
             }
           }
           return false;
         }
+        ws._isEchoOfUser = isEchoOfUser; // lets "What should I say" drop an in-progress line that is the user's echo
 
         // Deferred Deepgram setup — opened lazily when first audio packet arrives.
         // This prevents Deepgram idle timeout (10s) killing the connection before
@@ -3660,14 +3694,14 @@ wss.on('connection', (ws) => {
           console.log('[Deepgram] Opening interviewer stream (lazy)');
           ws._audioBuffer1 = []; // init buffer for packets arriving while CONNECTING
           interviewerDG = openDeepgramStream(
-            (text, isFinal, speechFinal) => {
+            (text, isFinal, speechFinal, meta) => {
               console.log(`[DIAG-DG] Ch1 transcript: "${text.substring(0,60)}" isFinal=${isFinal} speechFinal=${speechFinal}`);
               if (!text.trim()) return;
 
               // Commit an interviewer utterance: echo-check, push to transcript, schedule detection.
               // `eager` = fired mid-stream on a complete question (short debounce); else = on a pause.
-              const commitInterviewer = (fullUtterance, eager) => {
-                const isEcho = isEchoOfUser(fullUtterance);
+              const commitInterviewer = (fullUtterance, eager, startWall) => {
+                const isEcho = isEchoOfUser(fullUtterance, startWall);
                 ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true, isEcho: isEcho }));
                 if (!isEcho) broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
                 transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
@@ -3681,6 +3715,7 @@ wss.on('connection', (ws) => {
 
               if (isFinal) {
                 resetIdleTimer();
+                if (!interviewerBuffer) { ch1BufStartWall = (meta && meta.startWall) || null; ws._ch1BufStartWall = ch1BufStartWall; }
                 interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
                 ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
                 // EAGER: a complete question is already on the table — don't wait for a pause.
@@ -3689,7 +3724,8 @@ wss.on('connection', (ws) => {
                   lastCommitTs = Date.now();
                   const fu = interviewerBuffer.trim();
                   interviewerBuffer = '';
-                  commitInterviewer(fu, true);
+                  const st = ch1BufStartWall; ch1BufStartWall = null;
+                  commitInterviewer(fu, true, st);
                 }
               } else {
                 const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
@@ -3701,7 +3737,8 @@ wss.on('connection', (ws) => {
                 lastCommitTs = Date.now();
                 const fullUtterance = interviewerBuffer.trim();
                 interviewerBuffer = '';
-                commitInterviewer(fullUtterance, false);
+                const st = ch1BufStartWall; ch1BufStartWall = null;
+                commitInterviewer(fullUtterance, false, st);
               }
             },
             (err) => {
@@ -3725,14 +3762,16 @@ wss.on('connection', (ws) => {
         // Channel 2 setup (deferred)
         if (msg.dualStream) {
           let userBuffer = '';
+          let userBufStartWall = null; // server time the current mic utterance started (shared clock)
           ws._setupUserDG = function() {
             if (userDG && userDG.readyState <= WebSocket.OPEN) return;
             console.log('[Deepgram] Opening user mic stream (lazy)');
             ws._audioBuffer2 = []; // init buffer for packets arriving while CONNECTING
             userDG = openDeepgramStream(
-              (text, isFinal, speechFinal) => {
+              (text, isFinal, speechFinal, meta) => {
                 if (!text.trim()) return;
                 if (isFinal) {
+                  if (!userBuffer) userBufStartWall = (meta && meta.startWall) || null;
                   userBuffer += (userBuffer ? ' ' : '') + text.trim();
                 }
                 if (speechFinal && userBuffer.trim()) {
@@ -3745,7 +3784,8 @@ wss.on('connection', (ws) => {
                   ws._recentTranscript = transcript.slice(-6).map(t => t.text);
 
                   // Store for echo detection — Ch1 transcripts will be compared against these
-                  recentUserUtterances.push({ text: fullUtterance, ts: Date.now() });
+                  recentUserUtterances.push({ text: fullUtterance, ts: Date.now(), startWall: userBufStartWall });
+                  userBufStartWall = null;
                   // Prune old entries (keep last 10 seconds worth)
                   while (recentUserUtterances.length > 0 && Date.now() - recentUserUtterances[0].ts > 10000) {
                     recentUserUtterances.shift();
@@ -3868,8 +3908,13 @@ wss.on('connection', (ws) => {
 
         // Full mode: extract the MOST RECENT question from transcript
         // Priority: current buffer > last 3 lines (newest first)
-        const currentBuf = interviewerBuffer.trim();
-        const recentLines = transcript.slice(-10); // last 10 for deep context
+        // Interviewer speech only — the user's own words must never come back as "the question".
+        let currentBuf = interviewerBuffer.trim();
+        if (currentBuf && ws._isEchoOfUser && ws._isEchoOfUser(currentBuf, ws._ch1BufStartWall)) {
+          console.log('[WhatShouldISay] Ignoring in-progress line — it is the user\'s echo');
+          currentBuf = '';
+        }
+        const recentLines = interviewerLines().slice(-10); // last 10 for deep context
 
         // Build transcript with recency markers — newest at bottom, labeled
         let rawTranscript = '';
