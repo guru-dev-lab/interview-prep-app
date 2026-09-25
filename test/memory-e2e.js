@@ -23,10 +23,11 @@ const RESUME = `Jordan Lee — Data Analyst, Northwind Retail (2021–present). 
 - Cut weekly sales-report refresh from 4 hours to 20 minutes by rewriting SQL and clustering large fact tables.
 - Cleaned Salesforce CRM data (dedup, standardization) for 2M customer records.
 Skills: SQL, Snowflake, dbt, Power BI, Python, Excel.`;
-async function seed() {
+async function seed(sc = {}) {
+  const resume = sc.resume || RESUME, company = sc.company || 'Keystone Logistics', role = sc.role || 'Senior Data Analyst';
   const u = (await pool.query("INSERT INTO users (email, name, plan) VALUES ($1,'Jordan Lee','pro') RETURNING id", ['mem-' + Date.now() + '@local.test'])).rows[0];
-  const s = (await pool.query("INSERT INTO sessions (user_id, company, role, resume, jd) VALUES ($1,'Keystone Logistics','Senior Data Analyst',$2,'Senior Data Analyst — Snowflake, SQL, forecasting, logistics operations analytics.') RETURNING id", [u.id, RESUME])).rows[0];
-  await pool.query('INSERT INTO questions (session_id, text, answer) VALUES ($1,$2,$3)', [s.id, 'Tell me about your Snowflake experience',
+  const s = (await pool.query("INSERT INTO sessions (user_id, company, role, resume, jd) VALUES ($1,$3,$4,$2,'Senior Data Analyst — Snowflake, SQL, forecasting, logistics operations analytics.') RETURNING id", [u.id, resume, company, role])).rows[0];
+  if (!sc.resume) await pool.query('INSERT INTO questions (session_id, text, answer) VALUES ($1,$2,$3)', [s.id, 'Tell me about your Snowflake experience',
     'I have used Snowflake for about three years.\nI build pipelines and write SQL for reporting.\nI am comfortable with warehouses, roles, and performance tuning.']);
   return { token: jwt.sign({ userId: u.id, name: 'Jordan Lee', email: 'x', plan: 'pro' }, process.env.JWT_SECRET, { expiresIn: '1h' }), sessionId: s.id };
 }
@@ -51,13 +52,13 @@ async function call(auth, lines, { waitMs = 12000 } = {}) {
   const last = [...got].reverse().find(m => (m.type === 'live_answer' || m.type === 'match') && m.answer);
   return last ? { q: last.questionText, a: last.answer, kind: last.type } : null;
 }
-function judge(context, shown) {
-  const sys = 'You grade a live interview-copilot answer. Reply with ONLY JSON: {"consistent":0-2,"aligned":0-2,"grounded":0-2,"own_words":0-2,"why":"one short sentence"}.';
-  const user = `WHAT WAS SAID EARLIER IN THIS INTERVIEW SESSION:\n${context}\n\nCANDIDATE RESUME:\n${RESUME}\n\nQUESTION NOW: ${shown.q}\nANSWER SHOWN TO CANDIDATE:\n${shown.a}\n\nScore 0-2 each:
+function judge(context, shown, sc = {}) {
+  const sys = 'You grade a live interview-copilot answer. Reply with ONLY JSON: one integer 0-2 per criterion named below (use exactly those names as keys) plus "why":"one short sentence".';
+  const user = `TODAY: ${new Date().toISOString().slice(0, 10)} (use it to check years of experience).\n\nWHAT WAS SAID EARLIER IN THIS INTERVIEW SESSION:\n${context}\n\nCANDIDATE RESUME:\n${sc.resume || RESUME}\n\nQUESTION NOW: ${shown.q}\nANSWER SHOWN TO CANDIDATE:\n${shown.a}\n\nScore 0-2 each:${sc.rubric || `
 consistent = builds on what the CANDIDATE already said (daily Snowflake use, ~3 years, sales/CRM pipelines). 2 = clearly builds on it; 1 = compatible but ignores it; 0 = contradicts it.
 aligned = connects to the INTERVIEWER's stated situation (demand forecasting across warehouses, slow queries on shipment tables). 2 = explicitly ties the answer to their situation; 1 = only generically relevant; 0 = unrelated.
 grounded = the proof/examples come from the CANDIDATE's own experience/domain (retail sales/CRM at Northwind, e.g. the 4h→20min report). 2 = uses a concrete example from their own work; 1 = generic, no example; 0 = claims the candidate did the company's logistics/forecasting work.
-own_words = does NOT parrot the interviewer. 2 = own phrasing; 1 = borrows a phrase; 0 = copies their sentences.`;
+own_words = does NOT parrot the interviewer. 2 = own phrasing; 1 = borrows a phrase; 0 = copies their sentences.`}`;
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ model: process.env.MODEL_SONNET || 'claude-sonnet-5', max_tokens: 3000, system: sys, messages: [{ role: 'user', content: user }] });
     const req = https.request({ hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' } }, res => {
@@ -87,17 +88,38 @@ Interviewer: Great. Here we use Snowflake to forecast demand for our forty wareh
       return call(a, ['Thanks for joining again.', 'How would you speed up a slow query in our environment?']); }],
     ['NEXT CALL, bank question', async a => { await call(a, call1, { waitMs: 6000 }); return call(a, ['Thanks for joining again.', 'Tell me about your Snowflake experience.']); }],
   ];
+  const RL_RESUME = `Ridwan Akanbi — Data Analyst, R&L Carriers (2022–present). Freight & operations reporting.
+- Build SQL and Power BI reporting on freight shipments, terminals and claims.
+- Reconcile data across legacy AS/400 tables and newer SQL Server marts.
+- Automated weekly terminal KPI pack (Excel → Power BI), saving ops managers ~6 hours/week.
+Skills: SQL, Power BI, Excel, Python.`;
+  const RL_CONTEXT = `Earlier call — Sarah (hiring manager): "I really like someone who can dig in when they hit a problem, instead of escalating right away." and "Honestly our data environment is messy, it can be hard to find things."
+Next call — David (Sarah's boss) introduces: "We're a small team, and we care a lot about ownership, people who can work independently."`;
+  const RL_RUBRIC = `
+concern = shows the qualities these interviewers said they value (digs in / investigates before escalating; ownership; works independently in a messy, hard-to-navigate data environment). 2 = the answer clearly demonstrates them; 1 = hints; 0 = ignores.
+own_env = makes the point through the CANDIDATE's OWN workplace (R&L, its data/tables/reporting) — e.g. their own environment is also messy so they dig first. 2 = concrete, in their own workplace; 1 = generic; 0 = none, or claims they worked at the interviewer's company.
+facts = keeps resume facts true (employer, role, dates, tools). 2 = fully; 1 = minor stretch; 0 = contradicts or invents employers/titles/degrees.
+own_words = does NOT parrot the interviewers (no "you mentioned", no copying "dig in", "hard to find things" verbatim). 2 = own phrasing; 1 = borrows a phrase; 0 = copies their sentences.`;
+  const RL = { resume: RL_RESUME, company: 'Keystone Freight', role: 'Senior Data Analyst', rubric: RL_RUBRIC,
+    call1: ['Hi, I am Sarah, the hiring manager for this role.', 'I really like someone who can dig in when they hit a problem, instead of escalating right away.',
+      { you: 'That makes sense, I like to understand a problem before I raise it.' }, 'Honestly our data environment is messy, it can be hard to find things.', { you: 'Got it.' }] };
+  cases.push(['OTHER INTERVIEWER, stuck question', async a => { await call(a, RL.call1, { waitMs: 5000 }); await sleep(4000);
+    return call(a, ['Hi, I am David, Sarah\'s boss.', "We're a small team, and we care a lot about ownership, people who can work independently.", 'How do you handle it when you get stuck on something?']); }, RL]);
+  cases.push(['OTHER INTERVIEWER, tell me about yourself', async a => { await call(a, RL.call1, { waitMs: 5000 }); await sleep(4000);
+    return call(a, ['Hi, I am David, Sarah\'s boss.', "We're a small team, and we care a lot about ownership, people who can work independently.", 'So tell me a bit about yourself.']); }, RL]);
   let fails = 0;
-  for (const [name, run] of cases) {
+  for (const [name, run, sc] of cases) {
     if (process.env.ONLY && !name.includes(process.env.ONLY)) continue;
-    const shown = await run(await seed());
+    const shown = await run(await seed(sc || {}));
     console.log(`\n### ${name}`);
     if (!shown) { fails++; console.log('  NO ANSWER ON SCREEN — FAIL'); continue; }
     console.log(`  Q: ${shown.q}  [${shown.kind}]\n  A: ${shown.a.replace(/\n/g, '\n     ')}`);
-    const g = await judge(CONTEXT, shown); const sum = g.consistent + g.aligned + g.grounded + g.own_words;
-    const ok = g.aligned === 2 && g.grounded === 2 && g.consistent >= 1 && g.own_words >= 1; // the owner's rule: their use case, through MY experience
+    const g = await judge(sc ? RL_CONTEXT : CONTEXT, shown, sc || {});
+    const keys = Object.keys(g).filter(k => k !== 'why'); const sum = keys.reduce((t, k) => t + g[k], 0);
+    const ok = sc ? (g.concern === 2 && g.own_env >= 1 && g.facts === 2 && g.own_words >= 1)       // their concern, through MY workplace
+                  : (g.aligned === 2 && g.grounded === 2 && g.consistent >= 1 && g.own_words >= 1); // their use case, through MY experience
     if (!ok) fails++;
-    console.log(`  judge: consistent=${g.consistent} aligned=${g.aligned} grounded=${g.grounded} own_words=${g.own_words} (${sum}/8) — ${g.why}\n  RESULT: ${ok ? 'PASS' : 'FAIL'}`);
+    console.log(`  judge: ${keys.map(k => k + '=' + g[k]).join(' ')} (${sum}/${keys.length * 2}) — ${g.why}\n  RESULT: ${ok ? 'PASS' : 'FAIL'}`);
   }
   if (keptFail) fails++;
   await pool.end(); fs.rmSync(tmp, { recursive: true, force: true });

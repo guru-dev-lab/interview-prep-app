@@ -3126,8 +3126,8 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
         ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: verified.question.answer, _grows: 0, _prepped: true };
         // SESSION MEMORY: the prepared answer shows instantly; if this session already discussed the topic, stream a
         // version adapted to what was said onto the SAME card (the bank itself is never changed).
-        if (conversationRelatesTo(ws, q + ' ' + verified.question.text)) {
-          console.log('[Memory] Adapting prepared answer to the conversation');
+        if (hasConversation(ws)) {
+          console.log('[Memory] Checking prepared answer against the conversation');
           generateLiveAnswer(verified.question.text, sessionId, userId, ws, verified.question.id, !!forceNavigate, { bankAnswer: verified.question.answer })
             .catch(e => console.error('[Memory] adapt failed:', e.message));
         }
@@ -3508,10 +3508,12 @@ wss.on('connection', (ws) => {
         transcriptId = tResult.rows[0].id;
         transcript = [];
         // SESSION MEMORY: fresh notes for this call; load what was said in earlier calls of this session (background)
-        ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = '';
+        ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = ''; ws._bridges = '';
         const _memT0 = Date.now(), _memTid = transcriptId;
         loadPriorCallsMemory(sessionId, userId, _memTid).then(m => {
           ws._priorMemory = m;
+          ws._bridges = '';
+          if (m) refreshBridgesSoon(ws);
           console.log(`[Memory] Earlier calls loaded: ${m ? m.length + ' chars' : 'none'} in ${Date.now() - _memT0}ms`);
         }).catch(e => console.error('[Memory] load failed:', e.message));
         lastMatchedQId = null;
@@ -3723,6 +3725,7 @@ wss.on('connection', (ws) => {
                 transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
                 maybeDigestCurrentCall(ws);
+                if (!isEcho) refreshBridgesSoon(ws);
                 if (!isEcho) {
                   if (aiExtractTimer) clearTimeout(aiExtractTimer);
                   aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
@@ -3800,6 +3803,7 @@ wss.on('connection', (ws) => {
                   transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
                   ws._recentTranscript = transcript.slice(-6).map(t => t.text);
                   maybeDigestCurrentCall(ws);
+                  refreshBridgesSoon(ws);
 
                   // Store for echo detection — Ch1 transcripts will be compared against these
                   recentUserUtterances.push({ text: fullUtterance, ts: Date.now(), startWall: userBufStartWall });
@@ -4275,9 +4279,12 @@ function labelTranscript(lines) {
 
 const MEMORY_DIGEST_SYSTEM = `You keep interview notes for a candidate's live copilot. From the conversation, write compact notes in exactly these sections (short bullets, facts only, no advice):
 CANDIDATE SAID — every claim the candidate made about themselves: skills, tools, years, level ("I do X daily", "I'm strong in Y"), numbers, stories/examples already told.
-INTERVIEWER SAID — what the company does and uses: their stack, use cases, problems/pain points, priorities, team, expectations.
+INTERVIEWERS — one line per person (name/title as they introduced themselves), then what THEY said:
+  • VALUES / WANTS in a candidate (e.g. "wants someone who investigates before escalating")
+  • CONCERNS / PAIN POINTS / how their environment really is (e.g. "data is messy, hard to find things")
+  • COMPANY FACTS: stack, use cases, team, priorities, what they said in their introduction
 COVERED — questions already asked, each with the gist of the candidate's answer.
-Never attribute the interviewer's statements to the candidate. Keep names, numbers and tools exactly. Max 220 words.`;
+Never attribute an interviewer's statement to the candidate. Keep names, numbers and tools exactly. Max 300 words.`;
 
 async function digestConversation(labeledText, previousNotes) {
   const user = (previousNotes ? `EXISTING NOTES (merge into them, keep everything still true):\n${previousNotes}\n\n` : '') + `CONVERSATION:\n${labeledText}\n\nNotes:`;
@@ -4327,7 +4334,41 @@ function maybeDigestCurrentCall(ws) {
   }).catch(e => console.error('[Memory] digest failed:', e.message)).finally(() => { ws._digesting = false; });
 }
 
-function buildConversationContext(ws) {
+// BRIDGES — computed in the background as the conversation happens (never on the answer's clock): each thing an
+// interviewer cares about (value, concern, environment, use case) mapped to the candidate's OWN matching example.
+// A short explicit map is followed far more reliably by the fast answer model than long notes.
+const BRIDGES_SYSTEM = `You prepare a job candidate for the rest of their interview. From what was said so far and their resume, write BRIDGES: for each thing an interviewer cares about — a value or trait they want, a concern or pain point, how their environment really is, a use case or problem — pair it with the candidate's OWN real example that proves it.
+Format, one per line (max 6 lines, most important first):
+THEY: <what they care about, paraphrased> → PROOF: <a specific real example from the candidate's resume or earlier answers — employer, project, number/result> → SAY IT AS: <one plain sentence in the candidate's own everyday words, with no words borrowed from the interviewer>
+Then one line: CLAIMS: <the candidate's own stated claims to stay consistent with (tools, years, level)>.
+Rules: proof comes ONLY from the candidate's resume or their own earlier answers; never invent employers, titles, dates, years, degrees or numbers; never say the candidate did the company's own use case. If nothing has been said about what they care about yet, output NONE.`;
+
+function refreshBridgesSoon(ws) {
+  if (!ws || ws._isCanvas) return;
+  clearTimeout(ws._bridgeTimer);
+  ws._bridgeTimer = setTimeout(() => refreshBridges(ws), 1200); // settle after the latest line
+}
+async function refreshBridges(ws) {
+  if (ws.readyState !== WebSocket.OPEN) return; // call ended — nothing to prepare
+  if (ws._bridgesBusy) { ws._bridgesAgain = true; return; }
+  const session = ws._sessionContext || {};
+  const labeled = ws._getTranscript ? labelTranscript(ws._getTranscript()) : [];
+  if (!ws._priorMemory && !ws._callNotes && labeled.filter(l => l.startsWith('Interviewer:')).length === 0) return;
+  ws._bridgesBusy = true;
+  const t0 = Date.now();
+  try {
+    const user = `RESUME:\n${session.resume || 'N/A'}\n\n${buildConversationContext(ws, { noBridges: true })}\n\nBRIDGES:`;
+    const out = (await callClaude(BRIDGES_SYSTEM, user, 500, MODEL_HAIKU)).trim();
+    ws._bridges = /^NONE\b/i.test(out) ? '' : out;
+    console.log(`[Memory] Bridges refreshed in ${Date.now() - t0}ms (${ws._bridges ? ws._bridges.split('\n').length + ' lines' : 'none yet'})`);
+  } catch (e) { console.error('[Memory] bridges failed:', e.message); }
+  finally {
+    ws._bridgesBusy = false;
+    if (ws._bridgesAgain) { ws._bridgesAgain = false; refreshBridgesSoon(ws); }
+  }
+}
+
+function buildConversationContext(ws, opts = {}) {
   const parts = [];
   if (ws._priorMemory) parts.push(`FROM EARLIER CALLS IN THIS INTERVIEW PROCESS:\n${ws._priorMemory}`);
   if (ws._callNotes) parts.push(`EARLIER IN THIS CALL (notes):\n${ws._callNotes}`);
@@ -4335,17 +4376,15 @@ function buildConversationContext(ws) {
   let raw = labeled.join('\n');
   if (raw.length > MEMORY_RAW_CHARS) raw = raw.slice(-MEMORY_RAW_CHARS).replace(/^[^\n]*\n/, '');
   if (raw) parts.push(`THIS CALL SO FAR (word for word, newest last):\n${raw}`);
+  if (!opts.noBridges && ws._bridges) parts.push(`BRIDGES — what they care about → the candidate's own proof (use the one that fits this question):\n${ws._bridges}`);
   return parts.join('\n\n');
 }
 
-// Does anything said in this session relate to the question? (gates the extra AI call for prepared answers)
-const MEMORY_STOPWORDS = new Set('about after again also always another any because been before being could describe does doing done each experience explain from give have having into just know like more most much other over please should some tell than that their them then there these they thing think this those through time very walk want well were what when where which while will with would your yours'.split(' '));
-function conversationRelatesTo(ws, questionText) {
-  const ctx = ((ws._priorMemory || '') + '\n' + (ws._callNotes || '') + '\n' +
-    (ws._getTranscript ? labelTranscript(ws._getTranscript()).join('\n') : '')).toLowerCase();
-  if (ctx.replace(/\s+/g, '').length < 40) return false;
-  const terms = (questionText.toLowerCase().match(/[a-z][a-z0-9+#.]{3,}/g) || []).filter(w => !MEMORY_STOPWORDS.has(w));
-  return terms.some(w => ctx.includes(w));
+// Has anything been said in this interview process yet (earlier calls, or the interviewer in this call)?
+function hasConversation(ws) {
+  if (ws._priorMemory || ws._callNotes) return true;
+  const t = ws._getTranscript ? ws._getTranscript() : [];
+  return t.filter(x => x && !x.isUser && !x.isEcho).length > 1;
 }
 
 const MEMORY_RULES = `
@@ -4353,8 +4392,9 @@ const MEMORY_RULES = `
 USE THE CONVERSATION (everything said in this interview session is below the resume):
 - Stay CONSISTENT with what the candidate already said — the same tools, years, level and numbers. Build on it ("as I mentioned…" is fine); never contradict it; don't retell a story already told unless asked.
 - Use what the INTERVIEWER explained (their stack, use cases, problems) to pick WHICH of the candidate's experiences to lead with and to say how it transfers to their situation.
-- Any example must be the candidate's OWN (resume or earlier answers). Never claim the candidate did the company's use case.
-- Refer to their situation in the candidate's own words — never restate the interviewer's sentence or open with "you mentioned…".`;
+- ADDRESS WHAT THEY CARE ABOUT: if anyone in this interview process — this call or an earlier one, the same or a different interviewer — said what they value, what worries them, or what their environment is like, and this question gives room for it, make the answer SHOW that quality through a matching situation from the candidate's OWN workplace (e.g. they said their data is hard to navigate → the candidate describes how their own environment is also messy and how they work through it before raising anything). Settle the concern without pointing at it — no "since you said…".
+- SHOW, DON'T ECHO: never reuse the interviewers' words or labels (their phrases, or tags like "ownership", "independent", "dig in"), never restate their sentence, and never say "you mentioned" / "since you said". Prove the quality with what the candidate actually does, in the candidate's own everyday words.
+- The candidate's own situations may be framed to parallel theirs, but hard facts NEVER change: employers, titles, dates, years of experience, degrees, certifications, and numbers already stated stay exactly as in the resume or earlier answers. Never claim the candidate did the company's own use case.`;
 
 async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
   try {
@@ -4416,7 +4456,9 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Session identity — critical for role-specific answers
     const company = session.company || 'the company';
     const role = session.role || 'this role';
-    let sessionHeader = `THIS INTERVIEW IS FOR: ${role} at ${company}\nThe candidate knows which role and company this is. If asked "why this role" or "why this company", reference ${company} and ${role} naturally — but NEVER parrot the JD. Only bring in personal experience when the question asks for it.\n`;
+    // Today's date so "2022–present" becomes the right number of years (the model otherwise guesses: 2 vs 4 years seen)
+    const todayLine = `TODAY: ${new Date().toISOString().slice(0, 10)} — compute any years of experience from the resume dates and today; never round up.\n`;
+    let sessionHeader = todayLine + `THIS INTERVIEW IS FOR: ${role} at ${company}\nThe candidate knows which role and company this is. If asked "why this role" or "why this company", reference ${company} and ${role} naturally — but NEVER parrot the JD. Only bring in personal experience when the question asks for it.\n`;
     // Tailor to whoever is actually asking (name/title/stage), when known.
     const iv = ws._interviewer || {};
     if (iv.name || iv.title || iv.stage) {
@@ -4491,30 +4533,32 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
     const voiceBlock = ws._voiceProfile
       ? `\n\nSPEAK IN THE CANDIDATE'S OWN VOICE — write the answer the way THIS specific candidate naturally talks, so it sounds like them and not generic AI:\n${ws._voiceProfile}\nMatch their rhythm, phrasing, and word choices — but keep it correct, on-point, and headline-first.`
       : '';
-    // Topic already came up in this interview → one proof line from the candidate's own work (overrides DIRECT MODE's
-    // no-stories rule for THIS answer only; unrelated conceptual questions stay plain).
-    const topicDiscussed = conversationRelatesTo(ws, questionText);
-    const proofRule = topicDiscussed
-      ? `\n\nTHIS TOPIC ALREADY CAME UP IN THIS INTERVIEW: after the direct answer, add ONE short line with a concrete example from the candidate's OWN work (a real project, number or result from the resume or their earlier answers) and a few words on how it carries over to their situation. This overrides any "no personal stories" rule above for this answer.`
+    // Something said earlier may matter → the MODEL judges relevance (same topic, or a value/concern an interviewer
+    // raised that this question lets the candidate show). Keyword matching missed "stuck" ↔ "dig in before escalating".
+    const proofRule = hasConversation(ws)
+      ? `\n\nCONNECT TO WHAT WAS SAID: first decide whether anything said earlier in this interview process relates to this question — the same topic, tool or problem, OR a value, concern or environment an interviewer described that this question lets the candidate show. It usually does when the topic or problem was discussed. If it does, the answer MUST include ONE line with a SPECIFIC example from the candidate's OWN resume or earlier answers (name the real project, number or result) that proves it and fits their situation — when a BRIDGE fits this question, use its PROOF, said in the candidate's own words. This overrides any "no personal stories" rule above for this answer. If nothing earlier relates, just answer the question.`
       : '';
     const system = basePrompt + liveAddendum + lengthConstraint + voiceBlock + MEMORY_RULES + proofRule;
     // Everything said in this interview session (earlier calls + this call) — see SESSION MEMORY
     const convo = buildConversationContext(ws);
     const conversationContext = convo ? `\n\nTHE CONVERSATION:\n${convo}` : '';
     const preparedBlock = opts.bankAnswer
-      ? `\n\nCANDIDATE'S PREPARED ANSWER to this question (their own facts — keep them; adapt the angle to the conversation):\n${opts.bankAnswer}`
+      ? `\n\nCANDIDATE'S PREPARED ANSWER to this question (their own facts — keep them; adapt the angle to the conversation):\n${opts.bankAnswer}\n\nIf nothing said earlier in this interview process would make this prepared answer better, output exactly KEEP and nothing else.`
       : '';
 
     const userPrompt = `${sessionHeader}\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankContext}${conversationContext}${preparedBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
 
+    // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
+    // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
+    const answerModel = isTechnical ? (MODELS[process.env.LIVE_TECH_MODEL || 'sonnet'] || MODEL_SONNET) : MODEL_HAIKU;
     const tGen = Date.now();
     let answer = '';
     let ttft = 0;
     let streamed = false;
-    const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0'; // kill switch: set to '0' to revert to buffered
+    const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0' && !opts.bankAnswer; // kill switch: '0' = buffered. Adapted prepared answers swap in whole.
     if (streamEnabled) {
       try {
-        answer = await callClaudeStream(system, userPrompt, tokenLimit, MODEL_HAIKU, (chunk) => {
+        answer = await callClaudeStream(system, userPrompt, tokenLimit, answerModel, (chunk) => {
           if (!ttft) ttft = Date.now() - tGen;
           const deltaMsg = {
             type: 'live_answer_delta',
@@ -4531,14 +4575,18 @@ Only reference specific companies if the question EXPLICITLY asks "tell me about
       } catch (streamErr) {
         // Any streaming failure → fall back to the exact buffered behavior as before.
         console.error('[Stream] fell back to buffered:', streamErr.message);
-        answer = await callClaude(system, userPrompt, tokenLimit, MODEL_HAIKU);
+        answer = await callClaude(system, userPrompt, tokenLimit, answerModel);
       }
     } else {
-      answer = await callClaude(system, userPrompt, tokenLimit, MODEL_HAIKU);
+      answer = await callClaude(system, userPrompt, tokenLimit, answerModel);
     }
     console.log(`[TIMING] generateLiveAnswer: ${Date.now() - tGen}ms`);
     console.log(`[LATENCY] gen streamed=${streamed} ttft=${ttft}ms total=${Date.now() - tGen}ms chars=${answer.length} q="${(questionText||'').substring(0,50)}"`);
     logEvent('answer', { sessionId, qid: questionId, ms: Date.now() - tGen, ttft, streamed, chars: answer.length, q: (questionText || '').substring(0, 60) });
+    if (opts.bankAnswer && /^\s*KEEP\s*\.?\s*$/i.test(answer)) {
+      console.log('[Memory] Prepared answer kept as written (nothing earlier improves it)');
+      return;
+    }
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT.
     // An adapted prepared answer is for this conversation only — the bank answer stays as the user wrote it.

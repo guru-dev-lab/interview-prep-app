@@ -1,5 +1,20 @@
 # Handoff
 
+## 25 Sep 2026 (pm) — values/concerns across interviewers + technical accuracy (feat/session-memory, NOT live)
+- Owner's 2nd example: HM said she likes people who dig in before escalating + their data is messy; next day her
+  boss asked something close → answer should settle THEIR concern through HIS workplace (R&L is messy too, so he
+  digs first), never in their words, hard facts unchanged.
+- Built: notes now capture per-interviewer VALUES / CONCERNS / ENVIRONMENT / intro; BRIDGES computed in the
+  background as the call runs (their concern → his own proof → how to say it), fed to every answer; relevance
+  judged by the model (keyword gate missed "stuck" ↔ "dig in"); prepared answers adapted unless the model says
+  KEEP (swapped in whole, not streamed over); SHOW-DON'T-ECHO + hard-facts rule; TODAY's date for years.
+- Accuracy (test/accuracy-bench.js, 10 technical Qs, Opus-graded, 2 runs): Haiku 15/20 both, Sonnet 18/20 both,
+  Opus 16/20. Technical questions now default to Sonnet (LIVE_TECH_MODEL=haiku reverts).
+- Proof: memory-e2e 5 cases — last full run 9/10, his example 4/4 on final code. live-e2e 16/16, rules 20/20.
+- Delay (final code): technical new question first words ~2.1–2.2 s (Sonnet; was ~1.5–1.9 s), full ~3.8–4.0 s;
+  prepared answer still 1.65 s, adapted swap ~4.0 s.
+- Open: answers still borrow a word like "dig in"/"messy" (own_words 1/2, never 0). Web switch_tab echo gap.
+
 ## 25 Sep 2026 — session memory on branch feat/session-memory (stacked on fix/question-detection; NOT live)
 - Owner's rule: every answer uses everything said in the interview session (his claims + interviewer's
   explanations, this call AND earlier calls) — consistent with what he said, aligned to their use case, proof
