@@ -1,3 +1,9 @@
 node_modules/
 .env
 *.log
+
+# local agent-tool databases (not part of xHire)
+ruvector.db
+**/ruvector.db
+agentdb.rvf
+agentdb.rvf.lock
