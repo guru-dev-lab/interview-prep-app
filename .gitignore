@@ -7,3 +7,4 @@ ruvector.db
 **/ruvector.db
 agentdb.rvf
 agentdb.rvf.lock
+electron/dist/

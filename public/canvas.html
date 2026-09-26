@@ -418,6 +418,13 @@ body.look-ocean .filter-btn.active{background:rgba(6,182,212,.12);color:#22D3EE;
 /* Toast notification */
 .xhire-toast{position:fixed;top:56px;left:50%;transform:translateX(-50%) translateY(-10px);background:rgba(15,17,28,.95);border:1px solid rgba(248,113,113,.2);border-radius:10px;padding:8px 16px;font:600 11px Inter,sans-serif;color:#FCA5A5;z-index:99999;opacity:0;transition:opacity .2s ease,transform .2s ease;pointer-events:none;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)}
 .xhire-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.perm-panel{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(5,8,15,.82);-webkit-app-region:no-drag}
+.perm-box{max-width:340px;width:100%;padding:16px;border-radius:12px;background:var(--surface);border:1px solid var(--glass-border-color);font:400 12px Inter,sans-serif;color:var(--text2);line-height:1.5}
+.perm-box h3{font:700 13px Inter,sans-serif;color:var(--text);margin:0 0 6px}
+.perm-box p{margin:0 0 10px;color:var(--text3)}
+.perm-box button{display:block;width:100%;margin-top:6px;padding:8px 10px;border-radius:8px;border:1px solid rgba(124,58,237,.35);background:rgba(124,58,237,.15);color:var(--accent2);font:600 12px Inter,sans-serif;cursor:pointer}
+.perm-box button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.perm-box button.quiet{background:transparent;border-color:transparent;color:var(--text4)}
 .xhire-toast.info{border-color:rgba(124,58,237,.3);color:var(--accent2)}
 
 /* Empty state */
@@ -2568,10 +2575,102 @@ async function toggleElectronLive() {
   }
 }
 
+// ===== MAC PERMISSIONS =====
+// Go Live needs BOTH the Microphone (you) and Screen & System Audio Recording (the interviewer). Nothing goes live
+// until both are on. The mic gets the normal macOS Allow popup; Screen Recording can only be switched on in System
+// Settings, so the panel opens that exact page, and Xhire restarts to apply it (macOS applies it only on restart).
+// Resolves true = both on, go live; false = stopped. Older desktop builds have no permStatus and go live as before.
+function macPermissionsReady() {
+  var api = window.electronAPI;
+  if (!api || !api.isMac || !api.permStatus) return Promise.resolve(true);
+  return api.permStatus().then(function(st) {
+    console.log('[Perm] status mic=' + st.mic + ' screen=' + st.screen);
+    if (st.mic === 'not-determined') {
+      return api.permRequestMic().then(function() { return api.permStatus(); });
+    }
+    return st;
+  }).then(function(st) {
+    if (st.mic === 'granted' && st.screen === 'granted') return true;
+    return showPermPanel(st);
+  }).catch(function(e) {
+    console.error('[Perm] check failed:', e && e.message);
+    showToast('Could not check Mac permissions — restart Xhire and try again', 'error', 6000);
+    return false;
+  });
+}
+
+var PERM_INFO = {
+  screen: { name: 'Screen &amp; System Audio Recording', why: 'to hear the interviewer' },
+  mic: { name: 'Microphone', why: 'to hear you' }
+};
+
+function showPermPanel(st) {
+  return new Promise(function(resolve) {
+    var old = document.getElementById('perm-panel');
+    if (old) old.remove();
+    var screenWasOff = st.screen !== 'granted';
+    var panel = document.createElement('div');
+    panel.id = 'perm-panel';
+    panel.className = 'perm-panel';
+    document.body.appendChild(panel);
+
+    function render(cur, note) {
+      var missing = ['screen', 'mic'].filter(function(k) { return cur[k] !== 'granted'; });
+      var needRestart = screenWasOff && cur.screen === 'granted';
+      var html = '<div class="perm-box"><h3>Turn on before you go live</h3>'
+        + '<p>Xhire can\'t go live until these are on. For each one: click it, turn <b>Xhire</b> on in the list that opens, come back.</p>';
+      missing.forEach(function(k) {
+        html += '<button class="primary" data-act="open" data-kind="' + k + '">Turn on ' + PERM_INFO[k].name + '</button>'
+          + '<p style="margin:2px 0 8px;font-size:11px">' + PERM_INFO[k].why + '</p>';
+      });
+      if (needRestart) html += '<p><b>Screen Recording is on.</b> macOS needs Xhire to restart to use it.</p>'
+        + '<button class="primary" data-act="restart">Restart Xhire</button>';
+      else if (missing.length) html += '<button data-act="check">I turned it on — check again</button>'
+        + '<button data-act="restart">Restart Xhire</button>';
+      if (note) html += '<p style="margin-top:8px;color:var(--accent2)">' + note + '</p>';
+      html += '<button class="quiet" data-act="close">Not now</button></div>';
+      panel.innerHTML = html;
+    }
+    render(st);
+
+    panel.addEventListener('click', function(ev) {
+      var t = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
+      if (!t) return;
+      var act = t.getAttribute('data-act');
+      var api = window.electronAPI;
+      if (act === 'open') {
+        api.permOpenSettings(t.getAttribute('data-kind')).then(function(ok) {
+          if (!ok) showToast('Open System Settings → Privacy & Security yourself', 'error', 5000);
+        });
+        return;
+      }
+      if (act === 'restart') { api.relaunchApp(); return; }
+      if (act === 'check') {
+        api.permStatus().then(function(cur) {
+          console.log('[Perm] recheck mic=' + cur.mic + ' screen=' + cur.screen);
+          if (cur.mic === 'granted' && cur.screen === 'granted' && !screenWasOff) {
+            panel.remove(); resolve(true); return; // mic only was missing — no restart needed
+          }
+          render(cur, cur.mic === 'granted' && cur.screen === 'granted' ? '' : 'Still off — flip the switch next to Xhire, then check again.');
+        });
+        return;
+      }
+      panel.remove();
+      resolve(false);
+    });
+  });
+}
+
 async function goLiveElectron() {
   var tb = $('btn-live-tb');
   if (tb) { tb.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span>'; tb.className = 'tb-btn'; }
   var isWin = window.electronAPI && window.electronAPI.platform === 'win32';
+
+  if (!(await macPermissionsReady())) {
+    if (tb) { tb.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>'; tb.className = 'tb-btn tb-btn-live'; }
+    setStatus('Permission needed to go live', 'off');
+    return;
+  }
 
   try {
     // Step 1: Capture system audio via getDisplayMedia
