@@ -158,6 +158,12 @@ app.whenReady().then(() => {
   }, 2 * 60 * 60 * 1000);
 });
 
+// Cmd+Q / Dock Quit / system shutdown: mark the quit first, otherwise the window's close handler
+// below treats it as "hide to tray" and cancels the quit
+app.on('before-quit', () => {
+  app.isQuitting = true;
+});
+
 app.on('window-all-closed', (e) => {
   e.preventDefault(); // Keep app alive via tray
 });
