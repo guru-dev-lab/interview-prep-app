@@ -2961,6 +2961,8 @@ function isQuestionClause(s) {
   if (/\b(hear|see) me (okay|ok|alright|all right|fine|well|clearly)\b|\b(hear|see) me\?$/.test(s)) return false;
   // Candidate mid-answer continuation
   if (/^(eventually |ultimately |overall |the result |the outcome |the impact |the challenge |the problem |the solution |the key |the main |the biggest |the first |the second |the third )/.test(s)) return false;
+  // "…I like that you said what you've done in the past." — a clause ABOUT what the candidate did/said, not a question
+  if (/^(what|how|why|where|when|which) you('ve|'re|'d| have| had| did| said| do| were| are| \w+ed)\b/.test(s) && !/\?$/.test(s)) return false;
   // "…a role at Stripe. Which is a pretty cool company." — a relative clause continuing the last sentence, not a question
   if (/^which (is|was|were|are|has|have|had|means|meant|makes|made|would|will|can|could|should|sounds|looks|seems|gives|gave|lets|helps|helped|led|leads|includes|included|brings|brought|explains)\b/.test(s) && !/\?$/.test(s)) return false;
   if (/\?$/.test(s) && words >= 4) return true;
@@ -2977,7 +2979,10 @@ function isQuestion(text) {
   if (t.split(/\s+/).length < 3 || t.length < 15) return false;
   if (/\byou(r|'re|'ve|'d)?\b/.test(t) && INTERVIEWER_ASK_RE.test(t)) return true;
   // The utterance opens as the candidate talking about themselves → not a question.
-  if (CANDIDATE_SPEECH_RE.test(stripLeadFiller(t))) return false;
+  // …unless a later sentence is a clear question TO the candidate ("I didn't catch the company names. So what companies
+  // did you work for?" — interviewers open with "I…" all the time; prod 26 Sep 23:16).
+  const askedYou = t.split(/(?<=[.?!])\s+/).slice(1).some(x => /\?$/.test(x.trim()) && /\byou(r)?\b/.test(x) && isQuestionClause(x));
+  if (CANDIDATE_SPEECH_RE.test(stripLeadFiller(t)) && !askedYou) return false;
   // Any sentence — or the tail after a lead-in clause ("In your current role, what…") — can carry the question.
   for (const sentence of t.split(/(?<=[.?!;])\s+|\s+[—–]\s+|\s+-\s+/)) {
     if (isQuestionClause(sentence)) return true;
@@ -3877,7 +3882,21 @@ wss.on('connection', (ws) => {
           // side-topics and throw junk on screen while the candidate is still answering.
           // Unclear lines (AI route) wait out the cooldown so side remarks don't hijack the screen; a CLEAR interviewer
           // question (fast route) is always answered — back-to-back questions were being dropped (mock interview 26 Sep).
-          if (inCooldown && via !== 'fast') { console.log('[AI Auto-Detect] Different question during cooldown — holding'); return; }
+          // HOLD means hold (prod 26 Sep 23:16: "So what companies did you work for?" was 'held' and never came back):
+          // wait out the cooldown, then ask it — unless a newer card has appeared since.
+          if (inCooldown && via !== 'fast' && via !== 'held') {
+            const wait = Math.max(500, AUTO_MATCH_COOLDOWN - (Date.now() - lastAutoMatchTime) + 300);
+            const hold = { q, at: Date.now() }; ws._heldQ = hold;
+            console.log(`[AI Auto-Detect] Different question during cooldown — holding ${Math.round(wait / 1000)}s: ${q.substring(0, 60)}`);
+            setTimeout(() => {
+              if (ws._heldQ !== hold) return; // a newer held question replaced it
+              ws._heldQ = null;
+              if (((ws._lastNewCard || {}).ts || 0) > hold.at || ((ws._lastCard || {}).ts || 0) > hold.at) { console.log('[AI Auto-Detect] Held question superseded by a newer card:', q.substring(0, 50)); return; }
+              console.log('[AI Auto-Detect] Releasing held question:', q.substring(0, 60));
+              fireDetectedQuestion(q, 'held').catch(e => console.error('[Held]', e.message));
+            }, wait);
+            return;
+          }
 
           lastAiExtractedQ = q;
           recentDetectedQs.push(q);
@@ -4909,7 +4928,7 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     try { addition = (await callClaude(system, userMsg, 200, MODEL_HAIKU)).trim(); } catch (e) { return; }
     addition = addition.replace(/^["']|["']$/g, '').trim();
     if (!addition || addition.length < 4) return;
-    if (isNonAnswer(addition)) { console.log('[Grow] dropped an addition that talks to the user'); return; } // never on screen
+    if (isNonAnswer(addition)) { console.log('[Grow] dropped an addition that talks to the user:', addition.replace(/\n/g, ' / ').substring(0, 160)); logEvent('grow_dropped', { sessionId, a: addition.substring(0, 160) }); return; } // never on screen
 
     // Append-only: keep existing lines exactly; new "• " lines go above the ↳ employer line.
     const full = applyPlatformTraps(appendToLiveAnswer(active.answer || '', addition, growShape), fullerQuestion + ' ' + growContext); // same guard as new answers

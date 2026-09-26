@@ -5,6 +5,9 @@ const block = src.slice(src.indexOf('// === QUESTION RULES'), src.indexOf('// ==
 const isQuestion = new Function(block + '\nreturn isQuestion;')();
 
 const QUESTIONS = [
+  "I didn't catch any of the company names. So what companies did you work for?",
+  "What have you done in the past with Snowflake?",
+  'What you would do if the numbers did not match?',
   'Which is better here, a left join or an inner join?',
   'Which tool would you use for this dashboard',
   'Which of these metrics matters most to you and why?',
@@ -33,6 +36,9 @@ const QUESTIONS = [
   'Build me a simple model to forecast weekly demand.',
 ];
 const NOT_QUESTIONS = [
+  // Host feedback, prod 26 Sep 23:15 — a clause about what the candidate did, not a question
+  "But I also like that you said what you've done in the past. So",
+  'How you handled that stakeholder was really strong.',
   // Mock-video host intro, 26 Sep — relative 'which' continuing the last sentence
   'Which is a pretty cool company.',
   "Which is a pretty cool company. So I'll be jumping back and forth, and I created custom questions based on",
