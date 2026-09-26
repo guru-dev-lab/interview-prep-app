@@ -4882,6 +4882,7 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     try { addition = (await callClaude(system, userMsg, 200, MODEL_HAIKU)).trim(); } catch (e) { return; }
     addition = addition.replace(/^["']|["']$/g, '').trim();
     if (!addition || addition.length < 4) return;
+    if (isNonAnswer(addition)) { console.log('[Grow] dropped an addition that talks to the user'); return; } // never on screen
 
     // Append-only: keep existing lines exactly; new "• " lines go above the ↳ employer line.
     const full = applyPlatformTraps(appendToLiveAnswer(active.answer || '', addition, growShape), fullerQuestion + ' ' + growContext); // same guard as new answers
@@ -4930,9 +4931,22 @@ function classifyQuestionShape(questionText) {
 // giving lines to say ("Could you provide the full question…") — owner's mock-video run, 26 Sep.
 const NOT_A_QUESTION = 'NOT_A_QUESTION';
 const META_REPLY_RE = /\b(could you (please )?(provide|share|clarify|repeat|confirm)|i need (to clarify|more context|the (full|complete) question)|the question (appears|seems) (to be )?(incomplete|cut off|unclear)|once i have the (complete|full) question|appears to be (incomplete|cut off)|as an ai\b|i appreciate you (providing|sharing) the (conversation|transcript|context))/i;
+// How a reply that talks to the user OPENS — checked on the first few words, before anything reaches the screen.
+const META_OPENING_RE = /^[•\-*\s]*(i appreciate you|i need (to clarify|more context|the (full|complete|specific) question)|i'd need (more|the full)|i would need (more|the full)|could you (please )?(provide|clarify|share|repeat|confirm|give me the)|can you (please )?(provide|clarify|share|repeat|confirm)|please (provide|share|clarify|repeat)|it (seems|looks|appears) (like )?(the|your) (question|message|transcript|input)|the (question|transcript|text|input|message) (seems|appears) |i('m| am) not sure (what|which) (the question|you('re| are) asking|question)|i don't (see|have) (a|the|any) (question|context)|there('s| is) no (clear |actual )?question|this (doesn't|does not|isn't|is not) (seem|appear|look) (to be |like )?(a|an) (question|complete|interview)|no question (was|has been)|as an ai)/i;
 function isNonAnswer(answer) {
   const a = String(answer || '').trim();
-  return a.startsWith(NOT_A_QUESTION) || META_REPLY_RE.test(a);
+  return a.startsWith(NOT_A_QUESTION) || META_REPLY_RE.test(a) || META_OPENING_RE.test(a);
+}
+// Streaming gate: may the text so far be shown? false = hold (could still turn out to be a signal or talk to the user).
+// Decides on the first ~8 words, so real answers show within a token or two.
+function streamGate(soFar) {
+  const head = String(soFar || '').trimStart();
+  if (!head) return 'hold';
+  if (NOT_A_QUESTION.startsWith(head) || head.startsWith(NOT_A_QUESTION)) return 'hold';
+  if (head.startsWith('```')) return 'show'; // code answers start with the code block
+  const words = head.replace(/^[•\-*▸↳\s]+/, '').split(/\s+/).filter(Boolean);
+  if (words.length < 8 && !/[.?!\n]/.test(head.slice(2))) return 'hold';
+  return isNonAnswer(head) ? 'block' : 'show';
 }
 
 const LIVE_CORE = `You write what a job candidate says out loud in a LIVE interview, shown on a tiny overlay they read from.
@@ -5210,14 +5224,17 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0' && !opts.bankAnswer && !opts.noStream; // '0' = buffered. Adapted/upgraded answers swap in whole.
     if (streamEnabled) {
       try {
-        let streamedSoFar = '', held = '', released = !mayRefuse;
+        // Nothing reaches the screen until the opening words are checked: a reply that talks to the user, or the
+        // NOT_A_QUESTION signal, is never shown — not even for a moment (owner, 26 Sep).
+        let streamedSoFar = '', held = '', gate = 'hold';
         answer = await callClaudeStream(systemBlocks, userPrompt, tokenLimit, answerModel, (chunk) => {
           if (!isCurrent()) return; // superseded by a newer answer for this card
-          if (!released) { // never flash the NOT_A_QUESTION signal on screen
+          if (gate !== 'show') {
+            if (gate === 'block') return;
             streamedSoFar += chunk;
-            const head = streamedSoFar.trimStart();
-            if (NOT_A_QUESTION.startsWith(head) || head.startsWith(NOT_A_QUESTION)) { held += chunk; return; }
-            released = true; chunk = held + chunk; held = '';
+            gate = streamGate(streamedSoFar);
+            if (gate !== 'show') { held += chunk; return; }
+            chunk = held + chunk; held = '';
           }
           if (!ttft) ttft = Date.now() - tGen;
           const deltaMsg = {
@@ -5255,6 +5272,19 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     if (opts.bankAnswer && /^\s*KEEP\s*\.?\s*$/i.test(answer)) {
       console.log('[Memory] Prepared answer kept as written (nothing earlier improves it)');
       return;
+    }
+    if (!mayRefuse && isNonAnswer(answer)) {
+      // The user asked (What should I say / typed / regenerate): there IS a question — one stricter retry, never a lecture.
+      console.log(`[Live Answer] Writer talked to the user on a requested answer — retrying: "${answer.trim().substring(0, 60)}"`);
+      logEvent('meta_reply_retry', { sessionId, qid: questionId, a: answer.trim().substring(0, 80) });
+      const strict = userPrompt.replace(/\n\nAnswer:$/, '') + '\n\nThe candidate pressed for an answer: there IS a question. Take your best guess at what the interviewer wants and answer it as the candidate. Never address the user, never ask for clarification.\n\nAnswer:';
+      try { answer = await callClaude(systemBlocks, strict, tokenLimit, answerModel, answerExtras); } catch (e) { answer = ''; }
+      if (!answer || isNonAnswer(answer)) {
+        const dropMsg = { type: 'drop_card', questionId };
+        try { ws.send(JSON.stringify(dropMsg)); ws.send(JSON.stringify({ type: 'error', message: "Didn't catch the question — try again" })); } catch (e) {}
+        broadcastToSession(sessionId, dropMsg, ws);
+        return;
+      }
     }
     if (mayRefuse && isNonAnswer(answer)) {
       console.log(`[Live Answer] Not a question — card dropped: "${(questionText || '').substring(0, 60)}" → "${answer.trim().substring(0, 60)}"`);
