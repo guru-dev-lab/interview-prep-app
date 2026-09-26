@@ -4454,32 +4454,13 @@ wss.on('connection', (ws) => {
       }
 
       else if (msg.type === 'followup_questions') {
-        // Generate smart follow-up questions the candidate can ask the interviewer
-        const answeredQs = (ws._sessionQuestions || sessionQuestions || []).filter(q => q.answer).slice(-20);
-        if (answeredQs.length === 0) {
-          ws.send(JSON.stringify({ type: 'error', message: 'No questions discussed yet' }));
+        // Questions the candidate can ask the interviewers — built only from what THEY said (generateQuestionsToAsk)
+        if (!hasConversation(ws) && !(ws._sessionContext || {}).jd) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Nothing said yet' }));
           return;
         }
-        const wsCtx = ws._sessionContext || {};
-        const recentTranscript = (ws._recentTranscript || []).slice(-30).join('\n');
-        const followUpSystem = `You generate smart follow-up questions a candidate should ask the interviewer at the end of an interview.
-
-RULES:
-- Generate exactly 5 questions
-- Each question should be specific to THIS interview — reference topics, projects, tools, or challenges that were actually discussed
-- Mix of types: team/culture, role specifics, growth, technical depth, next steps
-- Questions should show the candidate was paying attention and is genuinely curious
-- Sound natural and conversational, not scripted or generic
-- NEVER ask generic questions like "What does a typical day look like?" unless it connects to something discussed
-- Each question = 1 sentence, max 20 words
-- Number them 1-5
-- No intro, no labels, no preamble — just the 5 numbered questions
-- After the 5 questions, add a blank line then one short line starting with "Tip:" giving advice on which 2-3 to prioritize based on what was discussed`;
-
-        const qaSummary = answeredQs.map((q, i) => `Q${i+1}: ${q.text}\nA: ${(q.answer || '').substring(0, 150)}`).join('\n\n');
-        const followUpUser = `Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n\nJOB DESCRIPTION:\n${wsCtx.jd || 'N/A'}\n\nQUESTIONS DISCUSSED:\n${qaSummary}${recentTranscript ? '\n\nRECENT CONVERSATION:\n' + recentTranscript : ''}\n\nGenerate 5 smart follow-up questions:`;
-        callClaude(followUpSystem, followUpUser, 350, MODEL_HAIKU).then(result => {
-          const followUpMsg = { type: 'followup_questions_result', questions: result, questionCount: answeredQs.length };
+        generateQuestionsToAsk(ws).then(result => {
+          const followUpMsg = { type: 'followup_questions_result', questions: result, questionCount: 0 };
           ws.send(JSON.stringify(followUpMsg));
           broadcastToSession(sessionId, followUpMsg, ws);
         }).catch(e => {
@@ -4800,6 +4781,72 @@ function hasConversation(ws) {
   if (ws._priorMemory || ws._callNotes) return true;
   const t = ws._getTranscript ? ws._getTranscript() : [];
   return t.filter(x => x && !x.isUser && !x.isEcho).length > 1;
+}
+
+// ===== QUESTIONS TO ASK THEM (the "?" button, used at the end of a call) =====
+// Owner (26 Sep): it built questions from HIS OWN statements (it read only the last 6 lines — at the end of a call
+// that is him talking) and they sounded fake. Now it reads ONLY the interviewer side — every interviewer line of this
+// call plus the interviewer part of earlier calls' notes — and never the candidate's statements or the AI answers.
+const ASK_THEM_SYSTEM = `You suggest the questions a job candidate asks the interviewer at the END of an interview.
+They must sound like a real person talking — the kind of question a sharp, curious candidate would actually say out loud.
+
+WHERE QUESTIONS COME FROM (in this order):
+1. What the INTERVIEWERS said — their team, projects, systems, data, problems, changes, priorities, how they work, what they want from this hire. Pick the things that matter most for doing THIS role well.
+2. Only if the interviewers said little: what the job description says the role will own.
+Never build a question from anything the candidate said about themselves (you are not given it — do not invent it).
+Cover the WHOLE interview process: when an earlier call raised a problem, change or priority, at least one question follows it up with this interviewer (a real candidate remembers what the last person said, e.g. asking whether that issue touches this team).
+
+EACH QUESTION:
+- Asks about THEIR world: how something works, what's changing, what's hard, what success looks like, who the person works with, what comes first.
+- Is plain spoken English, 8–22 words, one sentence. Contractions are fine. Name their concrete things plainly (their tool, team, project, metric).
+- Never repeat something the interviewers already answered, and never repeat a question the candidate already asked.
+
+NEVER:
+- "You mentioned…", "You said…", "Earlier you talked about…", "I noticed…", "Given that…", "As someone who…" openers.
+- Praise or flattery ("That sounds exciting", "I love that…"), buzzwords (synergy, leverage, culture of excellence, dynamic, fast-paced), or two questions glued with "and".
+- Generic filler ("What does a typical day look like?", "What do you like about working here?", "What are the next steps?") unless nothing else was said.
+- Salary, benefits, time off, remote policy.
+
+OUTPUT: exactly 4 questions, numbered 1–4, most useful first. Nothing else — no intro, no tips, no explanations.`;
+
+// The interviewer part of digested call notes: drop CANDIDATE SAID and COVERED (candidate answers).
+function interviewerSideOfNotes(notes) {
+  const n = String(notes || '');
+  const start = n.search(/INTERVIEWERS/i);
+  if (start < 0) return '';
+  const rest = n.slice(start);
+  const end = rest.search(/\n\s*\**\s*COVERED/i);
+  return (end > 0 ? rest.slice(0, end) : rest).trim();
+}
+
+function askThemMaterial(ws) {
+  const lines = ws._getTranscript ? labelTranscript(ws._getTranscript()) : [];
+  let said = lines.filter(l => l.startsWith('Interviewer: ')).join('\n');
+  if (said.length > 16000) said = said.slice(-16000).replace(/^[^\n]*\n/, '');
+  const asked = lines.filter(l => l.startsWith('Candidate: ') && /\?\s*$/.test(l)).map(l => '- ' + l.slice(11)).slice(-8).join('\n');
+  const earlier = String(ws._priorMemory || '').split(/(?=EARLIER CALL \()/).map(block => {
+    const head = (block.match(/^EARLIER CALL \([^\n]*\n?/) || [''])[0];
+    const side = interviewerSideOfNotes(block);
+    return side ? head + side : '';
+  }).filter(Boolean).join('\n\n');
+  const thisCallNotes = interviewerSideOfNotes(ws._callNotes);
+  return { said, asked, earlier, thisCallNotes };
+}
+
+async function generateQuestionsToAsk(ws) {
+  const ctx = ws._sessionContext || {};
+  const m = askThemMaterial(ws);
+  const parts = [`ROLE: ${ctx.role || 'the role'} at ${ctx.company || 'the company'}`];
+  if (m.earlier) parts.push(`WHAT INTERVIEWERS SAID IN EARLIER CALLS:\n${m.earlier}`);
+  if (m.thisCallNotes) parts.push(`EARLIER IN THIS CALL — WHAT THE INTERVIEWERS SAID (notes):\n${m.thisCallNotes}`);
+  if (m.said) parts.push(`THIS CALL — THE INTERVIEWERS' OWN WORDS:\n${m.said}`);
+  if (m.asked) parts.push(`ALREADY ASKED BY THE CANDIDATE (don't repeat):\n${m.asked}`);
+  if (ctx.jd) parts.push(`JOB DESCRIPTION:\n${String(ctx.jd).slice(0, 6000)}`);
+  const user = parts.join('\n\n') + '\n\nThe 4 questions:';
+  const out = await callClaude(ASK_THEM_SYSTEM, user, 400, MODEL_SONNET, { thinking: { type: 'disabled' } });
+  const qs = out.split('\n').map(l => l.trim()).filter(l => /^\d+[.)]\s+\S/.test(l)).slice(0, 4);
+  logEvent('ask_them', { interviewerChars: m.said.length, earlier: !!m.earlier, notes: !!m.thisCallNotes, n: qs.length });
+  return qs.length ? qs.join('\n') : out.trim();
 }
 
 const MEMORY_RULES = `
