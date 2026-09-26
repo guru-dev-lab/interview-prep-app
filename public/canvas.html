@@ -2576,10 +2576,10 @@ async function toggleElectronLive() {
 }
 
 // ===== MAC PERMISSIONS =====
-// macOS lets the app ask for the microphone with a popup, but Screen & System Audio Recording (the interviewer's
-// voice) can only be switched on in System Settings. Before Go Live we check both; a missing one gets a panel whose
-// button opens the exact Settings page. Resolves true = go on, false = the owner stopped here.
-// Older desktop builds have no permStatus — they go straight on, as before.
+// Go Live needs BOTH the Microphone (you) and Screen & System Audio Recording (the interviewer). Nothing goes live
+// until both are on. The mic gets the normal macOS Allow popup; Screen Recording can only be switched on in System
+// Settings, so the panel opens that exact page, and Xhire restarts to apply it (macOS applies it only on restart).
+// Resolves true = both on, go live; false = stopped. Older desktop builds have no permStatus and go live as before.
 function macPermissionsReady() {
   var api = window.electronAPI;
   if (!api || !api.isMac || !api.permStatus) return Promise.resolve(true);
@@ -2594,46 +2594,69 @@ function macPermissionsReady() {
     return showPermPanel(st);
   }).catch(function(e) {
     console.error('[Perm] check failed:', e && e.message);
-    return true; // a broken check must never block Go Live
+    showToast('Could not check Mac permissions — restart Xhire and try again', 'error', 6000);
+    return false;
   });
 }
+
+var PERM_INFO = {
+  screen: { name: 'Screen &amp; System Audio Recording', why: 'to hear the interviewer' },
+  mic: { name: 'Microphone', why: 'to hear you' }
+};
 
 function showPermPanel(st) {
   return new Promise(function(resolve) {
     var old = document.getElementById('perm-panel');
     if (old) old.remove();
-    var needScreen = st.screen !== 'granted';
-    var needMic = st.mic !== 'granted';
-    var kind = needScreen ? 'screen' : 'mic';
-    var what = needScreen
-      ? 'Xhire needs <b>Screen &amp; System Audio Recording</b> to hear the interviewer.'
-      : 'Xhire needs the <b>Microphone</b> to hear you.';
+    var screenWasOff = st.screen !== 'granted';
     var panel = document.createElement('div');
     panel.id = 'perm-panel';
     panel.className = 'perm-panel';
-    panel.innerHTML = '<div class="perm-box">'
-      + '<h3>One switch to turn on</h3>'
-      + '<p>' + what + (needScreen && needMic ? ' The microphone is off too.' : '') + '</p>'
-      + '<p>Click the button, turn <b>Xhire</b> on in the list that opens, then come back and restart.</p>'
-      + '<button class="primary" data-act="open">Open the switch</button>'
-      + '<button data-act="restart">I turned it on — restart Xhire</button>'
-      + '<button class="quiet" data-act="skip">Go Live anyway</button>'
-      + '<button class="quiet" data-act="close">Not now</button>'
-      + '</div>';
     document.body.appendChild(panel);
+
+    function render(cur, note) {
+      var missing = ['screen', 'mic'].filter(function(k) { return cur[k] !== 'granted'; });
+      var needRestart = screenWasOff && cur.screen === 'granted';
+      var html = '<div class="perm-box"><h3>Turn on before you go live</h3>'
+        + '<p>Xhire can\'t go live until these are on. For each one: click it, turn <b>Xhire</b> on in the list that opens, come back.</p>';
+      missing.forEach(function(k) {
+        html += '<button class="primary" data-act="open" data-kind="' + k + '">Turn on ' + PERM_INFO[k].name + '</button>'
+          + '<p style="margin:2px 0 8px;font-size:11px">' + PERM_INFO[k].why + '</p>';
+      });
+      if (needRestart) html += '<p><b>Screen Recording is on.</b> macOS needs Xhire to restart to use it.</p>'
+        + '<button class="primary" data-act="restart">Restart Xhire</button>';
+      else if (missing.length) html += '<button data-act="check">I turned it on — check again</button>'
+        + '<button data-act="restart">Restart Xhire</button>';
+      if (note) html += '<p style="margin-top:8px;color:var(--accent2)">' + note + '</p>';
+      html += '<button class="quiet" data-act="close">Not now</button></div>';
+      panel.innerHTML = html;
+    }
+    render(st);
+
     panel.addEventListener('click', function(ev) {
-      var act = ev.target && ev.target.getAttribute('data-act');
-      if (!act) return;
+      var t = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
+      if (!t) return;
+      var act = t.getAttribute('data-act');
+      var api = window.electronAPI;
       if (act === 'open') {
-        window.electronAPI.permOpenSettings(kind).then(function(ok) {
+        api.permOpenSettings(t.getAttribute('data-kind')).then(function(ok) {
           if (!ok) showToast('Open System Settings → Privacy & Security yourself', 'error', 5000);
         });
-        if (needScreen && needMic) kind = 'mic'; // second click opens the other page
         return;
       }
-      if (act === 'restart') { window.electronAPI.relaunchApp(); return; }
+      if (act === 'restart') { api.relaunchApp(); return; }
+      if (act === 'check') {
+        api.permStatus().then(function(cur) {
+          console.log('[Perm] recheck mic=' + cur.mic + ' screen=' + cur.screen);
+          if (cur.mic === 'granted' && cur.screen === 'granted' && !screenWasOff) {
+            panel.remove(); resolve(true); return; // mic only was missing — no restart needed
+          }
+          render(cur, cur.mic === 'granted' && cur.screen === 'granted' ? '' : 'Still off — flip the switch next to Xhire, then check again.');
+        });
+        return;
+      }
       panel.remove();
-      resolve(act === 'skip');
+      resolve(false);
     });
   });
 }
