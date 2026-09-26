@@ -1,5 +1,15 @@
 # Handoff
 
+## 26 Sep 2026 — DEPLOYED
+- PR #1 merged by owner (merge 85a7549) → Railway deployment 537aa0aa SUCCESS, live on xhire.app ~40 s after build.
+- Startup log: "Database tables ready", "Running on 8080", "[Semantic] Model ready in 1412ms", no errors.
+- Pages /, /canvas, /launcher, /download all 200. Memory 0.51 GB of 8 GB (was ~0.14 GB).
+- Railway var ONNXRUNTIME_NODE_INSTALL=skip set (skips CUDA download in build).
+- Rollback: Railway one-click to deployment 7bfad9b1 (commit 1116138), or tag known-good-2026-09-25-start.
+- Next: watch first real interviews' logs ([AI Auto-Detect] (fast), [Semantic], [Cache], [Stream] NO text,
+  [MustHave], [Memory]); open items listed in the 25 Sep blocks below (tenure calc, "your X experience" tie-in,
+  web switch_tab echo gap, npm test script, GitHub token in tradingview-mcp/.env.github is dead — gh CLI now logged in).
+
 ## 25 Sep 2026 (night) — must-have influence questions + meaning-based matching (feat/must-have-influence, NOT live)
 - Owner: "how do you convince executives to use your report", "how do you convince when they push back" get asked
   constantly → always in the bank, answers ready. Added 8 influence & pushback questions to MUST_HAVE (role-neutral).
