@@ -29,6 +29,8 @@ a:hover{text-decoration:underline}
 .step-text{font:400 14px Inter,sans-serif;color:#94a3b8;line-height:1.6}
 code{display:block;margin-top:6px;padding:10px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:8px;font:500 13px 'SF Mono',Monaco,Consolas,monospace;color:#a78bfa;word-break:break-all;user-select:all;cursor:text}
 .copy-hint{font:400 11px Inter,sans-serif;color:#475569;margin-top:4px}
+.copy-btn{margin-top:8px;padding:6px 14px;border:1px solid rgba(167,139,250,.35);border-radius:6px;background:rgba(124,58,237,.12);font:600 12px Inter,sans-serif;color:#a78bfa;cursor:pointer}
+.copy-btn:hover{background:rgba(124,58,237,.22)}
 .note{font:400 13px Inter,sans-serif;color:#64748b;margin-top:24px;padding:12px 16px;background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.12);border-radius:8px;line-height:1.6}
 .note strong{color:#FBBF24;font-weight:600}
 .version{font:400 12px Inter,sans-serif;color:#475569;margin-top:24px}
@@ -68,15 +70,17 @@ code{display:block;margin-top:6px;padding:10px 14px;background:rgba(255,255,255,
       </div>
 
       <div class="step">
-        <div class="step-num">2. Run this command in Terminal</div>
-        <div class="step-text">macOS blocks apps from unidentified developers. Run this once to fix it:</div>
-        <code>xattr -cr /Applications/Xhire.app</code>
-        <div class="copy-hint">Click to select, then Cmd+C to copy</div>
+        <div class="step-num">2. Run this command in Terminal — before you open Xhire</div>
+        <div class="step-text">Xhire isn't sold through the App Store, so macOS blocks it (you may see "Malware Blocked"). This command clears the block and re-signs the app on your Mac. Open Terminal (Cmd+Space, type Terminal), paste, press Enter:</div>
+        <code id="mac-fix">xattr -cr /Applications/Xhire.app && codesign --force --deep --sign - --identifier com.xhire.overlay /Applications/Xhire.app</code>
+        <button class="copy-btn" onclick="copyFix(this)">Copy command</button>
+        <div class="copy-hint">Run it again after every update. If macOS already moved Xhire to the Trash, drag it from the DMG into Applications again first, then run the command.</div>
       </div>
 
       <div class="step">
         <div class="step-num">3. Open Xhire</div>
         <div class="step-text">Log in with your Xhire account. Pick a session. Click Go Live.</div>
+        <div class="step-text">When macOS asks for the microphone, click Allow. To hear the interviewer, turn Xhire on in System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording.</div>
       </div>
 
       <div class="note">
@@ -119,6 +123,15 @@ function showTab(tab) {
   document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
   document.getElementById('tab-' + tab).classList.add('active');
   document.querySelectorAll('.tab')[tab === 'mac' ? 0 : 1].classList.add('active');
+}
+
+function copyFix(btn) {
+  var text = document.getElementById('mac-fix').textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    btn.textContent = 'Copied';
+  }, function() {
+    btn.textContent = 'Select the command and press Cmd+C';
+  });
 }
 
 // Show the right tab for detected OS
