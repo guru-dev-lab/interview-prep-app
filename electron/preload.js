@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_, version) => callback(version)),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_, version) => callback(version)),
 
+  // Mac privacy permissions — check, ask for the mic, open the exact Settings page, restart to apply
+  permStatus: () => ipcRenderer.invoke('perm-status'),
+  permRequestMic: () => ipcRenderer.invoke('perm-request-mic'),
+  permOpenSettings: (kind) => ipcRenderer.invoke('perm-open-settings', kind),
+  relaunchApp: () => ipcRenderer.invoke('app-relaunch'),
+
   // Platform info
   platform: process.platform,
   isElectron: true,

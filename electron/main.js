@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences, dialog, shell } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 
@@ -364,6 +364,56 @@ ipcMain.handle('load-canvas', (_, url) => {
 // Get server URL
 ipcMain.handle('get-server-url', () => {
   return SERVER_URL;
+});
+
+// ===== MAC PRIVACY PERMISSIONS =====
+// macOS never lets an app switch on Screen & System Audio Recording for itself; the owner must flip it in
+// System Settings. So the app checks, and when a permission is missing it opens the exact Settings page.
+const PRIVACY_PANES = {
+  mic: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+  screen: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+};
+
+function permissionStatus() {
+  if (process.platform !== 'darwin') return { mic: 'granted', screen: 'granted' };
+  return {
+    mic: systemPreferences.getMediaAccessStatus('microphone'),
+    screen: systemPreferences.getMediaAccessStatus('screen')
+  };
+}
+
+ipcMain.handle('perm-status', () => {
+  const status = permissionStatus();
+  _log('[Perm] status:', JSON.stringify(status));
+  return status;
+});
+
+// Microphone: macOS shows its own Allow popup the first time; after a "Don't Allow" only Settings can undo it
+ipcMain.handle('perm-request-mic', async () => {
+  if (process.platform !== 'darwin') return true;
+  const granted = await systemPreferences.askForMediaAccess('microphone');
+  _log('[Perm] microphone request:', granted ? 'granted' : 'denied');
+  return granted;
+});
+
+ipcMain.handle('perm-open-settings', async (_, kind) => {
+  if (process.platform !== 'darwin' || !PRIVACY_PANES[kind]) return false;
+  // A screen request first puts Xhire on the Settings list, so the owner has a switch to flip
+  if (kind === 'screen') {
+    try { await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }); }
+    catch (e) { _log('[Perm] screen request error:', e.message); }
+  }
+  await shell.openExternal(PRIVACY_PANES[kind]);
+  _log('[Perm] opened settings:', kind);
+  return true;
+});
+
+// macOS applies a new Screen Recording permission only after the app restarts
+ipcMain.handle('app-relaunch', () => {
+  _log('[Perm] relaunching to apply permission');
+  app.isQuitting = true;
+  app.relaunch();
+  app.exit(0);
 });
 
 // Quit the app
