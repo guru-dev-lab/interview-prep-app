@@ -37,7 +37,7 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
   const { token, sessionId } = await seed();
   const ws = new WebSocket(BASE.replace(/^http/, 'ws'));
   const got = [];
-  ws.on('message', d => { try { const m = JSON.parse(d); if (m.type !== 'transcript' && m.type !== 'live_answer_delta' && m.type !== 'user_transcript') got.push(m); } catch (e) {} });
+  ws.on('message', d => { try { const m = JSON.parse(d); m._t = Date.now(); if (m.type !== 'transcript' && m.type !== 'user_transcript') got.push(m); } catch (e) {} });
   await new Promise(r => ws.on('open', r));
   ws.send(JSON.stringify({ type: 'start', token, sessionId, mode: 'full', platform: 'electron', dualStream: true }));
   await sleep(1500);
@@ -66,7 +66,7 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
     ws.send(Buffer.concat([Buffer.from([2]), ch2.slice(o, o + 3200)]));
     await sleep(100);
   }
-  if (click) { await sleep(1000); got.push({ type: '— CLICK what_should_i_say —' }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
+  if (click) { await sleep(1000); got.push({ type: '— CLICK what_should_i_say —', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
   await sleep(waitMs);
   ws.close();
   // For a click, only what arrives AFTER the click counts — auto-detect must not mask a dead button.
@@ -79,7 +79,18 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
   console.log('  detected :', detected ? `${detected.source}: "${detected.text}"` : '— none —');
   console.log('  card     :', card ? `${card.type}: "${card.questionText}"` : '— NOTHING ON SCREEN —');
   if (errs.length) console.log('  errors   :', errs.join(' | '));
-  return { detected: !!detected, card: !!card, cardText: card ? (card.questionText || '') : '', errs };
+  // Instant jump check: first answer-bearing event after the click is a 'match' within 800 ms, and no new card/rewrite.
+  let jump = null;
+  if (click) {
+    const clickT = seen[0] && seen[0]._t, after = seen.slice(1);
+    const first = after.find(m => ['match', 'new_question', 'live_answer'].includes(m.type));
+    const newCards = after.filter(m => m.type === 'new_question').length;
+    const clickedIds = new Set(after.filter(m => m.type === 'match').map(m => m.questionId));
+    const rewrites = after.filter(m => m.type === 'live_answer_delta' && clickedIds.has(m.questionId) && m._t > clickT + 900).length;
+    jump = { ok: !!first && first.type === 'match' && first._t - clickT < 800 && newCards === 0 && rewrites === 0, ms: first ? first._t - clickT : null, newCards, rewrites };
+    console.log(`  jump     : ${first ? first.type + ' in ' + jump.ms + ' ms' : 'nothing'}, new cards after click ${newCards}, rewrites ${rewrites}`);
+  }
+  return { detected: !!detected, card: !!card, cardText: card ? (card.questionText || '') : '', errs, jump };
 }
 
 (async () => {
@@ -99,13 +110,14 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
     ['CLICK them, then YOU answer', { lines: ['Talk me through how you would clean a messy sales dataset.', { you: 'Sure. So first I would check for duplicates. Why? Because duplicates inflate revenue.' }], click: true, expectText: /messy|clean/i }],
     ['BLEED interviewer leaks into mic', { lines: [{ bleed: 'Please describe your experience with Power BI.' }] }],
     ['BLEED interviewer leaks, wh- question', { lines: [{ bleed: 'How would you handle a missed deadline on a client report?' }] }],
+    ['CLICK after the app already answered → instant jump, no rewrite', { lines: ['How would you handle a missed deadline on a client report?'], click: true, expectJump: true, waitMs: 6000 }],
     ['CLICK nothing asked yet', { lines: [], click: true, waitMs: 5000 }],
   ];
   const only = process.env.ONLY; let fails = 0;
   for (const [n, c] of cases) {
     if (only && !n.includes(only)) continue;
     const r = await scenario(n, c);
-    const ok = c.expectNone ? !r.card : c.expectText ? r.card && c.expectText.test(r.cardText) : c.lines.length ? r.card : r.errs.length > 0; // spoken question → card; candidate/small talk → no card; nothing spoken → a visible reason
+    const ok = c.expectJump ? (r.jump && r.jump.ok) : c.expectNone ? !r.card : c.expectText ? r.card && c.expectText.test(r.cardText) : c.lines.length ? r.card : r.errs.length > 0; // spoken question → card; candidate/small talk → no card; nothing spoken → a visible reason
     if (!ok) fails++; console.log('  RESULT   :', ok ? 'PASS' : 'FAIL');
   }
   await pool.end(); fs.rmSync(tmp, { recursive: true, force: true });

@@ -4303,6 +4303,20 @@ wss.on('connection', (ws) => {
         }
         const recentLines = interviewerLines().slice(-10); // last 10 for deep context
 
+        // INSTANT (owner, 26 Sep: "when I press it, I heard a question, answer it immediately"): if the interviewer's latest
+        // question already has an answer on screen — and they haven't asked a newer one since — jump to it NOW: no AI call,
+        // nothing rewritten. The check below still re-reads the conversation in case the question on screen is wrong.
+        const lc = ws._lastCard;
+        const newerQuestion = !lc || interviewerLines().some(t => (t.ts || 0) > lc.ts && questionPartOf(t.text)) || (currentBuf && questionPartOf(currentBuf));
+        let jumpedTo = null;
+        if (lc && Date.now() - lc.ts < 90000 && !newerQuestion) {
+          const onScreen = (ws._activeAnswer && ws._activeAnswer.id === lc.id) ? ws._activeAnswer.answer : ((sessionQuestions.find(x => x.id === lc.id) || {}).answer || '');
+          const focusMsg = { type: 'match', questionId: lc.id, questionText: lc.isBank ? lc.q : (lc.asked || lc.q), answer: onScreen || '', similarity: 100, hasAnswer: !!onScreen, navigate: true };
+          ws.send(JSON.stringify(focusMsg)); broadcastToSession(sessionId, focusMsg, ws);
+          jumpedTo = lc;
+          console.log('[WhatShouldISay] Latest question already on screen — jumped to it instantly (no AI call)');
+        }
+
         // Build transcript with recency markers — newest at bottom, labeled
         let rawTranscript = '';
         if (recentLines.length > 3) {
@@ -4347,6 +4361,14 @@ wss.on('connection', (ws) => {
           return;
         }
 
+        if (jumpedTo) {
+          // Same question as the card we jumped to (or a follow-up of it)? Then the answer on screen is the one — stop,
+          // never rewrite it. A DIFFERENT question gets its own answer below.
+          const a = questionText.toLowerCase(), cands = [jumpedTo.asked, jumpedTo.q].filter(Boolean).map(x => x.toLowerCase());
+          const same = cands.some(b => b.includes(a) || a.includes(b) || stringSimilarity.compareTwoStrings(a, b) >= 0.6) || await isFollowUpOf(questionText, jumpedTo.asked || jumpedTo.q);
+          if (same) { console.log('[WhatShouldISay] Confirmed — the answer on screen is for this question; nothing rewritten'); return; }
+          console.log('[WhatShouldISay] The question you heard differs from the one on screen — answering it:', questionText.substring(0, 60));
+        }
         recentMatchedIds.clear();
         if (lastWsayMatchId) {
           recentMatchedIds.add(lastWsayMatchId);
