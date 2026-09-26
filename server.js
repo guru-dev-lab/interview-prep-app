@@ -2961,6 +2961,8 @@ function isQuestionClause(s) {
   if (/\b(hear|see) me (okay|ok|alright|all right|fine|well|clearly)\b|\b(hear|see) me\?$/.test(s)) return false;
   // Candidate mid-answer continuation
   if (/^(eventually |ultimately |overall |the result |the outcome |the impact |the challenge |the problem |the solution |the key |the main |the biggest |the first |the second |the third )/.test(s)) return false;
+  // "…a role at Stripe. Which is a pretty cool company." — a relative clause continuing the last sentence, not a question
+  if (/^which (is|was|were|are|has|have|had|means|meant|makes|made|would|will|can|could|should|sounds|looks|seems|gives|gave|lets|helps|helped|led|leads|includes|included|brings|brought|explains)\b/.test(s) && !/\?$/.test(s)) return false;
   if (/\?$/.test(s) && words >= 4) return true;
   // Imperative interview prompts: "Please describe…", "Talk me through…", "Share an example…"
   if (/^(please |kindly )?(explain|define|describe|compare|contrast|walk (me|us) through|talk (me|us) through|talk (to (me|us) )?about|tell (me|us)|give (me|us)|share|show (me|us)|outline|discuss|elaborate|summarize|list|name|provide|imagine|suppose|say you|let's say|what if|pretend|think of|think about|how about)\b/.test(s)) return true;
@@ -4924,6 +4926,15 @@ function classifyQuestionShape(questionText) {
   return { shape, technical };
 }
 
+// A live answer that isn't an answer: the writer's NOT_A_QUESTION signal, or it talking to the user instead of
+// giving lines to say ("Could you provide the full question…") — owner's mock-video run, 26 Sep.
+const NOT_A_QUESTION = 'NOT_A_QUESTION';
+const META_REPLY_RE = /\b(could you (please )?(provide|share|clarify|repeat|confirm)|i need (to clarify|more context|the (full|complete) question)|the question (appears|seems) (to be )?(incomplete|cut off|unclear)|once i have the (complete|full) question|appears to be (incomplete|cut off)|as an ai\b|i appreciate you (providing|sharing) the (conversation|transcript|context))/i;
+function isNonAnswer(answer) {
+  const a = String(answer || '').trim();
+  return a.startsWith(NOT_A_QUESTION) || META_REPLY_RE.test(a);
+}
+
 const LIVE_CORE = `You write what a job candidate says out loud in a LIVE interview, shown on a tiny overlay they read from.
 QUALITY:
 - Plain English, contractions, sound like a person talking. No jargon or buzzwords (never: leverage, utilize, robust, synergy, facilitate, holistic, scalable, cross-functional).
@@ -5179,7 +5190,11 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     console.log(`[Memory] Answer context: aim=${theyCare.length} bridges=${ws._bridges ? 'yes' : 'no'} priorCalls=${ws._priorMemory ? 'yes' : 'no'} q="${(questionText || '').slice(0, 40)}"`);
     const aimBlock = theyCare.length ? `\n\nWHAT THIS INTERVIEW HAS TOLD YOU THEY CARE ABOUT (use one ONLY if it directly relates to THIS question; never add a line about a different topic — in the candidate's words, never theirs):\n${theyCare.join('\n')}` : '';
     const expFacts = experienceFacts(session.resume);
-    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.\n\nAnswer:`;
+    // Auto-detected text may not be a question at all (a host's intro, an announcement). Only then may the writer
+    // skip it — never when the user asked (What should I say / typed / regenerate = forceNavigate) or for a bank answer.
+    const mayRefuse = !forceNavigate && !opts.bankAnswer;
+    const refuseLine = mayRefuse ? `\n\nIf what was said is NOT a question or request to the candidate at all (a host's introduction, an announcement, small talk, logistics), output exactly ${NOT_A_QUESTION} and nothing else. Never talk to the user or ask for clarification.` : '';
+    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
     // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
@@ -5195,8 +5210,15 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0' && !opts.bankAnswer && !opts.noStream; // '0' = buffered. Adapted/upgraded answers swap in whole.
     if (streamEnabled) {
       try {
+        let streamedSoFar = '', held = '', released = !mayRefuse;
         answer = await callClaudeStream(systemBlocks, userPrompt, tokenLimit, answerModel, (chunk) => {
           if (!isCurrent()) return; // superseded by a newer answer for this card
+          if (!released) { // never flash the NOT_A_QUESTION signal on screen
+            streamedSoFar += chunk;
+            const head = streamedSoFar.trimStart();
+            if (NOT_A_QUESTION.startsWith(head) || head.startsWith(NOT_A_QUESTION)) { held += chunk; return; }
+            released = true; chunk = held + chunk; held = '';
+          }
           if (!ttft) ttft = Date.now() - tGen;
           const deltaMsg = {
             type: 'live_answer_delta',
@@ -5232,6 +5254,17 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     logEvent('answer', { sessionId, qid: questionId, ms: Date.now() - tGen, ttft, streamed, chars: answer.length, q: (questionText || '').substring(0, 60) });
     if (opts.bankAnswer && /^\s*KEEP\s*\.?\s*$/i.test(answer)) {
       console.log('[Memory] Prepared answer kept as written (nothing earlier improves it)');
+      return;
+    }
+    if (mayRefuse && isNonAnswer(answer)) {
+      console.log(`[Live Answer] Not a question — card dropped: "${(questionText || '').substring(0, 60)}" → "${answer.trim().substring(0, 60)}"`);
+      logEvent('dropped_non_question', { sessionId, qid: questionId, q: (questionText || '').substring(0, 80), a: answer.trim().substring(0, 80) });
+      const dropMsg = { type: 'drop_card', questionId };
+      try { ws.send(JSON.stringify(dropMsg)); } catch (e) {}
+      broadcastToSession(sessionId, dropMsg, ws);
+      if (questionId && /^[0-9a-f-]{36}$/i.test(String(questionId))) {
+        pool.query("DELETE FROM questions WHERE id = $1 AND source = 'live' AND (answer IS NULL OR answer = '')", [questionId]).catch(e => console.error('[Drop card]', e.message));
+      }
       return;
     }
     answer = normalizeLiveAnswer(answer, shape, layoutRules); // enforce the layout contract before it's saved or shown

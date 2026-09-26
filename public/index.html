@@ -2775,6 +2775,13 @@ function handleLiveMessage(msg) {
     if (liveStreamBuf) delete liveStreamBuf[msg.questionId];
   }
 
+  else if (msg.type === 'drop_card') {
+    // Server decided this wasn't a question after all — remove it everywhere it shows
+    if (liveStreamBuf) delete liveStreamBuf[msg.questionId];
+    S.questions = S.questions.filter(function(x){ return x.id !== msg.questionId; });
+    try { renderQL(); } catch (e) {}
+    ['sc-card-', 'live-gen-'].forEach(function(p){ var el = document.getElementById(p + msg.questionId); if (el) el.remove(); });
+  }
   else if (msg.type === 'live_answer_delta') {
     // Progressive answer tokens — append and render as they stream in.
     // The final 'live_answer' message still arrives and reconciles the full text.
