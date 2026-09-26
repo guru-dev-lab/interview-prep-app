@@ -4303,6 +4303,29 @@ wss.on('connection', (ws) => {
         }
         const recentLines = interviewerLines().slice(-10); // last 10 for deep context
 
+        // INSTANT (owner, 26 Sep: "when I press it, I heard a question, answer it immediately"): if the interviewer's latest
+        // question already has an answer on screen — and they haven't asked a newer one since — jump to it NOW: no AI call,
+        // nothing rewritten. The check below still re-reads the conversation in case the question on screen is wrong.
+        const lc = ws._lastCard;
+        // PANIC BUTTON (owner): pressing it means there IS something to answer, even if it isn't shaped like a question.
+        // Anything substantive the interviewer said since the card ("Your thoughts on dbt.") is what gets answered —
+        // only acknowledgements ("okay", "great", "take your time") leave the card on screen as the answer.
+        const substantive = txt => { const t = String(txt || '').trim().toLowerCase(); if (!t) return false;
+          if (/^(okay|ok|great|good|sure|right|thanks|thank you|makes sense|got it|perfect|awesome|cool|nice|alright|all right|mm+|hmm+|yeah|yes|no rush|take your time)\b[\s,.!]*((take your time|no rush)[\s,.!]*)?$/.test(t)) return false;
+          return t.split(/\s+/).length >= 3 && !isLowValueQuestion(t); };
+        const newerQuestion = !lc || interviewerLines().some(t => (t.ts || 0) > lc.ts && substantive(t.text)) || substantive(currentBuf);
+        // The jump ALWAYS happens first (owner: "don't remove the jump — it may be answered already, or the AI is still
+        // writing it and I just need something to start talking"). If the interviewer asked something newer, the re-read
+        // below answers that too and moves the screen to it.
+        let jumpedTo = null;
+        if (lc && Date.now() - lc.ts < 90000) {
+          const onScreen = (ws._activeAnswer && ws._activeAnswer.id === lc.id) ? ws._activeAnswer.answer : ((sessionQuestions.find(x => x.id === lc.id) || {}).answer || '');
+          const focusMsg = { type: 'match', questionId: lc.id, questionText: lc.isBank ? lc.q : (lc.asked || lc.q), answer: onScreen || '', similarity: 100, hasAnswer: !!onScreen, navigate: true };
+          ws.send(JSON.stringify(focusMsg)); broadcastToSession(sessionId, focusMsg, ws);
+          jumpedTo = lc;
+          console.log(`[WhatShouldISay] Jumped instantly to the newest answer card (no AI call)${newerQuestion ? ' — interviewer said more since; re-reading' : ''}`);
+        }
+
         // Build transcript with recency markers — newest at bottom, labeled
         let rawTranscript = '';
         if (recentLines.length > 3) {
@@ -4324,8 +4347,8 @@ wss.on('connection', (ws) => {
         // Step 1: Ask Haiku to extract the LATEST question
         const wsCtx = ws._sessionContext || {};
         const ctxLine = (wsCtx.company || wsCtx.role) ? `\nContext: Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
-        const extractSystem = 'You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler.\n\nIMPORTANT — MULTI-PART QUESTIONS: Interviewers often ask a main question then add a follow-up like "how would you approach this?" or "walk me through your process" or "what would you do differently?". These are ONE question, not two. Combine the main question and its follow-up into a single complete question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → return the full combined question.\n\nOutput ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
-        const extractUser = ctxLine + rawTranscript + '\n\nFind the LAST question the interviewer asked (combine multi-part questions into one). Search from the most recent speech backwards. Output the question only.';
+        const extractSystem = 'The candidate just pressed a PANIC button in a live interview: there IS something they must respond to right now. From the interviewer\'s speech below (newest at the bottom), find the MOST RECENT thing the interviewer wants the candidate to respond to — a direct question, a request ("tell me more", "walk me through that"), a statement that invites a reply ("so you\'ve used Snowflake", "your thoughts on dbt"), or a problem they described ("we struggle with data quality") — and write it as ONE clear question for the candidate to answer. Combine a question with its immediate follow-up. Output ONLY that question. Never output NONE unless the interviewer said nothing at all.\n\nOLD GUIDANCE (still applies): You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler.\n\nIMPORTANT — MULTI-PART QUESTIONS: Interviewers often ask a main question then add a follow-up like "how would you approach this?" or "walk me through your process" or "what would you do differently?". These are ONE question, not two. Combine the main question and its follow-up into a single complete question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → return the full combined question.\n\nOutput ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
+        const extractUser = ctxLine + rawTranscript + '\n\nPANIC PRESS — output the one question the candidate must answer now (never NONE if the interviewer spoke). Find the LAST question the interviewer asked (combine multi-part questions into one). Search from the most recent speech backwards. Output the question only.';
 
         let questionText;
         try {
@@ -4342,11 +4365,36 @@ wss.on('connection', (ws) => {
           questionText = currentBuf || interviewerLines().slice(-2).map(t => t.text).join(' ');
         }
 
+        // PANIC: a NONE / empty extraction still answers — the interviewer's latest words ARE what to respond to.
+        if (!questionText || questionText.length < 5 || /^\s*NONE\b/i.test(questionText)) {
+          questionText = currentBuf || interviewerLines().slice(-2).map(t => t.text).join(' ');
+          console.log('[WhatShouldISay] Nothing question-shaped found — answering the interviewer\'s latest words:', (questionText || '').substring(0, 60));
+        }
         if (!questionText || questionText.length < 5) {
           ws.send(JSON.stringify({ type: 'error', message: 'Could not identify a question from the conversation' }));
           return;
         }
 
+        // Same as the card already on screen (jumped to or not)? Show THAT card — never rewrite it.
+        if (!jumpedTo && lc && Date.now() - lc.ts < 90000) {
+          const a0 = questionText.toLowerCase();
+          if ([lc.asked, lc.q].filter(Boolean).some(b => { b = b.toLowerCase(); return b.includes(a0) || a0.includes(b) || stringSimilarity.compareTwoStrings(a0, b) >= 0.6; })) {
+            const onScreen = (ws._activeAnswer && ws._activeAnswer.id === lc.id) ? ws._activeAnswer.answer : ((sessionQuestions.find(x => x.id === lc.id) || {}).answer || '');
+            const focusMsg = { type: 'match', questionId: lc.id, questionText: lc.isBank ? lc.q : (lc.asked || lc.q), answer: onScreen || '', similarity: 100, hasAnswer: !!onScreen, navigate: true };
+            ws.send(JSON.stringify(focusMsg)); broadcastToSession(sessionId, focusMsg, ws);
+            console.log('[WhatShouldISay] The question is the one already on screen — showing it; nothing rewritten');
+            return;
+          }
+        }
+
+        if (jumpedTo) {
+          // Same question as the card we jumped to (or a follow-up of it)? Then the answer on screen is the one — stop,
+          // never rewrite it. A DIFFERENT question gets its own answer below.
+          const a = questionText.toLowerCase(), cands = [jumpedTo.asked, jumpedTo.q].filter(Boolean).map(x => x.toLowerCase());
+          const same = cands.some(b => b.includes(a) || a.includes(b) || stringSimilarity.compareTwoStrings(a, b) >= 0.6) || await isFollowUpOf(questionText, jumpedTo.asked || jumpedTo.q);
+          if (same) { console.log('[WhatShouldISay] Confirmed — the answer on screen is for this question; nothing rewritten'); return; }
+          console.log('[WhatShouldISay] The question you heard differs from the one on screen — answering it:', questionText.substring(0, 60));
+        }
         recentMatchedIds.clear();
         if (lastWsayMatchId) {
           recentMatchedIds.add(lastWsayMatchId);
