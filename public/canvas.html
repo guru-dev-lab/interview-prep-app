@@ -1369,6 +1369,10 @@ function connect() {
     }
     else if (msg.type === 'error') {
       console.warn('[WS Error]', msg.message);
+      // Show it — a silent failure reads as a dead button (web app does the same in index.html)
+      var ebtn = $('btn-wsay');
+      if (ebtn && ebtn.classList.contains('loading')) { ebtn.classList.remove('loading'); ebtn.innerHTML = wsayDefaultHTML; }
+      showToast(msg.message || 'Something went wrong', '', 3500);
     }
     else if (msg.type === 'kicked') {
       // Another device went live — show alert and stop
@@ -1469,6 +1473,11 @@ function formatAnswer(text) {
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
+    // Live answer contract (server LIVE ANSWER COMPOSER): ↳ employer line = dim + skippable; ▸ = story heading
+    var empM = line.match(/^\s*↳\s*(.*)$/);
+    if (empM) { closeList(); html += '<div class="xh-emp" style="opacity:.62;font-style:italic;border-left:2px solid rgba(148,163,184,.55);padding:2px 0 2px 8px;margin-top:6px">' + processInline(empM[1]) + '</div>'; continue; }
+    var headM = line.match(/^\s*▸\s*(.*)$/);
+    if (headM) { closeList(); html += '<div class="xh-emp-head" style="font:700 10px Inter,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#34D399;margin:0 0 3px">' + esc(headM[1]) + '</div>'; continue; }
 
     // Detect bullet points: - item, * item, • item
     var bulletMatch = line.match(/^\s*[-*•]\s+(.+)/);
