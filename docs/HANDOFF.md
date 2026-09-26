@@ -1,5 +1,23 @@
 # Handoff
 
+## 26 Sep 2026 — full mock-interview testing + fixes (branch fix/mock-interview-findings → PR, NOT live until merged)
+- New harness test/mock-interview.js: two full calls (HM Sarah, boss David), real audio via Deepgram, 11 questions +
+  small talk + candidate speech; modes clean / echo (no headphones) / noise; scores detection, duplicates, wrong cards
+  (incl. own-voice), layout, prepared-answer hits, first-word delay, Opus-judged quality. ~$0.9 per run (Opus judge
+  ~$0.33 of it). Also test/match-accuracy.js, experience-facts.js, platform-traps.js.
+- Found + fixed (all evidence-first): 15 s cooldown dropped back-to-back questions; "Write me a query…" not a
+  question; split/cut questions (join rules, hold-while-talking, card upgrade to the full question with generation
+  tickets); interviewer bleed misjudged as echo (loudness decides; loudness-only when mic words not back yet);
+  "What should I say" fallback used raw transcript incl. [You]/[Echo] (OWN-VOICE hole, also live today); years of
+  experience computed in code; platform traps (Snowflake indexes) guard for answers AND growth; employer business
+  never rewritten; answer-only-this-question; Sonnet for story/pitch + prepared answers; callClaude/vision read text
+  blocks anywhere (Sonnet 5 thinking-first replies were thrown away as "API error" — live bug for Sonnet callers);
+  must-have answers reach a live call batch by batch; "…you hear me okay?" small talk.
+- Last full battery (6 mock interviews under load + all suites): 5/6 perfect; all 66 questions detected, 0 duplicates,
+  0 own-voice cards; live/structure/must-have/match all pass. Remaining: noise-only split question sometimes gets a
+  fresh (correct) answer instead of the prepared one; story answers add narrative colour (hard facts stay true).
+- Cost note: all testing uses the production Anthropic/Deepgram keys (copied to local .env). ~$37 on 26 Sep morning.
+
 ## 26 Sep 2026 — DEPLOYED
 - PR #1 merged by owner (merge 85a7549) → Railway deployment 537aa0aa SUCCESS, live on xhire.app ~40 s after build.
 - Startup log: "Database tables ready", "Running on 8080", "[Semantic] Model ready in 1412ms", no errors.
