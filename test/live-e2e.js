@@ -33,7 +33,7 @@ async function seed() {
 }
 
 // One scenario = fresh live connection; speak lines on channel 1, optionally click "What should I say", collect screen events.
-async function scenario(name, { lines, click, waitMs = 9000 }) {
+async function scenario(name, { lines, click, waitMs = 9000, expectText }) {
   const { token, sessionId } = await seed();
   const ws = new WebSocket(BASE.replace(/^http/, 'ws'));
   const got = [];
@@ -73,7 +73,8 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
   const from = click ? got.findIndex(m => m.type === '— CLICK what_should_i_say —') : 0;
   const seen = got.slice(from);
   const detected = seen.find(m => m.type === 'question_detected');
-  const card = seen.find(m => ['match', 'new_question', 'live_answer'].includes(m.type));
+  const cardsAfter = seen.filter(m => ['match', 'new_question', 'live_answer'].includes(m.type));
+  const card = (click && expectText) ? (cardsAfter.find(m => expectText.test(m.questionText || '')) || cardsAfter[0]) : cardsAfter[0];
   const errs = seen.filter(m => m.type === 'error').map(m => m.message);
   console.log(`\n### ${name}`);
   console.log('  detected :', detected ? `${detected.source}: "${detected.text}"` : '— none —');
@@ -111,6 +112,10 @@ async function scenario(name, { lines, click, waitMs = 9000 }) {
     ['BLEED interviewer leaks into mic', { lines: [{ bleed: 'Please describe your experience with Power BI.' }] }],
     ['BLEED interviewer leaks, wh- question', { lines: [{ bleed: 'How would you handle a missed deadline on a client report?' }] }],
     ['CLICK after the app already answered → instant jump, no rewrite', { lines: ['How would you handle a missed deadline on a client report?'], click: true, expectJump: true, waitMs: 6000 }],
+    ['PANIC "Your thoughts on dbt." → answers it', { lines: ['Your thoughts on dbt.'], click: true, expectText: /dbt/i }],
+    ['PANIC statement "So you have been using Power BI…" → answers it', { lines: ['So you have been using Power BI for a while.'], click: true, expectText: /power bi/i }],
+    ['PANIC problem "We struggle with data quality…" → answers it', { lines: ['We have been struggling with data quality in our warehouse feeds.'], click: true, expectText: /data quality|quality/i }],
+    ['PANIC new ask after an old answer → answers the NEW one', { lines: ['How would you handle a missed deadline on a client report?', 'Your thoughts on dbt.'], click: true, expectText: /dbt/i }],
     ['CLICK nothing asked yet', { lines: [], click: true, waitMs: 5000 }],
   ];
   const only = process.env.ONLY; let fails = 0;
