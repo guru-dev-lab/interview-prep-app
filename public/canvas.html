@@ -2600,8 +2600,8 @@ function macPermissionsReady() {
 }
 
 var PERM_INFO = {
-  screen: { name: 'Screen &amp; System Audio Recording', why: 'to hear the interviewer' },
-  mic: { name: 'Microphone', why: 'to hear you' }
+  screen: { name: 'Screen Recording' },
+  mic: { name: 'Microphone' }
 };
 
 function showPermPanel(st) {
@@ -2616,18 +2616,14 @@ function showPermPanel(st) {
 
     function render(cur, note) {
       var missing = ['screen', 'mic'].filter(function(k) { return cur[k] !== 'granted'; });
-      var needRestart = screenWasOff && cur.screen === 'granted';
-      var html = '<div class="perm-box"><h3>Turn on before you go live</h3>'
-        + '<p>Xhire can\'t go live until these are on. For each one: click it, turn <b>Xhire</b> on in the list that opens, come back.</p>';
+      var title = missing.length === 1 ? 'Allow ' + PERM_INFO[missing[0]].name : 'Allow access';
+      var html = '<div class="perm-box"><h3>' + title + '</h3><p>Switch on Xhire, then tap Done.</p>';
       missing.forEach(function(k) {
-        html += '<button class="primary" data-act="open" data-kind="' + k + '">Turn on ' + PERM_INFO[k].name + '</button>'
-          + '<p style="margin:2px 0 8px;font-size:11px">' + PERM_INFO[k].why + '</p>';
+        html += '<button class="primary" data-act="open" data-kind="' + k + '">Open '
+          + (missing.length === 1 ? 'Settings' : PERM_INFO[k].name) + '</button>';
       });
-      if (needRestart) html += '<p><b>Screen Recording is on.</b> macOS needs Xhire to restart to use it.</p>'
-        + '<button class="primary" data-act="restart">Restart Xhire</button>';
-      else if (missing.length) html += '<button data-act="check">I turned it on — check again</button>'
-        + '<button data-act="restart">Restart Xhire</button>';
-      if (note) html += '<p style="margin-top:8px;color:var(--accent2)">' + note + '</p>';
+      html += '<button data-act="done">Done</button>';
+      if (note) html += '<p style="margin:8px 0 0;color:var(--accent2)">' + note + '</p>';
       html += '<button class="quiet" data-act="close">Not now</button></div>';
       panel.innerHTML = html;
     }
@@ -2640,18 +2636,17 @@ function showPermPanel(st) {
       var api = window.electronAPI;
       if (act === 'open') {
         api.permOpenSettings(t.getAttribute('data-kind')).then(function(ok) {
-          if (!ok) showToast('Open System Settings → Privacy & Security yourself', 'error', 5000);
+          if (!ok) showToast('Open System Settings \u2192 Privacy & Security', 'error', 5000);
         });
         return;
       }
-      if (act === 'restart') { api.relaunchApp(); return; }
-      if (act === 'check') {
+      if (act === 'done') {
         api.permStatus().then(function(cur) {
           console.log('[Perm] recheck mic=' + cur.mic + ' screen=' + cur.screen);
-          if (cur.mic === 'granted' && cur.screen === 'granted' && !screenWasOff) {
-            panel.remove(); resolve(true); return; // mic only was missing — no restart needed
-          }
-          render(cur, cur.mic === 'granted' && cur.screen === 'granted' ? '' : 'Still off — flip the switch next to Xhire, then check again.');
+          if (cur.mic !== 'granted' || cur.screen !== 'granted') { render(cur, 'Still off \u2014 switch on Xhire.'); return; }
+          // macOS applies Screen Recording only after a restart
+          if (screenWasOff) { api.relaunchApp(); return; }
+          panel.remove(); resolve(true);
         });
         return;
       }
