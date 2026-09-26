@@ -1326,6 +1326,11 @@ function connect() {
       if (answerStream) delete answerStream[msg.questionId];
       try { coachShow(msg.questionId, msg.answer); } catch (e) {}
     }
+    else if (msg.type === 'drop_card') {
+      // Server decided this wasn't a question after all — take its card off the screen
+      if (answerStream) delete answerStream[msg.questionId];
+      removeCard(msg.questionId);
+    }
     else if (msg.type === 'live_answer_delta') {
       // Progressive answer tokens — append and render in place as they stream in.
       // The final 'live_answer' message still arrives and reconciles the full text.

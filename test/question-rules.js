@@ -5,6 +5,9 @@ const block = src.slice(src.indexOf('// === QUESTION RULES'), src.indexOf('// ==
 const isQuestion = new Function(block + '\nreturn isQuestion;')();
 
 const QUESTIONS = [
+  'Which is better here, a left join or an inner join?',
+  'Which tool would you use for this dashboard',
+  'Which of these metrics matters most to you and why?',
   'Tell me about a time you led a project',
   'Share an example of a time you handled a difficult stakeholder',
   'In your current role, what reporting tools do you use',
@@ -30,6 +33,10 @@ const QUESTIONS = [
   'Build me a simple model to forecast weekly demand.',
 ];
 const NOT_QUESTIONS = [
+  // Mock-video host intro, 26 Sep — relative 'which' continuing the last sentence
+  'Which is a pretty cool company.',
+  "Which is a pretty cool company. So I'll be jumping back and forth, and I created custom questions based on",
+  'Which was a really fun project for the whole team.',
   'I built a sales dashboard in Power BI for the regional team',
   'We used SQL and Python to clean the data every week',
   'So I think the main thing I learned was communication',
