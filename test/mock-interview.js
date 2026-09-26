@@ -48,6 +48,7 @@ const CALL1 = [
   { who: 'sarah', t: 'How do you get executives to actually use a dashboard you built?', expect: { shape: 'general', bank: 'How do you convince executives to use a report, tool, or recommendation you built?', about: 'getting executives to use a dashboard' } },
   { who: 'me', t: 'I usually pilot it with one team first and show them it saves time.' },
   { who: 'sarah', t: "What's the difference between a left join and an inner join?", expect: { shape: 'general', about: 'left join vs inner join' } },
+  { who: 'sarah', t: 'And when would you use each one?', expect: { followUp: true } },
   { who: 'me', t: 'Can I ask what the team structure looks like?' },
   { who: 'sarah', t: "Sure. We're six analysts, hybrid, based in Chicago.", expect: 'none' },
   { who: 'me', t: 'That sounds great, thank you.' },
@@ -180,6 +181,7 @@ own_words = does not parrot the interviewers' phrasing or say "you mentioned".`;
       const l = lines[k];
       if (l.who !== 'me') history.push(`${l.who === 'sarah' ? 'Sarah (hiring manager)' : 'David (her boss)'}: ${l.t}`); else history.push(`Candidate: ${l.t}`);
       if (!l.expect || l.expect === 'none') continue;
+      if (l.expect.followUp) { if (sc.perLine[k].length) { problems.push(`SPLIT: follow-up got its own card: "${l.t}"`); } continue; }
       totalQ++;
       const cs = sc.perLine[k].filter(c => !c.grew || sc.perLine[k].length === 1);
       const clickDup = clicks.some(c => { let j = c.after; while (j > 0 && lines[j].who === 'me') j--; return j === k; }) ? 1 : 0;
@@ -188,7 +190,8 @@ own_words = does not parrot the interviewers' phrasing or say "you mentioned".`;
       const c = cs[0]; const fw = c.firstWords ? c.firstWords - run.times[k].end : null; if (fw !== null) lat.push(fw);
       const okShape = shapeOK(l.expect.shape, c.answer || ''); if (okShape) layout++;
       let bankNote = ''; if (l.expect.bank) { bankQ++; const hit = stringSimilarity.compareTwoStrings((c.q || '').toLowerCase(), l.expect.bank.toLowerCase()) > 0.8; /* matched OR upgraded onto the prepared question */ if (hit) bankHits++; bankNote = hit ? ' prepared✓' : ' prepared✗'; }
-      const g = c.answer ? await judge(history.slice(0, -1).join('\n'), l.t, c.answer) : null;
+      const nextL = lines[k + 1]; const asked = nextL && nextL.expect && nextL.expect.followUp ? `${l.t} ${nextL.t}` : l.t;
+      const g = c.answer ? await judge(history.slice(0, -1).join('\n'), asked, c.answer) : null;
       let gNote = 'no answer';
       if (g) { judged++; const ok = g.correct === 2 && g.answers_it === 2 && g.uses_history >= 1 && g.own_facts >= 1 && g.own_words >= 1; if (ok) goodAns++; gNote = `${ok ? 'GOOD' : 'WEAK'} c${g.correct} a${g.answers_it} h${g.uses_history} f${g.own_facts} w${g.own_words} — ${g.why}`; }
       report.push(`${okShape ? '✓' : '✗'} ${String(fw ?? '—').padStart(5)} ms  ${cs.length > 1 + clickDup ? 'DUP ' : ''}[${l.expect.shape}]${bankNote}  "${l.t}"\n      card: "${c.q}"  (${cs.length} card(s): ${cs.map(x => x.seq.join('>')).join(' | ')})\n      ${(c.answer || '').split('\n').join('\n      ')}\n      judge: ${gNote}`);

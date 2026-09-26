@@ -3222,6 +3222,21 @@ async function findSemanticMatches(questionText, sessionQuestions, topN = 3) {
   return scored.sort((a, b) => b.similarity - a.similarity).slice(0, topN);
 }
 
+// Is `newQ` the SAME question continued (a second part asked straight after), not a new one? Owner (26 Sep): people ask
+// "…difference between inner and left join? How would you approach this?" — that is ONE question; the app must not
+// jump to a new card. Continuation words, a pointer back to it, or the same topic by meaning.
+const FOLLOW_UP_SIMILARITY = 0.55;
+async function isFollowUpOf(newQ, prevQ) {
+  const t = (newQ || '').trim().toLowerCase();
+  if (/^(and|also|plus|what about|how about|what if)\b/.test(t)) return true; // question clean-up strips a leading And
+  if (t.split(/\s+/).length <= 14 && (/\b(this|that|those|these|each|either|both)\b/.test(t) || /\b(it|them)\s*[?.!]?$/.test(t))) return true;
+  try {
+    const a = await embedText(newQ), b = await embedText(prevQ);
+    if (a && b) { let sim = 0; for (let i = 0; i < a.length; i++) sim += a[i] * b[i]; if (sim >= FOLLOW_UP_SIMILARITY) return true; }
+  } catch (e) {}
+  return false;
+}
+
 // AI verification — send top candidates to Haiku for semantic confirmation
 async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 2500) {
   if (!candidates || candidates.length === 0) return null;
@@ -3311,7 +3326,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
         type: 'match',
         questionId: verified.question.id,
         questionText: verified.question.text,
-        answer: verified.question.answer || '',
+        answer: displayPrepared(verified.question.answer || '', verified.question.text),
         similarity: Math.round(verified.similarity * 100),
         hasAnswer: !!verified.question.answer,
         navigate: !!forceNavigate
@@ -3319,6 +3334,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       ws.send(JSON.stringify(matchMsg));
       broadcastToSession(sessionId, matchMsg, ws);
       recentMatchedIds.add(verified.question.id);
+      ws._lastCard = { id: verified.question.id, q: verified.question.text, asked: q, ts: Date.now(), isBank: true };
       // Track as active thread so continued detail can grow it on-screen.
       // _prepped:true → growth updates the display but never overwrites the bank answer in the DB.
       if (!verified.question.answer) {
@@ -3329,7 +3345,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
           .catch(e => console.error('[FastMatch] answer for empty bank question failed:', e.message));
       }
       if (verified.question.answer) {
-        ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: verified.question.answer, _grows: 0, _prepped: true };
+        ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: displayPrepared(verified.question.answer, verified.question.text), _grows: 0, _prepped: true };
         // SESSION MEMORY: the prepared answer shows instantly; if this session already discussed the topic, stream a
         // version adapted to what was said onto the SAME card (the bank itself is never changed).
         if (hasConversation(ws)) {
@@ -3409,6 +3425,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
     ws.send(JSON.stringify(newQMsg));
     broadcastToSession(sessionId, newQMsg, ws);
     ws._lastNewCard = { id: qId, q, ts: Date.now() };
+    ws._lastCard = { id: qId, q, asked: q, ts: Date.now(), isBank: false };
 
     sessionQuestions.push({ id: qId, text: q, type: classifyQuestion(q), answer: '' });
     sessionQuestions[sessionQuestions.length - 1]._createdAt = Date.now();
@@ -3778,7 +3795,7 @@ wss.on('connection', (ws) => {
           if (hit) {
             console.log('[Upgrade] → prepared answer:', hit.question.text.substring(0, 50));
             (ws._cardGen = ws._cardGen || new Map()).set(cardId, Symbol('prepared')); // stop the first-half answer writing here
-            const msg = { type: 'live_answer', questionId: cardId, questionText: hit.question.text, answer: hit.question.answer, isNew: false };
+            const msg = { type: 'live_answer', questionId: cardId, questionText: hit.question.text, answer: displayPrepared(hit.question.answer, hit.question.text), isNew: false };
             ws.send(JSON.stringify(msg)); broadcastToSession(sessionId, msg, ws);
             if (hasConversation(ws)) generateLiveAnswer(hit.question.text, sessionId, userId, ws, cardId, false, { bankAnswer: hit.question.answer }).catch(() => {});
           } else {
@@ -3788,7 +3805,7 @@ wss.on('connection', (ws) => {
 
         // ONE door for an auto-detected question (both the fast route and the AI route): quality filter, continuation →
         // grow, stay-silent, de-dup, cooldown, then match/answer. Only ever called with INTERVIEWER speech.
-        function fireDetectedQuestion(q, via) {
+        async function fireDetectedQuestion(q, via) {
           const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
           const growEnabled = process.env.GROW_ANSWERS !== '0';
 
@@ -3801,6 +3818,12 @@ wss.on('connection', (ws) => {
           // CONTINUATION: the interviewer is elaborating on the SAME question we're already
           // answering → grow that answer in place (append), instead of a new card. This
           // bypasses the recent-question dedup and the cooldown on purpose.
+          // Growth needs something NEW: the same question found again (e.g. the AI re-reading the last question when the
+          // next line is only "In Power BI,") must not grow or relabel the card — mock interview 26 Sep.
+          const qLowG = q.toLowerCase().trim();
+          const alreadyAsked = [...recentDetectedQs, ws._activeAnswer && ws._activeAnswer.questionText, ws._lastCard && ws._lastCard.asked]
+            .filter(Boolean).some(p => { const pl = String(p).toLowerCase().trim(); return pl.includes(qLowG) || stringSimilarity.compareTwoStrings(pl, qLowG) >= 0.75; });
+          if (alreadyAsked && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) { console.log('[Grow] Same question found again — nothing new to add'); return; }
           if (growEnabled && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
             console.log('[Grow] Continuation detected — extending active answer');
             growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
@@ -3833,6 +3856,20 @@ wss.on('connection', (ws) => {
               console.log('[AI Auto-Detect] Skipping duplicate of recent:', prev.substring(0, 50));
               return;
             }
+          }
+          // SAME QUESTION CONTINUED: a second part asked right after the first (≤ 15 s, candidate hasn't spoken since) that
+          // follows on from it → merge into the card on screen and answer both parts together; no new card, no jump.
+          const lc = ws._lastCard;
+          if (lc && Date.now() - lc.ts < 15000 && !((ws._lastUserSpeechTs || 0) > lc.ts) && await isFollowUpOf(q, lc.asked || lc.q)) {
+            const combined = `${(lc.asked || lc.q).replace(/\s+$/, '')} ${q}`;
+            console.log(`[Follow-up] Same question continued — merging into the card on screen: "${combined.substring(0, 80)}"`);
+            lc.asked = combined; lc.ts = Date.now();
+            recentDetectedQs.push(q); if (recentDetectedQs.length > 5) recentDetectedQs.shift();
+            // GROW, don't rewrite (owner): lines already on screen stay exactly as they are; 1–2 lines covering the added
+            // part are appended. If the first answer is still arriving, grow the moment it finishes.
+            if (ws._activeAnswer && ws._activeAnswer.id === lc.id) growLiveAnswer(ws, sessionId, ws._activeAnswer, combined).catch(e => console.error('[Grow]', e.message));
+            else ws._pendingGrow = { id: lc.id, q: combined };
+            return;
           }
           // Genuinely different question — respect the cooldown so we don't refocus onto
           // side-topics and throw junk on screen while the candidate is still answering.
@@ -4129,6 +4166,12 @@ wss.on('connection', (ws) => {
 
                   // Store for echo detection — Ch1 transcripts will be compared against these
                   recentUserUtterances.push({ text: fullUtterance, ts: Date.now(), startWall: userBufStartWall });
+                  // Only REAL candidate speech ends the follow-up window — not the interviewer leaking into the mic. Loudness
+                  // decides (bleed is quieter on the mic than in the call audio); text similarity as a backup.
+                  const uLoud = userBufStartWall ? channelLoudness(userBufStartWall, userBufStartWall + 1500) : null;
+                  const isBleed = (uLoud && uLoud.c1 > uLoud.c2 * 1.2) || transcript.some(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000 &&
+                    stringSimilarity.compareTwoStrings(fullUtterance.toLowerCase(), (t.text || '').toLowerCase()) > 0.6);
+                  if (!isBleed) ws._lastUserSpeechTs = Date.now();
                   userBufStartWall = null;
                   // Prune old entries (keep last 10 seconds worth)
                   while (recentUserUtterances.length > 0 && Date.now() - recentUserUtterances[0].ts > 10000) {
@@ -4726,7 +4769,7 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     if (!active || !active.id) return;
     active._grows = active._grows || 0;
     if (active._grows >= 3) return;                       // cap extensions per question
-    if ((active.answer || '').length > 700) return;       // cap total length (overlay space)
+    if ((active.answer || '').length > 1400) return;      // cap total length (overlay space) — full-sentence answers run 400–900 chars
     if ((active.answer || '').trim().length < 4) return;  // nothing to extend yet
 
     const session = ws._sessionContext || {};
@@ -4734,7 +4777,7 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     const growContext = recentInterviewerText(ws);
     const growTechnical = classifyQuestionShape(fullerQuestion).technical || TECH_TERMS_RE.test(growContext); // same rule as new answers
     const stylePrompt = composeLiveSystemPrompt({ shape: growShape, technical: growTechnical, styleKey: session.answer_style, maxLines: 0, voiceProfile: ws._voiceProfile, withConversation: false, questionText: fullerQuestion }); // SAME composer as the answer
-    const system = stylePrompt + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style, each on its own line starting with "• ". Never add a ↳ employer line or a heading. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble.';
+    const system = stylePrompt + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that DIRECTLY answer what was added (the follow-up, the new scenario or the extra detail) — say how the answer changes for it — in the SAME voice and style, each on its own line starting with "• ". Never add a ↳ employer line or a heading. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble.';
     const convo = buildConversationContext(ws);
     const userMsg = `${convo ? convo + '\n\n' : ''}QUESTION (now fuller):\n${fullerQuestion}\n\nANSWER ALREADY GIVEN (do NOT repeat any of this):\n${active.answer}\n\nOutput ONLY the additional sentence(s) to append:`;
 
@@ -4945,6 +4988,13 @@ function recentInterviewerText(ws) {
   return (ws._getTranscript ? ws._getTranscript() : []).filter(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 45000).slice(-4).map(t => t.text).join(' ');
 }
 
+// A prepared (bank) answer shown live gets the SAME layout as live answers — display only, words unchanged, the bank in
+// the database stays exactly as written (mock interview 26 Sep: prepared answers showed as unbulleted text).
+function displayPrepared(answer, questionText) {
+  if (!answer) return answer;
+  return normalizeLiveAnswer(answer, classifyQuestionShape(questionText).shape);
+}
+
 // Grow: new sentences go above the ↳ employer line, as normal "• " lines.
 function appendToLiveAnswer(answer, addition, shape) {
   const add = (addition || '').split('\n').map(x => x.trim()).filter(Boolean).map(x => /^[•\-*]\s+/.test(x) ? '• ' + x.replace(/^[•\-*]\s+/, '') : '• ' + x);
@@ -5095,13 +5145,18 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT.
     // An adapted prepared answer is for this conversation only — the bank answer stays as the user wrote it.
-    if (questionId && !opts.bankAnswer) {
+    if (questionId && !opts.bankAnswer && !opts.noSave) {
       pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, questionId])
         .catch(e => console.error('[Update answer error]', e.message));
     }
 
     // Mark this as the active answer thread so continued interviewer detail grows THIS answer.
     ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: !!opts.bankAnswer, shape };
+    // A follow-up arrived while this answer was still coming in → grow it now (append-only).
+    if (ws._pendingGrow && ws._pendingGrow.id === questionId) {
+      const pg = ws._pendingGrow; ws._pendingGrow = null;
+      setTimeout(() => growLiveAnswer(ws, sessionId, ws._activeAnswer, pg.q).catch(e => console.error('[Grow]', e.message)), 0);
+    }
 
     // Send answer to client with the SAME questionId the client already knows about
     const liveAnswerMsg = {
