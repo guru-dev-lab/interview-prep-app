@@ -1,5 +1,17 @@
 # Handoff
 
+## 26 Sep 2026 (later) — follow-ups grow on screen; ANTHROPIC CREDIT RAN OUT during testing (topped up by owner)
+- Owner: a question + an immediate second part is ONE question; the answer must grow append-only (no rewrite, no new
+  card). Built: isFollowUpOf + no-candidate-speech window → growLiveAnswer (queued if the first answer is still
+  arriving); candidate speech judged by loudness; "same question found again" never grows/relabels; prepared answers
+  shown in live layout (display only). The 15 s cooldown's job is now done by this merge (clear new questions not held).
+- Last complete mock battery: 6/6 PASS (66/66 detected, 0 dup, 0 own-voice, prepared 12/12, two-part stays one card).
+- ~08:00 the Anthropic account behind the PRODUCTION key hit "credit balance too low" from test volume; stopped all
+  tests; owner topped up; verified with a 5-token call; no real user hit it (no prod log errors). RULE: testing needs its
+  own capped key — never run batteries on the prod key again; state cost before any run.
+- Reruns after top-up: musthave all pass, match 12/12 + 0 false, follow-up structure append-only 4/4 (judge strict on
+  whether 1 appended line fully answers vague "approach this"), live-e2e pass.
+
 ## 26 Sep 2026 — full mock-interview testing + fixes (branch fix/mock-interview-findings → PR, NOT live until merged)
 - New harness test/mock-interview.js: two full calls (HM Sarah, boss David), real audio via Deepgram, 11 questions +
   small talk + candidate speech; modes clean / echo (no headphones) / noise; scores detection, duplicates, wrong cards
