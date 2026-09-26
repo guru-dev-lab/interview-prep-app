@@ -1,5 +1,19 @@
 # Handoff
 
+## 25 Sep 2026 (night) — must-have influence questions + meaning-based matching (feat/must-have-influence, NOT live)
+- Owner: "how do you convince executives to use your report", "how do you convince when they push back" get asked
+  constantly → always in the bank, answers ready. Added 8 influence & pushback questions to MUST_HAVE (role-neutral).
+- ensureMustHavesReady: inserts missing must-haves (starred) at build AND at live-call start (so existing sessions get
+  them), prepares answers in the background with the SAME generator as Generate All (answerSessionQuestions,
+  extracted from the generate-batch route); paid plans only (free plans cap answers in the web app). Live bank reloads.
+- Found: bank matching was word-based only → paraphrases never matched. Added SEMANTIC MATCH: local embedding model
+  (@huggingface/transformers, all-MiniLM-L6-v2) adds meaning-based candidates (~5 ms), Haiku verify still confirms
+  (paraphrase counts as same question). Loads in background at boot; falls back to word matching. SEMANTIC_MATCH=0 off.
+  Cost: +~185 MB RAM, ~480 MB node_modules, ~23 MB model download at boot.
+- Fixed: a matched bank question with no answer yet left an empty card → now answered on the spot (fills the bank).
+- Proof: test/musthave-e2e.js all pass (3 paraphrases → prepared answer in ~1.0–1.1 s; unrelated question not forced;
+  free plan gets questions, no auto answers). structure 9/9, live 16/16, accuracy 19/20, memory 5/6.
+
 ## 25 Sep 2026 (late) — answer STRUCTURE + speed (feat/session-memory, NOT live)
 - Owner's design: full read-aloud sentences, one per line; layout fixed by question type (general / code / story /
   pitch); the style picker changes WORDING only; employer on a separate dimmed "↳ At <Employer> — …" line, only when

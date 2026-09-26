@@ -341,7 +341,16 @@ const MUST_HAVE = [
   'What motivates you to succeed in this role?',
   'How do you handle tight deadlines and pressure situations?',
   'Tell me about a time you had to present complex data to a non-technical audience.',
-  'Do you have any questions for us?'
+  'Do you have any questions for us?',
+  // Influence & pushback — asked in almost every interview (owner, 25 Sep): always in the bank, answers ready
+  'How do you convince executives to use a report, tool, or recommendation you built?',
+  'How do you get buy-in when stakeholders are not sold on your idea?',
+  'Tell me about a time someone pushed back on your recommendation. How did you handle it?',
+  'What do you do when leadership disagrees with what your data or analysis shows?',
+  'How do you get people to actually adopt something new you built?',
+  'Tell me about a time you influenced a decision without having authority.',
+  'How do you handle a stakeholder who keeps changing requirements?',
+  'Tell me about a time you had to say no to a stakeholder.'
 ];
 
 function detectType(t) {
@@ -1671,6 +1680,8 @@ app.post('/api/sessions/:id/build', authMiddleware, async (req, res) => {
     const fullSession = await getFullSession(req.params.id, req.userId);
     console.log(`Build complete: ${fullSession.questions.length} questions`);
     res.json({ session: fullSession });
+    // Must-have answers ready before the interview (background; paid plans) — see ensureMustHavesReady
+    prepareMustHaveAnswers(req.params.id, req.userId).catch(e => console.error('[MustHave] build prepare failed:', e.message));
   } catch (e) { console.error('Build error:', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -1933,12 +1944,101 @@ app.post('/api/sessions/:id/generate/:qid', authMiddleware, async (req, res) => 
 });
 
 // Generate batch
+// ONE answer generator for prepared (bank) answers — used by the Generate buttons (generate-batch route) and by
+// ensureMustHavesReady. Writes each answer to the question row; returns [{ id, answer } | { id, error }].
+async function answerSessionQuestions(session, batch) {
+  const results = [];
+  const qaBank = getQABank();
+
+  const stylePrompt = getStylePrompt(session.answer_style);
+  if (batch.length === 1) {
+    try {
+      const answer = await callClaude(stylePrompt,
+        `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${batch[0].text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
+        1500, MODEL_HAIKU
+      );
+      await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, batch[0].id]);
+      results.push({ id: batch[0].id, answer });
+    } catch(e) { results.push({ id: batch[0].id, error: e.message }); }
+  } else {
+    const questionsBlock = batch.map((q, idx) => `Q${idx + 1}: ${q.text}`).join('\n');
+    try {
+      const batchResponse = await callClaude(getBatchPrompt(session.answer_style),
+        `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\n${batch.length} QUESTIONS TO ANSWER:\n${questionsBlock}\n\nAnswer each question naturally. Use the ===Q1=== ===Q2=== format. Only reference companies or role titles when the question specifically asks about experience.`,
+        batch.length * 1500, MODEL_HAIKU
+      );
+      const parts = batchResponse.split(/===Q\d+===/);
+      if (!parts[0] || parts[0].trim().length < 20) parts.shift();
+
+      for (let idx = 0; idx < batch.length; idx++) {
+        const answer = parts[idx] ? parts[idx].trim() : '';
+        if (answer && answer.length > 20) {
+          await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, batch[idx].id]);
+          results.push({ id: batch[idx].id, answer });
+        } else {
+          results.push({ id: batch[idx].id, error: 'Empty answer in batch' });
+        }
+      }
+    } catch(e) {
+      for (const q of batch) {
+        try {
+          const answer = await callClaude(stylePrompt,
+            `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${q.text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
+            1500, MODEL_HAIKU
+          );
+          await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, q.id]);
+          results.push({ id: q.id, answer });
+        } catch(e2) { results.push({ id: q.id, error: e2.message }); }
+      }
+    }
+  }
+  return results;
+}
+
+// Must-have questions (MUST_HAVE, incl. influence & pushback) in EVERY session, answers prepared before they're
+// asked. Inserts missing ones (starred) now; prepares answers in the background — paid plans only (free plans cap
+// answers in the web app, so they get the questions and generate within their limit). Idempotent.
+async function insertMissingMustHaves(sessionId) {
+  const existing = await pool.query('SELECT text FROM questions WHERE session_id = $1', [sessionId]);
+  const have = new Set(existing.rows.map(q => q.text.toLowerCase().replace(/[^a-z]/g, '')));
+  let added = 0;
+  for (const q of MUST_HAVE) {
+    const key = q.toLowerCase().replace(/[^a-z]/g, '');
+    if (have.has(key)) continue;
+    have.add(key);
+    await pool.query('INSERT INTO questions (session_id, text, type, starred, sort_order) VALUES ($1, $2, $3, true, 0)', [sessionId, q, detectType(q)]);
+    added++;
+  }
+  return added;
+}
+async function prepareMustHaveAnswers(sessionId, userId) {
+  const u = await pool.query('SELECT plan, is_admin FROM users WHERE id = $1', [userId]);
+  const user = u.rows[0] || {};
+  if (!user.is_admin && (user.plan || 'free') === 'free') return 0;
+  const s = await pool.query('SELECT * FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, userId]);
+  if (!s.rows.length) return 0;
+  const keys = new Set(MUST_HAVE.map(q => q.toLowerCase().replace(/[^a-z]/g, '')));
+  const qs = (await pool.query("SELECT * FROM questions WHERE session_id = $1 AND (answer IS NULL OR answer = '')", [sessionId])).rows
+    .filter(q => keys.has(q.text.toLowerCase().replace(/[^a-z]/g, '')));
+  let done = 0;
+  for (let i = 0; i < qs.length; i += 5) { // same batch size as Generate All
+    const res = await answerSessionQuestions(s.rows[0], qs.slice(i, i + 5));
+    done += res.filter(r => r.answer).length;
+  }
+  if (qs.length) console.log(`[MustHave] Prepared ${done}/${qs.length} answers for session ${sessionId}`);
+  return done;
+}
+async function ensureMustHavesReady(sessionId, userId) {
+  const added = await insertMissingMustHaves(sessionId);
+  if (added) console.log(`[MustHave] Added ${added} must-have questions to session ${sessionId}`);
+  return { added, answered: prepareMustHaveAnswers(sessionId, userId) }; // answered: a promise (background)
+}
+
 app.post('/api/sessions/:id/generate-batch', authMiddleware, async (req, res) => {
   try {
     const s = await pool.query('SELECT * FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
     if (!s.rows.length) return res.status(404).json({ error: 'Not found' });
     const session = s.rows[0];
-    const qaBank = getQABank();
     const { questionIds } = req.body;
     if (!questionIds || !questionIds.length) return res.status(400).json({ error: 'No question IDs' });
 
@@ -1946,50 +2046,7 @@ app.post('/api/sessions/:id/generate-batch', authMiddleware, async (req, res) =>
     const batch = questionIds.map(id => qResult.rows.find(q => q.id === id)).filter(Boolean);
     if (!batch.length) return res.status(404).json({ error: 'Questions not found' });
 
-    const results = [];
-
-    const stylePrompt = getStylePrompt(session.answer_style);
-    if (batch.length === 1) {
-      try {
-        const answer = await callClaude(stylePrompt,
-          `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${batch[0].text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
-          1500, MODEL_HAIKU
-        );
-        await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, batch[0].id]);
-        results.push({ id: batch[0].id, answer });
-      } catch(e) { results.push({ id: batch[0].id, error: e.message }); }
-    } else {
-      const questionsBlock = batch.map((q, idx) => `Q${idx + 1}: ${q.text}`).join('\n');
-      try {
-        const batchResponse = await callClaude(getBatchPrompt(session.answer_style),
-          `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\n${batch.length} QUESTIONS TO ANSWER:\n${questionsBlock}\n\nAnswer each question naturally. Use the ===Q1=== ===Q2=== format. Only reference companies or role titles when the question specifically asks about experience.`,
-          batch.length * 1500, MODEL_HAIKU
-        );
-        const parts = batchResponse.split(/===Q\d+===/);
-        if (!parts[0] || parts[0].trim().length < 20) parts.shift();
-
-        for (let idx = 0; idx < batch.length; idx++) {
-          const answer = parts[idx] ? parts[idx].trim() : '';
-          if (answer && answer.length > 20) {
-            await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, batch[idx].id]);
-            results.push({ id: batch[idx].id, answer });
-          } else {
-            results.push({ id: batch[idx].id, error: 'Empty answer in batch' });
-          }
-        }
-      } catch(e) {
-        for (const q of batch) {
-          try {
-            const answer = await callClaude(stylePrompt,
-              `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${q.text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
-              1500, MODEL_HAIKU
-            );
-            await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, q.id]);
-            results.push({ id: q.id, answer });
-          } catch(e2) { results.push({ id: q.id, error: e2.message }); }
-        }
-      }
-    }
+    const results = await answerSessionQuestions(session, batch);
 
     await pool.query('UPDATE sessions SET updated_at = NOW() WHERE id = $1', [req.params.id]);
     res.json({ results });
@@ -3064,6 +3121,49 @@ function findTopMatches(questionText, sessionQuestions, questionIndex, topN = 3)
   return scored.slice(0, topN);
 }
 
+// ===== SEMANTIC MATCH — find bank questions by MEANING, not shared words =====
+// Interviewers paraphrase ("convince people who aren't buying your idea" ↔ "get buy-in when stakeholders aren't sold")
+// and word matching misses that. A small local embedding model (all-MiniLM-L6-v2, ~23 MB, ~1–2 ms per question on CPU)
+// adds meaning-based candidates; Haiku verification still confirms every match. Loads in the background at server
+// start — until it's ready, or if it fails, matching is word-based exactly as before. SEMANTIC_MATCH=0 turns it off.
+const SEMANTIC_MIN = 0.5;   // measured 25 Sep: true paraphrases 0.59–0.66, unrelated bank questions ≤ 0.40
+let _embedder = null, _embedderState = 'off';
+const _vecCache = new Map(); // normalized text → Float32Array
+function startSemanticModel() {
+  if (process.env.SEMANTIC_MATCH === '0' || _embedderState !== 'off') return;
+  _embedderState = 'loading'; const t0 = Date.now();
+  import('@huggingface/transformers')
+    .then(({ pipeline }) => pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2'))
+    .then(p => { _embedder = p; _embedderState = 'ready'; console.log(`[Semantic] Model ready in ${Date.now() - t0}ms`); })
+    .catch(e => { _embedderState = 'failed'; console.error('[Semantic] Model failed to load — word matching only:', e.message); });
+}
+async function embedText(text) {
+  if (!_embedder) return null;
+  const k = (text || '').trim().toLowerCase();
+  if (!k) return null;
+  if (_vecCache.has(k)) return _vecCache.get(k);
+  const v = (await _embedder(k, { pooling: 'mean', normalize: true })).data;
+  if (_vecCache.size > 20000) _vecCache.clear();
+  _vecCache.set(k, v);
+  return v;
+}
+function warmSemantic(questions) { // embed a session's bank ahead of time (background) so matching stays ~1 ms
+  if (!_embedder) return;
+  (async () => { for (const q of questions) { try { await embedText(q.text); } catch (e) { return; } } })();
+}
+async function findSemanticMatches(questionText, sessionQuestions, topN = 3) {
+  if (!_embedder || !sessionQuestions.length) return [];
+  const v = await embedText(questionText);
+  if (!v) return [];
+  const scored = [];
+  for (const sq of sessionQuestions) {
+    const w = await embedText(sq.text); if (!w) continue;
+    let sim = 0; for (let i = 0; i < v.length; i++) sim += v[i] * w[i];
+    if (sim >= SEMANTIC_MIN) scored.push({ question: sq, similarity: sim, semantic: true });
+  }
+  return scored.sort((a, b) => b.similarity - a.similarity).slice(0, topN);
+}
+
 // AI verification — send top candidates to Haiku for semantic confirmation
 async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 2500) {
   if (!candidates || candidates.length === 0) return null;
@@ -3075,7 +3175,7 @@ async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 25
   const ctx = sessionContext || {};
   const ctxLine = (ctx.company || ctx.role) ? `This is an interview for ${ctx.role || 'a role'} at ${ctx.company || 'a company'}. ` : '';
 
-  const system = ctxLine + 'You verify whether an interview question matches a candidate from a question bank. A match means the interviewer is asking THE SAME question — not just a related topic. "What is data governance?" does NOT match "What are ETL processes?" even though both are data topics. Be strict: if the core subject differs, reply NONE. Reply ONLY "MATCH:N" (N = candidate number) or "NONE". Nothing else.';
+  const system = ctxLine + 'You verify whether an interview question matches a candidate from a question bank. A match means the interviewer is asking THE SAME question — not just a related topic. "What is data governance?" does NOT match "What are ETL processes?" even though both are data topics. The same question in different words IS a match ("How do you convince people who are not buying your idea?" = "How do you get buy-in when stakeholders are not sold on your idea?"). Be strict on subject: if the core subject differs, reply NONE. Reply ONLY "MATCH:N" (N = candidate number) or "NONE". Nothing else.';
   const user = `Interviewer asked: "${utterance}"\n\nCandidates:\n${candidateList}\n\nIs any candidate asking the SAME question (not just related topic)? Reply MATCH:N or NONE.`;
 
   try {
@@ -3120,8 +3220,15 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
   if (!skipClean) console.log(`[TIMING] aiCleanQuestion: ${Date.now() - tClean}ms`);
 
   // Get top 3 keyword candidates, excluding already-matched questions
-  const topMatches = findTopMatches(q, sessionQuestions, questionIndex, 3)
-    .filter(m => m.question.id !== lastMatchedQId && !recentMatchedIds?.has?.(m.question.id));
+  const allowed = m => m.question.id !== lastMatchedQId && !recentMatchedIds?.has?.(m.question.id);
+  const topMatches = findTopMatches(q, sessionQuestions, questionIndex, 3).filter(allowed);
+  // + meaning-based candidates the word matcher missed (paraphrases). Haiku verification below confirms any pick.
+  try {
+    const tSem = Date.now();
+    const sem = (await findSemanticMatches(q, sessionQuestions, 3)).filter(allowed).filter(m => !topMatches.some(t => t.question.id === m.question.id));
+    if (sem.length) console.log(`[Semantic] +${sem.length} candidate(s) in ${Date.now() - tSem}ms, best ${sem[0].similarity.toFixed(2)}: "${sem[0].question.text.slice(0, 50)}"`);
+    topMatches.push(...sem);
+  } catch (e) { console.error('[Semantic] match failed — word matching only:', e.message); }
 
   if (topMatches.length > 0) {
     // FAST PATH: if the top candidate is a near-identical (very high confidence) match,
@@ -3129,7 +3236,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
     // AND one Haiku call of cost on the common "question is already in the bank" case.
     // Anything below the bar still goes through full AI verification as before.
     let verified;
-    if (topMatches[0].similarity >= HIGH_CONFIDENCE_MATCH) {
+    if (!topMatches[0].semantic && topMatches[0].similarity >= HIGH_CONFIDENCE_MATCH) {
       console.log(`[FastMatch] High-confidence match (${Math.round(topMatches[0].similarity * 100)}%) — skipping AI verify`);
       verified = topMatches[0];
     } else {
@@ -3156,6 +3263,13 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       recentMatchedIds.add(verified.question.id);
       // Track as active thread so continued detail can grow it on-screen.
       // _prepped:true → growth updates the display but never overwrites the bank answer in the DB.
+      if (!verified.question.answer) {
+        // Matched a bank question whose answer isn't prepared yet (e.g. a must-have still being prepared) — answer it
+        // now; generateLiveAnswer streams onto this card and fills the bank row. Never leave an empty card.
+        console.log('[FastMatch] Matched bank question has no answer yet — generating it now');
+        generateLiveAnswer(verified.question.text, sessionId, userId, ws, verified.question.id, !!forceNavigate)
+          .catch(e => console.error('[FastMatch] answer for empty bank question failed:', e.message));
+      }
       if (verified.question.answer) {
         ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: verified.question.answer, _grows: 0, _prepped: true };
         // SESSION MEMORY: the prepared answer shows instantly; if this session already discussed the topic, stream a
@@ -3508,6 +3622,11 @@ wss.on('connection', (ws) => {
 
         // === FULL LIVE MODE (main app) ===
 
+        // Must-have questions (incl. influence & pushback) in this session's bank BEFORE it loads; answers are
+        // prepared in the background and the bank below is reloaded when they land.
+        let mustHaves = null;
+        try { mustHaves = await ensureMustHavesReady(sessionId, userId); } catch (e) { console.error('[MustHave] ensure failed:', e.message); }
+
         // Load session questions + session context (cached for fast answer generation)
         const [qResult, sResult] = await Promise.all([
           pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId]),
@@ -3516,6 +3635,16 @@ wss.on('connection', (ws) => {
         sessionQuestions = qResult.rows;
         questionIndex = buildQuestionIndex(sessionQuestions);
         console.log(`[TF-IDF] Built index for ${sessionQuestions.length} questions`);
+        warmSemantic(sessionQuestions);
+        if (mustHaves) mustHaves.answered.then(n => {
+          if (!n) return;
+          return pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId]).then(r => {
+            sessionQuestions.length = 0; sessionQuestions.push(...r.rows); // same array the call already holds
+            questionIndex = buildQuestionIndex(sessionQuestions);
+            warmSemantic(sessionQuestions);
+            console.log(`[MustHave] Live bank reloaded with ${n} newly prepared answers`);
+          });
+        }).catch(e => console.error('[MustHave] prepare failed:', e.message));
 
         // Cache session context + questions on WS for fast answer generation (no DB lookup needed)
         ws._sessionContext = sResult.rows[0] || {};
@@ -5158,7 +5287,7 @@ app.post('/api/sessions/:id/transcripts/:tid/learn', authMiddleware, async (req,
 
 // Start
 initDB().then(() => {
-  server.listen(PORT, () => console.log(`Running on ${PORT}`));
+  server.listen(PORT, () => { console.log(`Running on ${PORT}`); startSemanticModel(); });
 }).catch(e => {
   console.error('DB init failed:', e);
   server.listen(PORT, () => console.log(`Running on ${PORT} (DB not ready)`));
