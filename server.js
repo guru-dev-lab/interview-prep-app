@@ -405,7 +405,11 @@ function _callClaudeOnce(system, user, maxTokens, model, extras) {
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }
     }, res => {
       let d = ''; res.on('data', c => d += c);
-      res.on('end', () => { try { const p = JSON.parse(d); p.content?.[0]?.text ? resolve(p.content[0].text) : reject(new Error(p.error?.message || 'API error')); } catch (e) { reject(e); } });
+      // Take the reply's TEXT blocks wherever they are — Sonnet 5 may put a thinking block first, and reading only
+      // content[0] threw real answers away as "API error" (26 Sep: must-have answers, and any Sonnet caller).
+      res.on('end', () => { try { const p = JSON.parse(d); const txt = (p.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); if (txt) return resolve(txt);
+        console.log(`[Claude] ${model} returned no leading text — status=${res.statusCode} stop=${p.stop_reason} blocks=[${(p.content || []).map(b => b.type).join(',')}] err=${p.error?.type || ''}:${(p.error?.message || '').slice(0, 80)}`);
+        reject(new Error(p.error?.message || 'API error')); } catch (e) { reject(e); } });
     });
     req.on('error', reject);
     req.setTimeout(90000, () => { req.destroy(); reject(new Error('timeout')); });
@@ -544,7 +548,8 @@ function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, mod
       res.on('end', () => {
         try {
           const p = JSON.parse(d);
-          if (p.content?.[0]?.text) { resolve(p.content[0].text); }
+          const txt = (p.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); // text blocks anywhere (thinking may come first)
+          if (txt) { resolve(txt); }
           else {
             console.error('[Vision] API response error:', JSON.stringify(p).substring(0, 500));
             reject(new Error(p.error?.message || 'Vision API error: ' + (p.type || 'unknown')));
@@ -1944,18 +1949,51 @@ app.post('/api/sessions/:id/generate/:qid', authMiddleware, async (req, res) => 
 });
 
 // Generate batch
+// Prepared answers are generated ahead of time (no live latency) → the stronger model; mock interview 26 Sep found the
+// fast model rewriting an employer's industry in a prepared "tell me about yourself".
+const PREPARED_MODEL = MODELS[process.env.PREPARED_MODEL] || MODEL_SONNET;
+
+// Years of experience computed from the resume's date ranges — the model kept doing this arithmetic wrong
+// ("about four years" for 2020–now, "3.5 years" for Mar 2022–now). ONE place; used by live and prepared answers.
+const _MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+function experienceFacts(resume, today = new Date()) {
+  const re = /(?:\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+)?\b((?:19|20)\d{2})\s*(?:–|—|-|to)\s*(?:(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+)?((?:19|20)\d{2}|present|current|now|today)\b/gi;
+  const jobs = [];
+  for (const line of String(resume || '').split('\n')) {
+    let m; re.lastIndex = 0;
+    while ((m = re.exec(line))) {
+      const sy = +m[2], sm = m[1] ? _MONTHS[m[1].toLowerCase().slice(0, 3)] : 0;
+      const open = /present|current|now|today/i.test(m[4]);
+      const ey = open ? today.getFullYear() : +m[4];
+      const em = open ? today.getMonth() : (m[3] ? _MONTHS[m[3].toLowerCase().slice(0, 3)] : (m[1] ? sm : 0));
+      const months = (ey - sy) * 12 + (em - sm);
+      if (months < 0 || months > 600) continue;
+      const label = line.slice(0, m.index).replace(/[\s(,–—-]+$/, '').replace(/^[\s•*-]+/, '').slice(0, 70) || 'Role';
+      jobs.push({ label, sy, sm, ey, em, months, range: m[0] });
+    }
+  }
+  if (!jobs.length) return '';
+  const yrs = mo => { const y = Math.round(mo / 6) / 2; return (y % 1 ? y.toFixed(1) : String(y)) + ' year' + (y === 1 ? '' : 's'); };
+  const first = Math.min(...jobs.map(j => j.sy * 12 + j.sm)), last = Math.max(...jobs.map(j => j.ey * 12 + j.em));
+  return 'EXPERIENCE (computed from the resume dates — use exactly these numbers, never work out years yourself):\n' +
+    jobs.map(j => `- ${j.label} (${j.range}): about ${yrs(j.months)}`).join('\n') +
+    `\n- Total, earliest start to now: about ${yrs(last - first)}`;
+}
+
 // ONE answer generator for prepared (bank) answers — used by the Generate buttons (generate-batch route) and by
 // ensureMustHavesReady. Writes each answer to the question row; returns [{ id, answer } | { id, error }].
 async function answerSessionQuestions(session, batch) {
   const results = [];
   const qaBank = getQABank();
+  const expFacts = experienceFacts(session.resume); // computed years — see experienceFacts
+  const expBlock = expFacts ? `\n\n${expFacts}` : '';
 
   const stylePrompt = getStylePrompt(session.answer_style);
   if (batch.length === 1) {
     try {
       const answer = await callClaude(stylePrompt,
-        `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${batch[0].text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
-        1500, MODEL_HAIKU
+        `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}${expBlock}\n\nJD:\n${session.jd}\n\nQuestion:\n${batch[0].text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience. Use only facts from the resume and Q&A bank — never invent employers, projects, tools, skills, numbers or learning, and never change what an employer does to fit the job.`,
+        1500, PREPARED_MODEL
       );
       await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, batch[0].id]);
       results.push({ id: batch[0].id, answer });
@@ -1964,8 +2002,8 @@ async function answerSessionQuestions(session, batch) {
     const questionsBlock = batch.map((q, idx) => `Q${idx + 1}: ${q.text}`).join('\n');
     try {
       const batchResponse = await callClaude(getBatchPrompt(session.answer_style),
-        `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\n${batch.length} QUESTIONS TO ANSWER:\n${questionsBlock}\n\nAnswer each question naturally. Use the ===Q1=== ===Q2=== format. Only reference companies or role titles when the question specifically asks about experience.`,
-        batch.length * 1500, MODEL_HAIKU
+        `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}${expBlock}\n\nJD:\n${session.jd}\n\n${batch.length} QUESTIONS TO ANSWER:\n${questionsBlock}\n\nAnswer each question naturally. Use the ===Q1=== ===Q2=== format. Only reference companies or role titles when the question specifically asks about experience. Use only facts from the resume and Q&A bank — never invent employers, projects, tools, skills, numbers or learning, and never change what an employer does to fit the job.`,
+        batch.length * 1500, PREPARED_MODEL
       );
       const parts = batchResponse.split(/===Q\d+===/);
       if (!parts[0] || parts[0].trim().length < 20) parts.shift();
@@ -1979,12 +2017,26 @@ async function answerSessionQuestions(session, batch) {
           results.push({ id: batch[idx].id, error: 'Empty answer in batch' });
         }
       }
+      // Any answer the combined reply didn't yield (its format varies by model) gets its own call — never dropped.
+      const missing = results.filter(r => r.error === 'Empty answer in batch').map(r => r.id);
+      if (missing.length) console.log(`[Answers] ${missing.length}/${batch.length} missing from the batch reply — answering them one by one`);
+      for (const id of missing) {
+        const q = batch.find(b => b.id === id); const slot = results.findIndex(r => r.id === id);
+        try {
+          const answer = await callClaude(stylePrompt,
+            `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}${expBlock}\n\nJD:\n${session.jd}\n\nQuestion:\n${q.text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience. Use only facts from the resume and Q&A bank — never invent employers, projects, tools, skills, numbers or learning, and never change what an employer does to fit the job.`,
+            1500, PREPARED_MODEL
+          );
+          await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, id]);
+          results[slot] = { id, answer };
+        } catch (e3) { results[slot] = { id, error: e3.message }; }
+      }
     } catch(e) {
       for (const q of batch) {
         try {
           const answer = await callClaude(stylePrompt,
-            `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}\n\nJD:\n${session.jd}\n\nQuestion:\n${q.text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience.`,
-            1500, MODEL_HAIKU
+            `Q&A BANK:\n${qaBank}\n\nResume:\n${session.resume}${expBlock}\n\nJD:\n${session.jd}\n\nQuestion:\n${q.text}\n\nAnswer the question naturally. Only reference companies or role titles if the question specifically asks about your experience. Use only facts from the resume and Q&A bank — never invent employers, projects, tools, skills, numbers or learning, and never change what an employer does to fit the job.`,
+            1500, PREPARED_MODEL
           );
           await pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, q.id]);
           results.push({ id: q.id, answer });
@@ -2011,7 +2063,7 @@ async function insertMissingMustHaves(sessionId) {
   }
   return added;
 }
-async function prepareMustHaveAnswers(sessionId, userId) {
+async function prepareMustHaveAnswers(sessionId, userId, onBatch) {
   const u = await pool.query('SELECT plan, is_admin FROM users WHERE id = $1', [userId]);
   const user = u.rows[0] || {};
   if (!user.is_admin && (user.plan || 'free') === 'free') return 0;
@@ -2024,14 +2076,16 @@ async function prepareMustHaveAnswers(sessionId, userId) {
   for (let i = 0; i < qs.length; i += 5) { // same batch size as Generate All
     const res = await answerSessionQuestions(s.rows[0], qs.slice(i, i + 5));
     done += res.filter(r => r.answer).length;
+    res.filter(r => r.error).forEach(r => console.log(`[MustHave] Answer failed for ${r.id}: ${r.error}`));
+    if (onBatch && res.some(r => r.answer)) { try { await onBatch(); } catch (e) {} } // a live call picks these up now
   }
   if (qs.length) console.log(`[MustHave] Prepared ${done}/${qs.length} answers for session ${sessionId}`);
   return done;
 }
-async function ensureMustHavesReady(sessionId, userId) {
+async function ensureMustHavesReady(sessionId, userId, onBatch) {
   const added = await insertMissingMustHaves(sessionId);
   if (added) console.log(`[MustHave] Added ${added} must-have questions to session ${sessionId}`);
-  return { added, answered: prepareMustHaveAnswers(sessionId, userId) }; // answered: a promise (background)
+  return { added, answered: prepareMustHaveAnswers(sessionId, userId, onBatch) }; // answered: a promise (background)
 }
 
 app.post('/api/sessions/:id/generate-batch', authMiddleware, async (req, res) => {
@@ -2903,11 +2957,15 @@ function isQuestionClause(s) {
   if (/^(what|how|why|when|where|who|which) (i|we|they|he|she|it|this|that)\b/.test(s)) return false;
   // Small talk / logistics / wrap-up
   if (/^(how are you|how's it going|how have you been|nice to meet|good to meet|good morning|good afternoon|good evening|hey |hi |hello |what time|what's your time|where are you (based|located|calling|joining)|are you (doing well|ready)|can you hear me|is (my|the) (audio|video|screen)|one (moment|second|sec)|bear with me|sorry about|apologies for|do you have any questions|any questions (for|from) (me|us)|that's (all|it|everything)|we('re| are) (running|almost)|let's (wrap|move|end)|before we (end|wrap|go))/.test(s)) return false;
+  // Audio/video check-ins however they start ("…you hear me okay?" when noise ate "Can") — mock interview 26 Sep
+  if (/\b(hear|see) me (okay|ok|alright|all right|fine|well|clearly)\b|\b(hear|see) me\?$/.test(s)) return false;
   // Candidate mid-answer continuation
   if (/^(eventually |ultimately |overall |the result |the outcome |the impact |the challenge |the problem |the solution |the key |the main |the biggest |the first |the second |the third )/.test(s)) return false;
   if (/\?$/.test(s) && words >= 4) return true;
   // Imperative interview prompts: "Please describe…", "Talk me through…", "Share an example…"
   if (/^(please |kindly )?(explain|define|describe|compare|contrast|walk (me|us) through|talk (me|us) through|talk (to (me|us) )?about|tell (me|us)|give (me|us)|share|show (me|us)|outline|discuss|elaborate|summarize|list|name|provide|imagine|suppose|say you|let's say|what if|pretend|think of|think about|how about)\b/.test(s)) return true;
+  // Task requests ("Write me a quick SQL query…", "Build a measure that…", "Calculate the…") — mock interview 26 Sep
+  if (/^(please |kindly |can you |could you )?(write|code|build|create|design|draft|sketch|calculate|compute|find|model|set up|put together)\b/.test(s)) return true;
   if (words >= 4 && /^(can you |could you |have you |had you |do you |did you |would you |will you |are you |were you |should you |is there |was there |have there been |what's |how's |where's |who's )/.test(s)) return true;
   if (words >= 5 && /^(what |how |why |when |where |who |which )/.test(s)) return true;
   return false;
@@ -3164,6 +3222,21 @@ async function findSemanticMatches(questionText, sessionQuestions, topN = 3) {
   return scored.sort((a, b) => b.similarity - a.similarity).slice(0, topN);
 }
 
+// Is `newQ` the SAME question continued (a second part asked straight after), not a new one? Owner (26 Sep): people ask
+// "…difference between inner and left join? How would you approach this?" — that is ONE question; the app must not
+// jump to a new card. Continuation words, a pointer back to it, or the same topic by meaning.
+const FOLLOW_UP_SIMILARITY = 0.55;
+async function isFollowUpOf(newQ, prevQ) {
+  const t = (newQ || '').trim().toLowerCase();
+  if (/^(and|also|plus|what about|how about|what if)\b/.test(t)) return true; // question clean-up strips a leading And
+  if (t.split(/\s+/).length <= 14 && (/\b(this|that|those|these|each|either|both)\b/.test(t) || /\b(it|them)\s*[?.!]?$/.test(t))) return true;
+  try {
+    const a = await embedText(newQ), b = await embedText(prevQ);
+    if (a && b) { let sim = 0; for (let i = 0; i < a.length; i++) sim += a[i] * b[i]; if (sim >= FOLLOW_UP_SIMILARITY) return true; }
+  } catch (e) {}
+  return false;
+}
+
 // AI verification — send top candidates to Haiku for semantic confirmation
 async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 2500) {
   if (!candidates || candidates.length === 0) return null;
@@ -3175,7 +3248,7 @@ async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 25
   const ctx = sessionContext || {};
   const ctxLine = (ctx.company || ctx.role) ? `This is an interview for ${ctx.role || 'a role'} at ${ctx.company || 'a company'}. ` : '';
 
-  const system = ctxLine + 'You verify whether an interview question matches a candidate from a question bank. A match means the interviewer is asking THE SAME question — not just a related topic. "What is data governance?" does NOT match "What are ETL processes?" even though both are data topics. The same question in different words IS a match ("How do you convince people who are not buying your idea?" = "How do you get buy-in when stakeholders are not sold on your idea?"). Be strict on subject: if the core subject differs, reply NONE. Reply ONLY "MATCH:N" (N = candidate number) or "NONE". Nothing else.';
+  const system = ctxLine + 'You verify whether an interview question matches a candidate from a question bank. A match means the interviewer is asking THE SAME question — not just a related topic. "What is data governance?" does NOT match "What are ETL processes?" even though both are data topics. The same question in different words IS a match, even when the people or objects are named differently ("How do you convince people who are not buying your idea?" = "How do you get buy-in when stakeholders are not sold on your idea?"; "manager" = "leadership"; "dashboard" = "report"). Be strict on SUBJECT: the specific skill, tool or topic must be the same — a broader or neighbouring topic is NOT a match ("experience with demand forecasting" does NOT match "experience with logistics or supply chain data"). If the core subject differs, reply NONE. Reply ONLY "MATCH:N" (N = candidate number) or "NONE". Nothing else.';
   const user = `Interviewer asked: "${utterance}"\n\nCandidates:\n${candidateList}\n\nIs any candidate asking the SAME question (not just related topic)? Reply MATCH:N or NONE.`;
 
   try {
@@ -3253,7 +3326,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
         type: 'match',
         questionId: verified.question.id,
         questionText: verified.question.text,
-        answer: verified.question.answer || '',
+        answer: displayPrepared(verified.question.answer || '', verified.question.text),
         similarity: Math.round(verified.similarity * 100),
         hasAnswer: !!verified.question.answer,
         navigate: !!forceNavigate
@@ -3261,6 +3334,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       ws.send(JSON.stringify(matchMsg));
       broadcastToSession(sessionId, matchMsg, ws);
       recentMatchedIds.add(verified.question.id);
+      ws._lastCard = { id: verified.question.id, q: verified.question.text, asked: q, ts: Date.now(), isBank: true };
       // Track as active thread so continued detail can grow it on-screen.
       // _prepped:true → growth updates the display but never overwrites the bank answer in the DB.
       if (!verified.question.answer) {
@@ -3271,7 +3345,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
           .catch(e => console.error('[FastMatch] answer for empty bank question failed:', e.message));
       }
       if (verified.question.answer) {
-        ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: verified.question.answer, _grows: 0, _prepped: true };
+        ws._activeAnswer = { id: verified.question.id, questionText: verified.question.text, answer: displayPrepared(verified.question.answer, verified.question.text), _grows: 0, _prepped: true };
         // SESSION MEMORY: the prepared answer shows instantly; if this session already discussed the topic, stream a
         // version adapted to what was said onto the SAME card (the bank itself is never changed).
         if (hasConversation(ws)) {
@@ -3350,6 +3424,8 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
     };
     ws.send(JSON.stringify(newQMsg));
     broadcastToSession(sessionId, newQMsg, ws);
+    ws._lastNewCard = { id: qId, q, ts: Date.now() };
+    ws._lastCard = { id: qId, q, asked: q, ts: Date.now(), isBank: false };
 
     sessionQuestions.push({ id: qId, text: q, type: classifyQuestion(q), answer: '' });
     sessionQuestions[sessionQuestions.length - 1]._createdAt = Date.now();
@@ -3481,6 +3557,13 @@ wss.on('connection', (ws) => {
       audio._wall = Date.now(); // arrival time — survives buffering, read by the Deepgram timeline
 
       _audioPktCount[channel] = (_audioPktCount[channel] || 0) + 1;
+      // Loudness per channel over time — decides echo vs bleed when word timing can't (see isEchoOfUser)
+      if (audio.length >= 2 && (channel === 1 || channel === 2)) {
+        let sum = 0; const n = audio.length >> 1;
+        for (let i = 0; i < n; i++) { const v = audio.readInt16LE(i * 2); sum += v * v; }
+        const log = (ws._rms = ws._rms || { 1: [], 2: [] })[channel];
+        log.push([audio._wall, Math.sqrt(sum / n)]); if (log.length > 600) log.shift();
+      }
       // Log every 100th packet with full state
       if (_audioPktCount[channel] % 100 === 1) {
         const dgObj = channel === 1 ? interviewerDG : userDG;
@@ -3625,7 +3708,11 @@ wss.on('connection', (ws) => {
         // Must-have questions (incl. influence & pushback) in this session's bank BEFORE it loads; answers are
         // prepared in the background and the bank below is reloaded when they land.
         let mustHaves = null;
-        try { mustHaves = await ensureMustHavesReady(sessionId, userId); } catch (e) { console.error('[MustHave] ensure failed:', e.message); }
+        const reloadBank = () => pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId]).then(r => {
+          sessionQuestions.length = 0; sessionQuestions.push(...r.rows); // same array the call already holds
+          questionIndex = buildQuestionIndex(sessionQuestions); warmSemantic(sessionQuestions);
+        });
+        try { mustHaves = await ensureMustHavesReady(sessionId, userId, reloadBank); } catch (e) { console.error('[MustHave] ensure failed:', e.message); }
 
         // Load session questions + session context (cached for fast answer generation)
         const [qResult, sResult] = await Promise.all([
@@ -3636,15 +3723,8 @@ wss.on('connection', (ws) => {
         questionIndex = buildQuestionIndex(sessionQuestions);
         console.log(`[TF-IDF] Built index for ${sessionQuestions.length} questions`);
         warmSemantic(sessionQuestions);
-        if (mustHaves) mustHaves.answered.then(n => {
-          if (!n) return;
-          return pool.query('SELECT id, text, type, answer FROM questions WHERE session_id = $1', [sessionId]).then(r => {
-            sessionQuestions.length = 0; sessionQuestions.push(...r.rows); // same array the call already holds
-            questionIndex = buildQuestionIndex(sessionQuestions);
-            warmSemantic(sessionQuestions);
-            console.log(`[MustHave] Live bank reloaded with ${n} newly prepared answers`);
-          });
-        }).catch(e => console.error('[MustHave] prepare failed:', e.message));
+        if (mustHaves) mustHaves.answered.then(n => { if (n) console.log(`[MustHave] Live bank has all ${n} newly prepared answers`); })
+          .catch(e => console.error('[MustHave] prepare failed:', e.message));
 
         // Cache session context + questions on WS for fast answer generation (no DB lookup needed)
         ws._sessionContext = sResult.rows[0] || {};
@@ -3695,10 +3775,37 @@ wss.on('connection', (ws) => {
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
         let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
         let ch1BufStartWall = null; // server time the current interviewer utterance started (shared clock)
+        let lastInterviewerCommit = null; // { text, ts } — to re-join a question split across two commits
+        let pendingFastTimer = null, pendingFastQ = null, pendingSince = 0; // a cut-off question waits for its continuation
+        // (re)arm the hold: fires 0.7 s after the interviewer's last partial word, never later than 2.5 s after the fragment
+        const armPendingFast = () => {
+          if (pendingFastTimer) clearTimeout(pendingFastTimer);
+          const q = pendingFastQ, wait = Math.max(0, Math.min(700, 2500 - (Date.now() - pendingSince)));
+          pendingFastTimer = setTimeout(() => { pendingFastTimer = null; pendingFastQ = null; fireDetectedQuestion(q, 'fast'); }, wait);
+        };
+
+        // Re-answer a card for its full question: prepared bank answer when one matches, else a fresh answer — same card id.
+        async function upgradeCard(fullQ, cardId) {
+          console.log('[Upgrade] Full question arrived — upgrading card:', fullQ.substring(0, 60));
+          pool.query('UPDATE questions SET text = $1 WHERE id = $2', [fullQ, cardId]).catch(() => {});
+          const lexical = findTopMatches(fullQ, sessionQuestions, questionIndex, 3);
+          let sem = []; try { sem = (await findSemanticMatches(fullQ, sessionQuestions, 3)).filter(m => m.question.id !== cardId && !lexical.some(l => l.question.id === m.question.id)); } catch (e) {}
+          const cands = [...lexical, ...sem].filter(m => m.question.id !== cardId && m.question.answer);
+          const hit = cands.length ? await verifyMatch(fullQ, cands, ws._sessionContext, 1500) : null;
+          if (hit) {
+            console.log('[Upgrade] → prepared answer:', hit.question.text.substring(0, 50));
+            (ws._cardGen = ws._cardGen || new Map()).set(cardId, Symbol('prepared')); // stop the first-half answer writing here
+            const msg = { type: 'live_answer', questionId: cardId, questionText: hit.question.text, answer: displayPrepared(hit.question.answer, hit.question.text), isNew: false };
+            ws.send(JSON.stringify(msg)); broadcastToSession(sessionId, msg, ws);
+            if (hasConversation(ws)) generateLiveAnswer(hit.question.text, sessionId, userId, ws, cardId, false, { bankAnswer: hit.question.answer }).catch(() => {});
+          } else {
+            generateLiveAnswer(fullQ, sessionId, userId, ws, cardId, false, { noStream: true }).catch(() => {});
+          }
+        }
 
         // ONE door for an auto-detected question (both the fast route and the AI route): quality filter, continuation →
         // grow, stay-silent, de-dup, cooldown, then match/answer. Only ever called with INTERVIEWER speech.
-        function fireDetectedQuestion(q, via) {
+        async function fireDetectedQuestion(q, via) {
           const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
           const growEnabled = process.env.GROW_ANSWERS !== '0';
 
@@ -3711,6 +3818,12 @@ wss.on('connection', (ws) => {
           // CONTINUATION: the interviewer is elaborating on the SAME question we're already
           // answering → grow that answer in place (append), instead of a new card. This
           // bypasses the recent-question dedup and the cooldown on purpose.
+          // Growth needs something NEW: the same question found again (e.g. the AI re-reading the last question when the
+          // next line is only "In Power BI,") must not grow or relabel the card — mock interview 26 Sep.
+          const qLowG = q.toLowerCase().trim();
+          const alreadyAsked = [...recentDetectedQs, ws._activeAnswer && ws._activeAnswer.questionText, ws._lastCard && ws._lastCard.asked]
+            .filter(Boolean).some(p => { const pl = String(p).toLowerCase().trim(); return pl.includes(qLowG) || stringSimilarity.compareTwoStrings(pl, qLowG) >= 0.75; });
+          if (alreadyAsked && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) { console.log('[Grow] Same question found again — nothing new to add'); return; }
           if (growEnabled && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
             console.log('[Grow] Continuation detected — extending active answer');
             growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
@@ -3732,13 +3845,37 @@ wss.on('connection', (ws) => {
             // Exact match, substring either way, or high similarity
             if (qLow === prev || prev.includes(qLow) || qLow.includes(prev) ||
                 stringSimilarity.compareTwoStrings(qLow, prev) > 0.6) {
+              // The FULL question after its first half already made a card ("…your manager pushes" → "…pushes back on
+              // your analysis?"): upgrade that SAME card instead of skipping — prepared answer if the bank has it.
+              const last = ws._lastNewCard;
+              if (qLow.includes(prev) && qLow.length >= prev.length + 8 && last && last.q.toLowerCase() === prev && Date.now() - last.ts < 8000) {
+                recentDetectedQs[ri] = q; last.q = q;
+                upgradeCard(q, last.id).catch(e => console.error('[Upgrade] failed:', e.message));
+                return;
+              }
               console.log('[AI Auto-Detect] Skipping duplicate of recent:', prev.substring(0, 50));
               return;
             }
           }
+          // SAME QUESTION CONTINUED: a second part asked right after the first (≤ 15 s, candidate hasn't spoken since) that
+          // follows on from it → merge into the card on screen and answer both parts together; no new card, no jump.
+          const lc = ws._lastCard;
+          if (lc && Date.now() - lc.ts < 15000 && !((ws._lastUserSpeechTs || 0) > lc.ts) && await isFollowUpOf(q, lc.asked || lc.q)) {
+            const combined = `${(lc.asked || lc.q).replace(/\s+$/, '')} ${q}`;
+            console.log(`[Follow-up] Same question continued — merging into the card on screen: "${combined.substring(0, 80)}"`);
+            lc.asked = combined; lc.ts = Date.now();
+            recentDetectedQs.push(q); if (recentDetectedQs.length > 5) recentDetectedQs.shift();
+            // GROW, don't rewrite (owner): lines already on screen stay exactly as they are; 1–2 lines covering the added
+            // part are appended. If the first answer is still arriving, grow the moment it finishes.
+            if (ws._activeAnswer && ws._activeAnswer.id === lc.id) growLiveAnswer(ws, sessionId, ws._activeAnswer, combined).catch(e => console.error('[Grow]', e.message));
+            else ws._pendingGrow = { id: lc.id, q: combined };
+            return;
+          }
           // Genuinely different question — respect the cooldown so we don't refocus onto
           // side-topics and throw junk on screen while the candidate is still answering.
-          if (inCooldown) { console.log('[AI Auto-Detect] Different question during cooldown — holding'); return; }
+          // Unclear lines (AI route) wait out the cooldown so side remarks don't hijack the screen; a CLEAR interviewer
+          // question (fast route) is always answered — back-to-back questions were being dropped (mock interview 26 Sep).
+          if (inCooldown && via !== 'fast') { console.log('[AI Auto-Detect] Different question during cooldown — holding'); return; }
 
           lastAiExtractedQ = q;
           recentDetectedQs.push(q);
@@ -3848,6 +3985,12 @@ wss.on('connection', (ws) => {
         // Echo vs bleed cutoff, measured through Deepgram (25 Sep): your echo → mic first by 122–245 ms; interviewer
         // bleed into mic → call audio first by 83–163 ms. Any mic lead = you. Ties go to "you" (never answer the user).
         const ECHO_MIN_LEAD_MS = 0;
+        // Average loudness of each channel over [from, to] (server clock). null if either channel has no audio there.
+        function channelLoudness(from, to) {
+          const avg = ch => { const xs = ((ws._rms || {})[ch] || []).filter(([t]) => t >= from && t <= to).map(([, r]) => r); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; };
+          const c1 = avg(1), c2 = avg(2);
+          return c1 === null || c2 === null ? null : { c1, c2 };
+        }
         function isEchoOfUser(ch1Text, ch1StartWall) {
           const now = Date.now();
           const ch1Lower = ch1Text.toLowerCase().trim();
@@ -3861,13 +4004,30 @@ wss.on('connection', (ws) => {
               (ch1Lower.includes(u.text.toLowerCase().substring(0, Math.min(30, u.text.length))) ||
                u.text.toLowerCase().includes(ch1Lower.substring(0, Math.min(30, ch1Lower.length))));
             if (sim > ECHO_SIMILARITY_THRESHOLD || isSubstring) {
-              // Same words on both channels. Whoever started FIRST said it: if the call audio started at the same
-              // time or earlier, it's the INTERVIEWER leaking into your mic (speakers) — keep it as their speech.
+              // Same words on both channels. LOUDNESS first: your own voice is loud on your mic and quiet as an echo in the
+              // call audio; the interviewer is loud in the call audio and quiet as bleed into your mic. A clear (1.5×)
+              // winner decides. Word timing (±50 ms) misjudged a real question as echo in the mock interview (26 Sep).
+              if (ch1StartWall) {
+                const loud = channelLoudness(ch1StartWall, ch1StartWall + 1500);
+                if (loud && loud.c1 > loud.c2 * 1.5) { console.log(`[Echo Detect] Same words, call audio ${(loud.c1 / loud.c2).toFixed(1)}× louder — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0, 40)}"`); continue; }
+                if (loud && loud.c2 > loud.c1 * 1.5) { console.log(`[Echo Detect] Ch1 matched Ch2, mic ${(loud.c2 / loud.c1).toFixed(1)}× louder — your echo: "${ch1Text.substring(0, 40)}"`); return true; }
+              }
+              // Loudness too close to call → whoever started FIRST said it; ties go to "you" (never answer the user).
               if (ch1StartWall && u.startWall && u.startWall > ch1StartWall - ECHO_MIN_LEAD_MS) {
                 console.log(`[Echo Detect] Same words, but call audio started first (${u.startWall - ch1StartWall}ms) — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0,40)}"`);
                 continue;
               }
               console.log(`[Echo Detect] Ch1 matched Ch2 (mic led by ${ch1StartWall && u.startWall ? (ch1StartWall - u.startWall) + 'ms' : 'n/a'}) (sim=${sim.toFixed(2)}): "${ch1Text.substring(0,40)}" ≈ "${u.text.substring(0,40)}"`);
+              return true;
+            }
+          }
+          // No matching mic words yet (the mic's transcript can arrive AFTER the echo does): loudness alone. If the mic was
+          // clearly louder than the call audio during this line, the user was speaking — it's their echo. (A card once
+          // joined the user's echoed sentence onto the interviewer's next question — mock interview 26 Sep.)
+          if (ch1StartWall) {
+            const loud = channelLoudness(ch1StartWall, ch1StartWall + 1500);
+            if (loud && loud.c2 > 500 && loud.c2 > loud.c1 * 1.5) {
+              console.log(`[Echo Detect] No mic words yet, mic ${(loud.c2 / loud.c1).toFixed(1)}× louder — your echo: "${ch1Text.substring(0, 40)}"`);
               return true;
             }
           }
@@ -3901,9 +4061,32 @@ wss.on('connection', (ws) => {
                   if (aiExtractTimer) clearTimeout(aiExtractTimer);
                   // FAST ROUTE: the interviewer's own line is already a clear question → answer now (skips the 0.8 s wait +
                   // ~0.6 s AI extraction). Unclear lines take the AI route exactly as before. FAST_DETECT=0 turns it off.
-                  const fastQ = process.env.FAST_DETECT !== '0' ? questionPartOf(fullUtterance) : null;
-                  if (fastQ) fireDetectedQuestion(fastQ, 'fast');
-                  else aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
+                  // Deepgram cuts at pauses/noise ("…pushes | back on your analysis?", "…Snowflake got slow. | How would you
+                  // speed them up?") — if the interviewer's previous line ended < 2.5 s ago and wasn't a finished question,
+                  // judge the two together so the question keeps its words and its context.
+                  // Join rules (mock interview 26 Sep): after a finished question ("?") never; after a CUT line (no end
+                  // punctuation) only a lowercase continuation ("back on your analysis?") — a new capitalized sentence is its
+                  // own question; after a finished statement ("…Snowflake got slow.") join within 4 s so the question
+                  // keeps its setup.
+                  const prevLine = lastInterviewerCommit;
+                  const prevT = prevLine ? prevLine.text.trim() : '';
+                  const recent = prevLine && Date.now() - prevLine.ts < 4000;
+                  const prevCut = !/[?.!]["')\]]?$/.test(prevT);
+                  const continues = recent && !/\?["')\]]?$/.test(prevT) && (!prevCut || /^[a-z]/.test(fullUtterance.trim()));
+                  const joined = continues ? prevT + ' ' + fullUtterance : fullUtterance;
+                  lastInterviewerCommit = { text: fullUtterance, ts: Date.now() };
+                  const fastQ = process.env.FAST_DETECT !== '0' ? questionPartOf(joined) : null;
+                  const heldQ = pendingFastQ; // a cut-off question from the previous line, if any
+                  if (pendingFastTimer) { clearTimeout(pendingFastTimer); pendingFastTimer = null; pendingFastQ = null; }
+                  if (heldQ && !continues) fireDetectedQuestion(heldQ, 'fast'); // the new line isn't its continuation — answer it on its own
+                  // A finished sentence ends in ? . or ! (Deepgram punctuates). Without it the line was cut mid-sentence
+                  // ("…your manager pushes") — wait 0.7 s; if the continuation arrives, the joined question fires instead.
+                  if (fastQ && /[?.!]["')\]]?\s*$/.test(fullUtterance)) fireDetectedQuestion(fastQ, 'fast');
+                  else if (fastQ) { pendingFastQ = fastQ; pendingSince = Date.now(); armPendingFast(); }
+                  else {
+                    if (heldQ && continues) fireDetectedQuestion(heldQ, 'fast'); // joined text isn't a question — never drop the held one
+                    aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
+                  }
                   setTimeout(() => recentMatchedIds.clear(), 5000);
                 }
               };
@@ -3925,6 +4108,7 @@ wss.on('connection', (ws) => {
               } else {
                 const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
                 ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
+                if (pendingFastTimer && text.trim()) armPendingFast(); // still talking → keep holding the cut-off question
               }
 
               // Pause detected — commit whatever's left (the normal path for real interviews).
@@ -3982,6 +4166,12 @@ wss.on('connection', (ws) => {
 
                   // Store for echo detection — Ch1 transcripts will be compared against these
                   recentUserUtterances.push({ text: fullUtterance, ts: Date.now(), startWall: userBufStartWall });
+                  // Only REAL candidate speech ends the follow-up window — not the interviewer leaking into the mic. Loudness
+                  // decides (bleed is quieter on the mic than in the call audio); text similarity as a backup.
+                  const uLoud = userBufStartWall ? channelLoudness(userBufStartWall, userBufStartWall + 1500) : null;
+                  const isBleed = (uLoud && uLoud.c1 > uLoud.c2 * 1.2) || transcript.some(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000 &&
+                    stringSimilarity.compareTwoStrings(fullUtterance.toLowerCase(), (t.text || '').toLowerCase()) > 0.6);
+                  if (!isBleed) ws._lastUserSpeechTs = Date.now();
                   userBufStartWall = null;
                   // Prune old entries (keep last 10 seconds worth)
                   while (recentUserUtterances.length > 0 && Date.now() - recentUserUtterances[0].ts > 10000) {
@@ -4148,7 +4338,8 @@ wss.on('connection', (ws) => {
         } catch (e) {
           // Fallback: use most recent lines
           console.log('[WhatShouldISay] Extraction failed, using raw transcript');
-          questionText = currentBuf || transcript.slice(-2).map(t => t.text).join(' ');
+          // Fallback must also be INTERVIEWER-only — transcript.slice(-2) put "[You]…[Echo]…" on a card under load (26 Sep).
+          questionText = currentBuf || interviewerLines().slice(-2).map(t => t.text).join(' ');
         }
 
         if (!questionText || questionText.length < 5) {
@@ -4578,13 +4769,15 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     if (!active || !active.id) return;
     active._grows = active._grows || 0;
     if (active._grows >= 3) return;                       // cap extensions per question
-    if ((active.answer || '').length > 700) return;       // cap total length (overlay space)
+    if ((active.answer || '').length > 1400) return;      // cap total length (overlay space) — full-sentence answers run 400–900 chars
     if ((active.answer || '').trim().length < 4) return;  // nothing to extend yet
 
     const session = ws._sessionContext || {};
     const growShape = active.shape || classifyQuestionShape(fullerQuestion).shape;
-    const stylePrompt = composeLiveSystemPrompt({ shape: growShape, technical: classifyQuestionShape(fullerQuestion).technical, styleKey: session.answer_style, maxLines: 0, voiceProfile: ws._voiceProfile, withConversation: false, questionText: fullerQuestion }); // SAME composer as the answer
-    const system = stylePrompt + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that extend it to cover the added detail, in the SAME voice and style, each on its own line starting with "• ". Never add a ↳ employer line or a heading. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble.';
+    const growContext = recentInterviewerText(ws);
+    const growTechnical = classifyQuestionShape(fullerQuestion).technical || TECH_TERMS_RE.test(growContext); // same rule as new answers
+    const stylePrompt = composeLiveSystemPrompt({ shape: growShape, technical: growTechnical, styleKey: session.answer_style, maxLines: 0, voiceProfile: ws._voiceProfile, withConversation: false, questionText: fullerQuestion }); // SAME composer as the answer
+    const system = stylePrompt + '\n\nCONTINUATION MODE: The interviewer has ADDED detail to the SAME question. You are given the answer already on screen. Output ONLY 1–2 NEW sentences that DIRECTLY answer what was added (the follow-up, the new scenario or the extra detail) — say how the answer changes for it — in the SAME voice and style, each on its own line starting with "• ". Never add a ↳ employer line or a heading. Do NOT repeat or restate anything already said. Do NOT rewrite. No preamble.';
     const convo = buildConversationContext(ws);
     const userMsg = `${convo ? convo + '\n\n' : ''}QUESTION (now fuller):\n${fullerQuestion}\n\nANSWER ALREADY GIVEN (do NOT repeat any of this):\n${active.answer}\n\nOutput ONLY the additional sentence(s) to append:`;
 
@@ -4594,7 +4787,7 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
     if (!addition || addition.length < 4) return;
 
     // Append-only: keep existing lines exactly; new "• " lines go above the ↳ employer line.
-    const full = appendToLiveAnswer(active.answer || '', addition, growShape);
+    const full = applyPlatformTraps(appendToLiveAnswer(active.answer || '', addition, growShape), fullerQuestion + ' ' + growContext); // same guard as new answers
     active.answer = full;
     active.questionText = fullerQuestion;
     active._grows++;
@@ -4640,12 +4833,15 @@ const LIVE_CORE = `You write what a job candidate says out loud in a LIVE interv
 QUALITY:
 - Plain English, contractions, sound like a person talking. No jargon or buzzwords (never: leverage, utilize, robust, synergy, facilitate, holistic, scalable, cross-functional).
 - The FIRST line answers the question directly — something they can start saying immediately. No preamble ("Great question", "So basically"), no closing summary, no headers or labels unless the layout below asks for them, no markdown bold.
-- Never fabricate. Facts about the candidate come only from the resume, the Q&A bank, and what they said earlier.
+- Never fabricate. Facts about the candidate come only from the resume, the Q&A bank, and what they said earlier — no new people, events, reactions, projects, numbers, tools, skills or "I taught myself…" claims.
+- Never change what an employer is or does (industry, product, customers) to fit the job — Midwest Health Clinics stays a health clinic, a retailer stays a retailer. Transferable SKILLS can be drawn out; the business can't be rewritten.
+- If they ask about experience the candidate doesn't have (nothing in the resume or earlier answers), say so briefly and bridge to the closest REAL experience — never invent some.
 - The question came from live speech transcription and may be garbled — never ask for clarification; answer the most likely intent.
 - Never quote the candidate's own sentences back, but stay consistent with the facts they stated about themselves.`;
 
 const LIVE_ACCURACY = `
-ACCURACY (technical): silently sanity-check every function name, syntax and platform fact before writing. A confidently-wrong answer loses the interview. If unsure, give the simplest approach you ARE sure of; never invent functions, commands, flags or features.`;
+ACCURACY (technical): silently sanity-check every function name, syntax and platform fact before writing. A confidently-wrong answer loses the interview. If unsure, give the simplest approach you ARE sure of; never invent functions, commands, flags or features.
+PLATFORM: techniques must be ones that exist on the platform the question names (e.g. Snowflake has no indexes — it uses clustering keys, partition pruning, warehouse sizing, result caching). The candidate's experience on a DIFFERENT platform belongs only in the ↳ proof line, never presented as the technique for their platform.`;
 
 // Style → layout parameters (the only way a style may touch the layout). Everything else a style changes is wording.
 const STYLE_LAYOUT = {
@@ -4663,7 +4859,7 @@ function liveLayout(shape, { maxLines, unit, storyLabels, employerLineAllowed })
   const n = (lo, hi) => maxLines ? `1–${Math.min(maxLines, hi)}` : `${lo}–${hi}`;
   const employer = employerLineAllowed
     ? `EMPLOYER LINE (optional, skippable): ONLY if a real example of the candidate's clearly helps — the question asks about their own experience, or something said earlier in this interview process makes one of their examples worth giving — add ONE final line in exactly this form:
-↳ At <employer where it happened> — <one sentence of at most ${LIVE_LINE_WORDS} words: what they did there and the result>
+↳ At <employer where it happened> — <one sentence of at most ${LIVE_LINE_WORDS} words: what they did there and the result — ONLY facts stated in the resume or their earlier answers, no added people, events or reactions>
 Use the employer from the resume where that example happened. If no example clearly helps, leave the line out.`
     : `NO employer line and no employer name — this question doesn't call for the candidate's own example.`;
   if (shape === 'code') return `LAYOUT — fixed:
@@ -4752,7 +4948,7 @@ function normalizeLiveAnswer(text, shape, opts = {}) {
   }
   if (inCode) body.push('```'); // close an unterminated block
   if (opts.cueOnly) {
-    for (let i = 0; i < body.length; i++) if (body[i].startsWith('• ') && body[i].split(/\s+/).length - 1 > 10) {
+    for (let i = 0; i < body.length; i++) if (body[i].startsWith('• ') && body[i].split(/\s+/).length - 1 > 8) {
       console.log('[Layout] Dropped a prose line from a cue-only answer:', body[i].slice(0, 60)); body.splice(i, 1); i--;
     }
   }
@@ -4769,6 +4965,36 @@ function normalizeLiveAnswer(text, shape, opts = {}) {
   return out.join('\n');
 }
 
+// PLATFORM TRAPS — features that do NOT exist on a platform but models keep suggesting (from the candidate's other
+// stacks). When the question's context names the platform, answer lines recommending the missing feature are removed.
+const PLATFORM_TRAPS = [
+  { platform: /\bsnowflake\b/i, wrong: /\bindex(es|ing|ed)?\b/i, unless: /\b(no|not|n't|without|instead of|rather than|doesn't|don't|isn't)\b[^.]{0,40}\bindex/i, note: 'Snowflake has no indexes' },
+];
+function applyPlatformTraps(answer, context) {
+  let out = answer;
+  for (const t of PLATFORM_TRAPS) {
+    if (!t.platform.test(context || '')) continue;
+    out = out.split('\n').filter(l => {
+      if (l.startsWith('• ') && t.wrong.test(l) && !(t.unless && t.unless.test(l))) { console.log(`[Platform] Removed a line (${t.note}):`, l.slice(0, 70)); return false; }
+      return true;
+    }).join('\n');
+  }
+  return out;
+}
+
+// What the interviewer said in the last 45 s (last 4 lines) — the topic of a "speed THEM up" question, and the
+// platform context for PLATFORM_TRAPS. ONE helper for new answers AND growth.
+function recentInterviewerText(ws) {
+  return (ws._getTranscript ? ws._getTranscript() : []).filter(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 45000).slice(-4).map(t => t.text).join(' ');
+}
+
+// A prepared (bank) answer shown live gets the SAME layout as live answers — display only, words unchanged, the bank in
+// the database stays exactly as written (mock interview 26 Sep: prepared answers showed as unbulleted text).
+function displayPrepared(answer, questionText) {
+  if (!answer) return answer;
+  return normalizeLiveAnswer(answer, classifyQuestionShape(questionText).shape);
+}
+
 // Grow: new sentences go above the ↳ employer line, as normal "• " lines.
 function appendToLiveAnswer(answer, addition, shape) {
   const add = (addition || '').split('\n').map(x => x.trim()).filter(Boolean).map(x => /^[•\-*]\s+/.test(x) ? '• ' + x.replace(/^[•\-*]\s+/, '') : '• ' + x);
@@ -4781,6 +5007,10 @@ function appendToLiveAnswer(answer, addition, shape) {
 // Generate answer for live question — questionId is the EXISTING DB row from fastMatchAndRespond
 // opts.bankAnswer: a prepared answer to ADAPT to the conversation (shown on the same card; never written back to the bank)
 async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId, forceNavigate, opts = {}) {
+  // Only the NEWEST answer for a card may write to it (a card can be re-answered when its full question arrives).
+  const genTicket = Symbol('gen');
+  if (questionId) (ws._cardGen = ws._cardGen || new Map()).set(questionId, genTicket);
+  const isCurrent = () => !questionId || !ws._cardGen || ws._cardGen.get(questionId) === genTicket;
   try {
     // Use cached session context — no DB lookup needed
     const session = ws._sessionContext || {};
@@ -4810,8 +5040,11 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     }
 
     // LIVE ANSWER COMPOSER: question type → fixed layout; style → tone only; + length, voice, session memory.
-    const { shape, technical } = classifyQuestionShape(questionText);
+    const { shape, technical: techInQuestion } = classifyQuestionShape(questionText);
+    const recentInterviewer = recentInterviewerText(ws);
+    const technical = techInQuestion || TECH_TERMS_RE.test(recentInterviewer); // "them/it" questions take their topic from the setup
     const isTechnical = technical; // accuracy guardrail + model choice
+    console.log(`[Live Answer] shape=${shape} technical=${technical} recent="${recentInterviewer.slice(-90)}" q="${(questionText || '').slice(0, 50)}"`);
     // Token caps are HEADROOM only (brevity comes from the prompt) — never so tight they chop a sentence.
     const maxSentences = ws._maxAnswerLines || 0;
     let tokenLimit = shape === 'code' ? 1000 : 500;
@@ -4849,12 +5082,14 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     const theyCare = (ws._bridges || '').split('\n').map(l => l.trim()).filter(l => /^THEY:/i.test(l))
       .map(l => '- ' + l.replace(/^THEY:\s*/i, '').split('→')[0].trim()).filter(l => l.length > 3).slice(0, 4);
     console.log(`[Memory] Answer context: aim=${theyCare.length} bridges=${ws._bridges ? 'yes' : 'no'} priorCalls=${ws._priorMemory ? 'yes' : 'no'} q="${(questionText || '').slice(0, 40)}"`);
-    const aimBlock = theyCare.length ? `\n\nWHAT THIS INTERVIEW HAS TOLD YOU THEY CARE ABOUT (aim the answer at whichever fits this question — in the candidate's words, never theirs):\n${theyCare.join('\n')}` : '';
-    const userPrompt = `${todayLine}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer:`;
+    const aimBlock = theyCare.length ? `\n\nWHAT THIS INTERVIEW HAS TOLD YOU THEY CARE ABOUT (use one ONLY if it directly relates to THIS question; never add a line about a different topic — in the candidate's words, never theirs):\n${theyCare.join('\n')}` : '';
+    const expFacts = experienceFacts(session.resume);
+    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
     // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
-    const answerModel = isTechnical ? (MODELS[process.env.LIVE_TECH_MODEL || 'sonnet'] || MODEL_SONNET) : MODEL_HAIKU;
+    // Stories and "about you" answers are the most fact-heavy — embellishments in the mock interview came from Haiku there.
+    const answerModel = (isTechnical || shape === 'story' || shape === 'pitch') ? (MODELS[process.env.LIVE_TECH_MODEL || 'sonnet'] || MODEL_SONNET) : MODEL_HAIKU;
     // Sonnet 5 decides on its own to "think" first — measured 25 Sep: with a thinking block first words took 1.3–3.3 s,
     // without 0.6–0.9 s. Live answers turn it off; LIVE_THINKING=adaptive puts it back. (Haiku doesn't think by default.)
     const answerExtras = (answerModel !== MODEL_HAIKU && process.env.LIVE_THINKING !== 'adaptive') ? { thinking: { type: 'disabled' } } : undefined;
@@ -4862,10 +5097,11 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     let answer = '';
     let ttft = 0;
     let streamed = false;
-    const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0' && !opts.bankAnswer; // kill switch: '0' = buffered. Adapted prepared answers swap in whole.
+    const streamEnabled = process.env.STREAM_LIVE_ANSWERS !== '0' && !opts.bankAnswer && !opts.noStream; // '0' = buffered. Adapted/upgraded answers swap in whole.
     if (streamEnabled) {
       try {
         answer = await callClaudeStream(systemBlocks, userPrompt, tokenLimit, answerModel, (chunk) => {
+          if (!isCurrent()) return; // superseded by a newer answer for this card
           if (!ttft) ttft = Date.now() - tGen;
           const deltaMsg = {
             type: 'live_answer_delta',
@@ -4904,16 +5140,23 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
       return;
     }
     answer = normalizeLiveAnswer(answer, shape, layoutRules); // enforce the layout contract before it's saved or shown
+    answer = applyPlatformTraps(answer, questionText + ' ' + recentInterviewer);
+    if (!isCurrent()) { console.log('[Live Answer] Superseded by a newer answer for this card — not shown'); return; }
 
     // UPDATE the existing question row (created by fastMatchAndRespond) — NOT a new INSERT.
     // An adapted prepared answer is for this conversation only — the bank answer stays as the user wrote it.
-    if (questionId && !opts.bankAnswer) {
+    if (questionId && !opts.bankAnswer && !opts.noSave) {
       pool.query('UPDATE questions SET answer = $1 WHERE id = $2', [answer, questionId])
         .catch(e => console.error('[Update answer error]', e.message));
     }
 
     // Mark this as the active answer thread so continued interviewer detail grows THIS answer.
     ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: !!opts.bankAnswer, shape };
+    // A follow-up arrived while this answer was still coming in → grow it now (append-only).
+    if (ws._pendingGrow && ws._pendingGrow.id === questionId) {
+      const pg = ws._pendingGrow; ws._pendingGrow = null;
+      setTimeout(() => growLiveAnswer(ws, sessionId, ws._activeAnswer, pg.q).catch(e => console.error('[Grow]', e.message)), 0);
+    }
 
     // Send answer to client with the SAME questionId the client already knows about
     const liveAnswerMsg = {

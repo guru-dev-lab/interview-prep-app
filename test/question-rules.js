@@ -25,6 +25,9 @@ const QUESTIONS = [
   'Imagine the dashboard numbers are wrong on launch day. What do you do?',
   'Explain how you would design an ETL pipeline',
   'Have you ever worked with Snowflake or BigQuery?',
+  'Write me a quick SQL query to get the top three customers by revenue in each region.',
+  'Can you write a DAX measure for year over year growth?',
+  'Build me a simple model to forecast weekly demand.',
 ];
 const NOT_QUESTIONS = [
   'I built a sales dashboard in Power BI for the regional team',
@@ -40,6 +43,8 @@ const NOT_QUESTIONS = [
   'Do you have any questions for me?',
   'And then after that we moved the reports to Tableau',
   'Thanks so much for your time today',
+  'For joining. You hear me okay?',
+  'Can you see me alright?',
 ];
 // questionPartOf / cleanQuestionText live outside the block — grab them by name from the same source
 function grab(name) { const i = src.indexOf('function ' + name + '('); let d = 0, j = src.indexOf('{', i); for (let k = j; k < src.length; k++) { if (src[k] === '{') d++; else if (src[k] === '}') { d--; if (!d) return src.slice(i, k + 1); } } }
