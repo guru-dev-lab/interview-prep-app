@@ -4995,7 +4995,7 @@ Use the employer from the resume where that example happened. If no example clea
 - First line exactly: ▸ At <employer where the story happened, from the resume>
 - Then ${storyLabels
       ? `the story as labelled lines, each starting with its label instead of "• ": "Situation: …", "Action: …" (one or two), "Result: …" — each ONE sentence of at most ${LIVE_LINE_WORDS} words`
-      : `${n(3, 5)} lines, each ${lineUnit}, telling the story in order: the situation → what the candidate did and how → the result (a real number if there is one)`}.
+      : `${n(5, 7)} lines, each ${lineUnit}, telling the story in order: the situation (what was at stake, who was involved) → what the candidate actually did, step by step → what they FOUND or what turned it around, named concretely (the specific assumption, definition, data issue or objection — never just "we found gaps") → the result (a real number if there is one). If the question is about a difficult person or a conflict, one line says how the candidate handled the PERSON (tone, one-on-one, what they cared about) and the last line says how the working relationship ended up`}.
 - No separate employer line — the heading is it. Use a real example from the resume, Q&A bank or their earlier answers; never invent one.`;
   if (shape === 'pitch') return `LAYOUT — fixed:
 - ${n(3, 5)} lines, each ${lineUnit}, in this order: who they are now (role and focus) → one real proof (a result from the resume) → why this role and team.
@@ -5030,14 +5030,18 @@ function liveLengthRule(maxLines) {
 }
 
 // The line cap actually in force: the stricter of the style's cap and the user's length setting.
-function liveLineCap(styleKey, userMaxLines) {
+// Stories keep their middle (owner, 26 Sep: "it doesn't really say what happened … and what the gap was"):
+// a length setting or a short style never cuts a story below STORY_MIN_LINES.
+const STORY_MIN_LINES = 7;
+function liveLineCap(styleKey, userMaxLines, shape) {
   const caps = [(STYLE_LAYOUT[styleKey] || {}).maxLines, userMaxLines].filter(x => x > 0);
-  return caps.length ? Math.min(...caps) : 0;
+  const cap = caps.length ? Math.min(...caps) : 0;
+  return shape === 'story' && cap ? Math.max(cap, STORY_MIN_LINES) : cap;
 }
 
 function composeLiveSystemPrompt({ shape, technical, styleKey, maxLines, voiceProfile, withConversation, questionText }) {
   const sp = STYLE_LAYOUT[styleKey] || {};
-  const cap = liveLineCap(styleKey, maxLines);
+  const cap = liveLineCap(styleKey, maxLines, shape);
   const employerLineAllowed = !!withConversation || OWN_EXPERIENCE_RE.test(questionText || '');
   const parts = [LIVE_CORE];
   if (technical) parts.push(LIVE_ACCURACY);
@@ -5180,12 +5184,13 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
       else if (maxSentences <= 12) tokenLimit = shape === 'code' ? 1300 : 700;
       else tokenLimit = shape === 'code' ? 1500 : 900;
     }
+    if (shape === 'story') tokenLimit = Math.max(tokenLimit, 540); // 5–7 story lines must never be cut mid-sentence
     const withConversation = hasConversation(ws);
     const system = composeLiveSystemPrompt({
       shape, technical, styleKey: session.answer_style, maxLines: maxSentences,
       voiceProfile: ws._voiceProfile, withConversation, questionText,
     });
-    const layoutRules = { cap: liveLineCap(session.answer_style, maxSentences), employerLineAllowed: withConversation || OWN_EXPERIENCE_RE.test(questionText),
+    const layoutRules = { cap: liveLineCap(session.answer_style, maxSentences, shape), employerLineAllowed: withConversation || OWN_EXPERIENCE_RE.test(questionText),
       cueOnly: (STYLE_LAYOUT[session.answer_style] || {}).unit === 'cue' && shape !== 'code' };
     // Everything said in this interview session (earlier calls + this call) — see SESSION MEMORY
     const convo = buildConversationContext(ws);
