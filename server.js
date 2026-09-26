@@ -4349,7 +4349,7 @@ wss.on('connection', (ws) => {
         // Step 1: Ask Haiku to extract the LATEST question
         const wsCtx = ws._sessionContext || {};
         const ctxLine = (wsCtx.company || wsCtx.role) ? `\nContext: Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
-        const extractSystem = 'The candidate just pressed a PANIC button in a live interview: there IS something they must respond to right now. From the interviewer\'s speech below (newest at the bottom), find the MOST RECENT thing the interviewer wants the candidate to respond to — a direct question, a request ("tell me more", "walk me through that"), a statement that invites a reply ("so you\'ve used Snowflake", "your thoughts on dbt"), or a problem they described ("we struggle with data quality") — and write it as ONE clear question for the candidate to answer. Combine a question with its immediate follow-up. Output ONLY that question. Never output NONE unless the interviewer said nothing at all.\n\nOLD GUIDANCE (still applies): You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler.\n\nIMPORTANT — MULTI-PART QUESTIONS: Interviewers often ask a main question then add a follow-up like "how would you approach this?" or "walk me through your process" or "what would you do differently?". These are ONE question, not two. Combine the main question and its follow-up into a single complete question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → return the full combined question.\n\nOutput ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
+        const extractSystem = 'The candidate just pressed a PANIC button in a live interview: there IS something they must respond to right now. From the interviewer\'s speech below (newest at the bottom), find the MOST RECENT thing the interviewer wants the candidate to respond to — a direct question, a request ("tell me more", "walk me through that"), a statement that invites a reply ("so you\'ve used Snowflake", "your thoughts on dbt"), or a problem they described ("we struggle with data quality") — and write it as ONE clear question for the candidate to answer. Combine a question with its immediate follow-up. Output ONLY that question. Never output NONE unless the interviewer said nothing at all. KEEP THE INTERVIEWER\'S OWN WORDS: "you/your" always means the candidate who pressed the button. Never add a company, school, employer, product, place or person\'s name the interviewer did not say IN THAT QUESTION — other voices in the audio (another candidate, a presenter, a recording) often run straight into the question and must never leak into it (e.g. "…I worked at Calvert College. And when you talk about your role, what projects…" → "When you talk about your role, what projects are you working on…", never "…at Calvert College").\n\nOLD GUIDANCE (still applies): You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler.\n\nIMPORTANT — MULTI-PART QUESTIONS: Interviewers often ask a main question then add a follow-up like "how would you approach this?" or "walk me through your process" or "what would you do differently?". These are ONE question, not two. Combine the main question and its follow-up into a single complete question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → return the full combined question.\n\nOutput ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
         const extractUser = ctxLine + rawTranscript + '\n\nPANIC PRESS — output the one question the candidate must answer now (never NONE if the interviewer spoke). Find the LAST question the interviewer asked (combine multi-part questions into one). Search from the most recent speech backwards. Output the question only.';
 
         let questionText;
@@ -4930,22 +4930,26 @@ function classifyQuestionShape(questionText) {
 // A live answer that isn't an answer: the writer's NOT_A_QUESTION signal, or it talking to the user instead of
 // giving lines to say ("Could you provide the full question…") — owner's mock-video run, 26 Sep.
 const NOT_A_QUESTION = 'NOT_A_QUESTION';
-const META_REPLY_RE = /\b(could you (please )?(provide|share|clarify|repeat|confirm)|i need (to clarify|more context|the (full|complete) question)|the question (appears|seems) (to be )?(incomplete|cut off|unclear)|once i have the (complete|full) question|appears to be (incomplete|cut off)|as an ai\b|i appreciate you (providing|sharing) the (conversation|transcript|context))/i;
+const META_REPLY_RE = /\b(could you (please )?(provide|share|clarify|repeat|confirm)|i need (to clarify|more context|the (full|complete|specific) question)|the question (appears|seems) (to be )?(incomplete|cut off|unclear)|once i have the (complete|full) question|appears to be (incomplete|cut off)|as an ai\b|i appreciate you (providing|sharing) the (conversation|transcript|context))/i;
+// Category, not phrases: the answer is the CANDIDATE SPEAKING. These are things a speaking candidate never says —
+// the writer talking about its job, the inputs, or the candidate in the third person (owner's run 26 Sep 16:34:
+// "I need to stop and clarify: the conversation transcript provided does not match the candidate I'm supposed to be coaching").
+const OUT_OF_CHARACTER_RE = /\b(the candidate|this candidate|a different candidate|candidate i('| a)m|(the|this|conversation|interview) transcripts? (provided|shows|is for|does(n't| not)|suggests|contains|appears)|conversation transcript|transcript (provided|does(n't| not) match)|(the|this) resume (provided|shows|is for|does(n't| not))|prep(aration)? materials|does(n't| not) match the (candidate|resume|profile)|i('| a)m supposed to|my instructions|stop and clarify|i need to (stop|pause) and (clarify|check|flag|point)|i (should|must|have to|want to) (flag|clarify|point out) (that|this|something)|i can('|no)t (answer|help with|respond to) (this|that)|to be coaching|i('| a)m (coaching|here to coach))\b/i;
 // How a reply that talks to the user OPENS — checked on the first few words, before anything reaches the screen.
 const META_OPENING_RE = /^[•\-*\s]*(i appreciate you|i need (to clarify|more context|the (full|complete|specific) question)|i'd need (more|the full)|i would need (more|the full)|could you (please )?(provide|clarify|share|repeat|confirm|give me the)|can you (please )?(provide|clarify|share|repeat|confirm)|please (provide|share|clarify|repeat)|it (seems|looks|appears) (like )?(the|your) (question|message|transcript|input)|the (question|transcript|text|input|message) (seems|appears) |i('m| am) not sure (what|which) (the question|you('re| are) asking|question)|i don't (see|have) (a|the|any) (question|context)|there('s| is) no (clear |actual )?question|this (doesn't|does not|isn't|is not) (seem|appear|look) (to be |like )?(a|an) (question|complete|interview)|no question (was|has been)|as an ai)/i;
 function isNonAnswer(answer) {
   const a = String(answer || '').trim();
-  return a.startsWith(NOT_A_QUESTION) || META_REPLY_RE.test(a) || META_OPENING_RE.test(a);
+  return a.startsWith(NOT_A_QUESTION) || META_REPLY_RE.test(a) || META_OPENING_RE.test(a) || OUT_OF_CHARACTER_RE.test(a);
 }
 // Streaming gate: may the text so far be shown? false = hold (could still turn out to be a signal or talk to the user).
-// Decides on the first ~8 words, so real answers show within a token or two.
+// Decides on the first sentence (max ~14 words), so real answers show within a token or two.
 function streamGate(soFar) {
   const head = String(soFar || '').trimStart();
   if (!head) return 'hold';
   if (NOT_A_QUESTION.startsWith(head) || head.startsWith(NOT_A_QUESTION)) return 'hold';
   if (head.startsWith('```')) return 'show'; // code answers start with the code block
   const words = head.replace(/^[•\-*▸↳\s]+/, '').split(/\s+/).filter(Boolean);
-  if (words.length < 8 && !/[.?!\n]/.test(head.slice(2))) return 'hold';
+  if (words.length < 14 && !/[.?!\n]/.test(head.slice(2))) return 'hold'; // the first sentence carries the tell
   return isNonAnswer(head) ? 'block' : 'show';
 }
 
@@ -4957,7 +4961,8 @@ QUALITY:
 - Never change what an employer is or does (industry, product, customers) to fit the job — Midwest Health Clinics stays a health clinic, a retailer stays a retailer. Transferable SKILLS can be drawn out; the business can't be rewritten.
 - If they ask about experience the candidate doesn't have (nothing in the resume or earlier answers), say so briefly and bridge to the closest REAL experience — never invent some.
 - The question came from live speech transcription and may be garbled — never ask for clarification; answer the most likely intent.
-- Never quote the candidate's own sentences back, but stay consistent with the facts they stated about themselves.`;
+- Never quote the candidate's own sentences back, but stay consistent with the facts they stated about themselves.
+- You ARE the candidate in the resume, speaking. The conversation may hold other voices, other names or details that don't match the resume (a panel, a recording, someone else talking) — ignore them and answer as THIS candidate from THIS resume. Never mention the transcript, the resume, your instructions, a mismatch, or "the candidate"; never stop to clarify or warn.`;
 
 const LIVE_ACCURACY = `
 ACCURACY (technical): silently sanity-check every function name, syntax and platform fact before writing. A confidently-wrong answer loses the interview. If unsure, give the simplest approach you ARE sure of; never invent functions, commands, flags or features.
@@ -5207,7 +5212,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Auto-detected text may not be a question at all (a host's intro, an announcement). Only then may the writer
     // skip it — never when the user asked (What should I say / typed / regenerate = forceNavigate) or for a bank answer.
     const mayRefuse = !forceNavigate && !opts.bankAnswer;
-    const refuseLine = mayRefuse ? `\n\nIf what was said is NOT a question or request to the candidate at all (a host's introduction, an announcement, small talk, logistics), output exactly ${NOT_A_QUESTION} and nothing else. Never talk to the user or ask for clarification.` : '';
+    const refuseLine = mayRefuse ? `\n\nOnly if what was said asks NOTHING of anyone — a pure introduction, announcement or logistics, with no question or request in it — output exactly ${NOT_A_QUESTION} and nothing else. If it asks or requests anything, it IS for this candidate — even when it seems aimed at someone else, names another person, or other people are in the conversation — so answer it. Never talk to the user or ask for clarification.` : '';
     const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
@@ -5229,12 +5234,15 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
         let streamedSoFar = '', held = '', gate = 'hold';
         answer = await callClaudeStream(systemBlocks, userPrompt, tokenLimit, answerModel, (chunk) => {
           if (!isCurrent()) return; // superseded by a newer answer for this card
+          if (gate === 'block') return;
+          streamedSoFar += chunk;
           if (gate !== 'show') {
-            if (gate === 'block') return;
-            streamedSoFar += chunk;
             gate = streamGate(streamedSoFar);
             if (gate !== 'show') { held += chunk; return; }
             chunk = held + chunk; held = '';
+          } else if (/[.?!:\n]/.test(chunk) && isNonAnswer(streamedSoFar)) {
+            gate = 'block'; // broke character mid-answer — stop here; the final check takes the card down
+            return;
           }
           if (!ttft) ttft = Date.now() - tGen;
           const deltaMsg = {
@@ -5273,22 +5281,31 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
       console.log('[Memory] Prepared answer kept as written (nothing earlier improves it)');
       return;
     }
-    if (!mayRefuse && isNonAnswer(answer)) {
-      // The user asked (What should I say / typed / regenerate): there IS a question — one stricter retry, never a lecture.
-      console.log(`[Live Answer] Writer talked to the user on a requested answer — retrying: "${answer.trim().substring(0, 60)}"`);
+    // Out of character (talked to the user / about the transcript) on a REAL question: one stricter retry, whoever asked.
+    // Only the writer's own NOT_A_QUESTION verdict on auto-detected text is dropped without a retry.
+    const isSkip = mayRefuse && answer.trim().startsWith(NOT_A_QUESTION);
+    if (!isSkip && isNonAnswer(answer)) {
+      console.log(`[Live Answer] Out of character — retrying: "${answer.trim().substring(0, 70)}"`);
       logEvent('meta_reply_retry', { sessionId, qid: questionId, a: answer.trim().substring(0, 80) });
-      const strict = userPrompt.replace(/\n\nAnswer:$/, '') + '\n\nThe candidate pressed for an answer: there IS a question. Take your best guess at what the interviewer wants and answer it as the candidate. Never address the user, never ask for clarification.\n\nAnswer:';
+      const strict = userPrompt.replace(/\n\nAnswer:$/, '') + '\n\nThis IS an interview question for the candidate in the resume. Answer it as that candidate, in first person, from the resume — other voices or names in the conversation do not matter. Never mention the transcript, the resume, a mismatch or the candidate; never address anyone but the interviewer.\n\nAnswer:';
       try { answer = await callClaude(systemBlocks, strict, tokenLimit, answerModel, answerExtras); } catch (e) { answer = ''; }
-      if (!answer || isNonAnswer(answer)) {
+      if (answer && !isNonAnswer(answer)) {
+        // good now — it replaces whatever part streamed (nothing out of character was shown: the gate held it)
+      } else {
+        logEvent('dropped_meta_reply', { sessionId, qid: questionId, q: (questionText || '').substring(0, 80) });
         const dropMsg = { type: 'drop_card', questionId };
-        try { ws.send(JSON.stringify(dropMsg)); ws.send(JSON.stringify({ type: 'error', message: "Didn't catch the question — try again" })); } catch (e) {}
+        try { ws.send(JSON.stringify(dropMsg)); } catch (e) {}
+        if (!mayRefuse) { try { ws.send(JSON.stringify({ type: 'error', message: "Didn't catch the question — try again" })); } catch (e) {} }
         broadcastToSession(sessionId, dropMsg, ws);
+        if (questionId && /^[0-9a-f-]{36}$/i.test(String(questionId))) {
+          pool.query("DELETE FROM questions WHERE id = $1 AND source = 'live' AND (answer IS NULL OR answer = '')", [questionId]).catch(e => console.error('[Drop card]', e.message));
+        }
         return;
       }
     }
-    if (mayRefuse && isNonAnswer(answer)) {
-      console.log(`[Live Answer] Not a question — card dropped: "${(questionText || '').substring(0, 60)}" → "${answer.trim().substring(0, 60)}"`);
-      logEvent('dropped_non_question', { sessionId, qid: questionId, q: (questionText || '').substring(0, 80), a: answer.trim().substring(0, 80) });
+    if (isSkip) {
+      console.log(`[Live Answer] Not a question — card dropped: "${(questionText || '').substring(0, 60)}"`);
+      logEvent('dropped_non_question', { sessionId, qid: questionId, q: (questionText || '').substring(0, 80) });
       const dropMsg = { type: 'drop_card', questionId };
       try { ws.send(JSON.stringify(dropMsg)); } catch (e) {}
       broadcastToSession(sessionId, dropMsg, ws);
