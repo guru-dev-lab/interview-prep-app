@@ -2085,6 +2085,9 @@ async function prepareMustHaveAnswers(sessionId, userId, onBatch) {
 async function ensureMustHavesReady(sessionId, userId, onBatch) {
   const added = await insertMissingMustHaves(sessionId);
   if (added) console.log(`[MustHave] Added ${added} must-have questions to session ${sessionId}`);
+  // MUSTHAVE_PREBUILD=0 (local test servers): don't pre-write ~20 Sonnet answers for every throwaway test session —
+  // that was most of the 26 Sep test bill. They are still written the first time a question is actually asked.
+  if (process.env.MUSTHAVE_PREBUILD === '0') return { added, answered: Promise.resolve(0) };
   return { added, answered: prepareMustHaveAnswers(sessionId, userId, onBatch) }; // answered: a promise (background)
 }
 
@@ -2986,6 +2989,8 @@ function isQuestion(text) {
   }
   return false;
 }
+// Any sign a line MIGHT be asking something — the gate before the AI question check (cheap superset of the rules above).
+const QUESTION_SIGNAL_RE = /\?|\b(you|your|yours|you're|you've|you'd|you'll)\b|^(so |and |okay,? |ok,? |now,? |alright,? )?(what|how|why|when|where|which|who)\b|\b(tell me|tell us|walk me|walk us|talk me|describe|explain|share|give me|thoughts on|example of|imagine|suppose|let's say|what if)\b/i;
 // === END QUESTION RULES ===
 
 // "Stay silent" filter — clearly NON-substantive interviewer utterances that can slip past
@@ -3946,6 +3951,19 @@ wss.on('connection', (ws) => {
           if (CANDIDATE_SPEECH_RE.test(stripLeadFiller(lastLow)) && !INTERVIEWER_ASK_RE.test(lastLow)) {
             console.log('[AI Auto-Detect] Pre-filter: candidate speech, skipping');
             return;
+          }
+
+          // COST GATE (owner, 26 Sep: "stop burning my money"): this Haiku check ran after EVERY interviewer pause.
+          // Skip it when (a) the fast rules already made a card for this very line, or (b) the last two interviewer lines
+          // show no sign of a question at all ("Okay.", "We moved off Excel last quarter."). Never while an answer is
+          // fresh on screen — the interviewer adding detail must still grow it. Measured on 1,050 local interviewer lines:
+          // ~half skipped, every question in test/question-rules.js still passes.
+          const lastLine = recent[recent.length - 1];
+          const answerFresh = ws._activeAnswer && ws._lastCard && Date.now() - ws._lastCard.ts < 20000;
+          if (!answerFresh) {
+            if (ws._lastCard && lastLine.ts && ws._lastCard.ts >= lastLine.ts) { console.log('[AI Auto-Detect] Gate: fast route already answered this line — skipped'); return; }
+            const lastTwo = recent.slice(-2).map(t => t.text.replace(/^\[(You|Echo)\]\s*/i, '')).join(' ');
+            if (!QUESTION_SIGNAL_RE.test(lastTwo) && !isQuestion(lastTwo)) { console.log('[AI Auto-Detect] Gate: no question signal — skipped'); return; }
           }
 
           const recentText = recent.slice(-3).map(t => t.text.replace(/^\[(You|Echo)\]\s*/i, '')).join('\n');
