@@ -4291,6 +4291,12 @@ wss.on('connection', (ws) => {
           }
           ws._maxAnswerLines = val; // also set on sender in case not in set yet
         }
+        if (msg.followUps !== undefined) { // Follow-Up Predictions setting: off = don't write them at all (they cost a call per answer)
+          const on = !!msg.followUps;
+          const clients = sessionClients.get(sessionId);
+          if (clients) clients.forEach(c => { c._followUpsOn = on; });
+          ws._followUpsOn = on;
+        }
       }
 
       else if (msg.type === 'expand_proof') {
@@ -5457,7 +5463,8 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     broadcastToSession(sessionId, liveAnswerMsg, ws); // Broadcast to canvas clients
 
     // Fire-and-forget: predict likely follow-up questions the interviewer might ask next
-    generateFollowUps(questionText, answer, session, ws, sessionId, questionId).catch(e => {
+    // Only when the user turned Follow-Up Predictions on (default off — the chips were hidden but still paid for)
+    if (ws._followUpsOn) generateFollowUps(questionText, answer, session, ws, sessionId, questionId).catch(e => {
       console.error('[Follow-up prediction error]', e.message);
     });
 

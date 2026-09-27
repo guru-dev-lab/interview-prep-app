@@ -142,6 +142,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .copilot-gear-status{text-align:center;font:400 10px Inter,sans-serif;color:#34D399;margin-top:6px;min-height:14px}
 
 /* ===== SETTINGS MODAL ===== */
+.settings-overlay,.settings-overlay *{-webkit-app-region:no-drag}
 .settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .settings-modal{background:#12131f;border:1px solid rgba(124,58,237,.2);border-radius:16px;width:92%;max-width:380px;max-height:85vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 40px rgba(124,58,237,.08);animation:modalIn .25s cubic-bezier(.22,1,.36,1)}
@@ -736,18 +737,18 @@ document.body.style.background='transparent';
       <div class="settings-section">
         <div class="settings-section-title">&#128161; Answers</div>
         <div class="settings-row">
-          <div><div class="settings-label">Response Length</div><div class="settings-desc">How concise should answers be</div></div>
+          <div><div class="settings-label">Response Length</div><div class="settings-desc">Most lines per answer · stories always get 5–7</div></div>
           <select id="s-max-lines" onchange="applyMaxLines(this.value)" style="width:auto;min-width:145px;height:28px;font:500 10px Inter,sans-serif;padding:2px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.85);outline:none;cursor:pointer;-webkit-appearance:menulist">
-            <option value="0">Full (no limit)</option>
-            <option value="3">Ultra-short (2–3)</option>
-            <option value="5" selected>Short (4–5)</option>
-            <option value="8">Balanced (5–8)</option>
-            <option value="12">Detailed (8–12)</option>
-            <option value="20">Thorough (12–20)</option>
+            <option value="3">Ultra-short (up to 3 lines)</option>
+            <option value="5" selected>Short (up to 5 lines)</option>
+            <option value="8">Balanced (up to 8 lines)</option>
+            <option value="12">Detailed (up to 12 lines)</option>
+            <option value="20">Thorough (up to 20 lines)</option>
+            <option value="0">No limit</option>
           </select>
         </div>
         <div class="settings-row">
-          <div><div class="settings-label">Follow-Up Predictions</div><div class="settings-desc">Show predicted next questions</div></div>
+          <div><div class="settings-label">Follow-Up Predictions</div><div class="settings-desc">Guess the next questions after each answer (extra AI call — off saves cost)</div></div>
           <label class="toggle-switch"><input type="checkbox" id="s-followups" onchange="toggleFollowUps(this.checked)"><span class="toggle-slider"></span></label>
         </div>
         <div class="settings-row">
@@ -1204,7 +1205,7 @@ function connect() {
     if (isElectronMode) startMsg.dualStream = true;
     ws.send(JSON.stringify(startMsg));
     // Always send response length setting to server on connect
-    ws.send(JSON.stringify({ type: 'update_settings', maxLines: settingsMaxLines }));
+    ws.send(JSON.stringify({ type: 'update_settings', maxLines: settingsMaxLines, followUps: !!settingsFollowUps }));
     if (isElectronMode) {
       startElectronAudio();
     }
@@ -2115,6 +2116,7 @@ _fontStyleEl.id = 'dynamic-font';
 document.head.appendChild(_fontStyleEl);
 function changeFontSize(delta) {
   canvasFontSize = Math.max(10, Math.min(24, canvasFontSize + delta));
+  saveSetting('fontSize', canvasFontSize);
   var codeSz = Math.max(10, canvasFontSize - 1);
   // Inject CSS rule that applies to existing AND future elements
   _fontStyleEl.textContent =
@@ -2128,6 +2130,7 @@ function changeFontSize(delta) {
 
 function toggleLightMode() {
   isLightMode = !isLightMode;
+  saveSetting('lightMode', isLightMode);
   document.body.classList.toggle('light-mode', isLightMode);
   document.documentElement.classList.toggle('light-mode', isLightMode);
   var btn = $('light-toggle');
@@ -2245,8 +2248,13 @@ function syncConfigPickers() {
   if (sTheme && lookPicker && sTheme.value !== lookPicker.value) lookPicker.value = sTheme.value;
 }
 
+// Settings are saved on this device and re-applied on every launch (only Theme and Live Coach used to survive a restart).
+function saveSetting(k, v) { try { localStorage.setItem('xhire_set_' + k, JSON.stringify(v)); } catch (e) {} }
+function loadSetting(k) { try { var v = localStorage.getItem('xhire_set_' + k); return v === null ? undefined : JSON.parse(v); } catch (e) { return undefined; } }
+
 function applyMaxLines(val) {
   settingsMaxLines = parseInt(val) || 0;
+  saveSetting('maxLines', settingsMaxLines);
   // Send to server so AI generates shorter/longer answers
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'update_settings', maxLines: settingsMaxLines }));
@@ -2255,6 +2263,8 @@ function applyMaxLines(val) {
 
 function toggleFollowUps(on) {
   settingsFollowUps = on;
+  saveSetting('followUps', !!on);
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'update_settings', followUps: !!on })); // off = the server doesn't write them at all
   // Hide/show existing followup chips
   document.querySelectorAll('.followup-wrap').forEach(function(el) {
     el.style.display = on ? '' : 'none';
@@ -2264,15 +2274,18 @@ function toggleFollowUps(on) {
 function applyCleanupTime(val) {
   var minutes = parseInt(val) || 3;
   CARD_CLEANUP_MS = minutes * 60000;
+  saveSetting('cleanupMin', minutes);
 }
 
 function toggleAutoScroll(on) {
   settingsAutoScroll = on;
+  saveSetting('autoScroll', !!on);
   // When auto-scroll is off, pretend user always scrolled up
   if (!on) userScrolledUp = true;
 }
 
 function toggleStealthFromSettings(on) {
+  saveSetting('stealth', !!on);
   if (stealthOn !== on) {
     stealthOn = on;
     var btn = $('btn-stealth');
@@ -2289,7 +2302,21 @@ function toggleStealthFromSettings(on) {
 function applyRecordInterval(val) {
   var seconds = parseInt(val) || 8;
   RECORD_INTERVAL_MS = seconds * 1000;
+  saveSetting('recordInt', seconds);
 }
+
+// Re-apply saved settings on launch (after every setter above exists)
+(function restoreSettings() {
+  var v;
+  if ((v = loadSetting('maxLines')) !== undefined) settingsMaxLines = parseInt(v) || 0;
+  if ((v = loadSetting('followUps')) !== undefined) toggleFollowUps(!!v);
+  if ((v = loadSetting('autoScroll')) !== undefined) toggleAutoScroll(!!v);
+  if ((v = loadSetting('cleanupMin')) !== undefined) applyCleanupTime(v);
+  if ((v = loadSetting('recordInt')) !== undefined) applyRecordInterval(v);
+  if ((v = loadSetting('fontSize')) !== undefined && v !== canvasFontSize) changeFontSize(v - canvasFontSize);
+  if ((v = loadSetting('lightMode')) !== undefined && !!v !== isLightMode) toggleLightMode();
+  if ((v = loadSetting('stealth')) !== undefined) setTimeout(function() { toggleStealthFromSettings(!!v); }, 300); // after the stealth default is applied
+})();
 
 // Keyboard shortcut: Cmd+, opens settings
 document.addEventListener('keydown', function(e) {
