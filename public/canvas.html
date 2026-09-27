@@ -1326,6 +1326,10 @@ function connect() {
       if (answerStream) delete answerStream[msg.questionId];
       try { coachShow(msg.questionId, msg.answer); } catch (e) {}
     }
+    else if (msg.type === 'proof_detail') {
+      proofDetails[msg.questionId] = msg.error ? null : msg.text;
+      showProofDetail(msg.questionId, msg.error ? '' : msg.text, !!msg.error);
+    }
     else if (msg.type === 'drop_card') {
       // Server decided this wasn't a question after all — take its card off the screen
       if (answerStream) delete answerStream[msg.questionId];
@@ -1487,7 +1491,7 @@ function formatAnswer(text) {
     if (inCode) { codeLines.push(line); continue; }
     // Live answer contract (server LIVE ANSWER COMPOSER): ↳ employer line = dim + skippable; ▸ = story heading
     var empM = line.match(/^\s*↳\s*(.*)$/);
-    if (empM) { closeList(); html += '<div class="xh-emp" style="opacity:.62;font-style:italic;border-left:2px solid rgba(148,163,184,.55);padding:2px 0 2px 8px;margin-top:6px">' + processInline(empM[1]) + '</div>'; continue; }
+    if (empM) { closeList(); html += '<div class="xh-emp" title="Click for the full story" style="opacity:.62;font-style:italic;border-left:2px solid rgba(148,163,184,.55);padding:2px 0 2px 8px;margin-top:6px;cursor:pointer">' + processInline(empM[1]) + ' <span class="xh-emp-hint" style="font:600 9px Inter,sans-serif;font-style:normal;color:var(--accent2);opacity:.9;white-space:nowrap">▾ details</span></div>'; continue; }
     var headM = line.match(/^\s*▸\s*(.*)$/);
     if (headM) { closeList(); html += '<div class="xh-emp-head" style="font:700 10px Inter,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#34D399;margin:0 0 3px">' + esc(headM[1]) + '</div>'; continue; }
 
@@ -3039,6 +3043,35 @@ function showFollowUpChips(questionId, predictions) {
     cardEl.appendChild(wrap);
   }
 }
+
+// ===== PROOF DETAILS: click the "↳ At <Employer>" line → the full story behind it, right under the line =====
+var proofDetails = {}; // card id → text (kept across re-renders; the server is asked once per card)
+function proofSlot(cardId) {
+  var cardEl = document.getElementById('card-' + cardId); if (!cardEl) return null;
+  var emp = cardEl.querySelector('.xh-emp'); if (!emp) return null;
+  var slot = emp.nextElementSibling && emp.nextElementSibling.classList.contains('xh-emp-more') ? emp.nextElementSibling : null;
+  return { emp: emp, slot: slot };
+}
+function showProofDetail(cardId, text, failed) {
+  var p = proofSlot(cardId); if (!p) return;
+  if (!p.slot) { p.slot = document.createElement('div'); p.slot.className = 'xh-emp-more'; p.slot.style.cssText = 'margin:4px 0 2px 10px;padding:4px 0 4px 8px;border-left:2px solid var(--accent);font-size:.95em'; p.emp.after(p.slot); }
+  p.slot.innerHTML = failed ? '<div style="color:var(--text4);font-size:11px">Couldn\'t load the details — click to try again</div>' : formatAnswer(text);
+  var hint = p.emp.querySelector('.xh-emp-hint'); if (hint) hint.textContent = '▴ hide';
+}
+document.addEventListener('click', function(e) {
+  var emp = e.target.closest && e.target.closest('.xh-emp'); if (!emp) return;
+  var cardEl = emp.closest('[id^="card-"]'); if (!cardEl) return;
+  var id = cardEl.id.slice(5);
+  var p = proofSlot(id);
+  if (p && p.slot) { p.slot.remove(); var h = emp.querySelector('.xh-emp-hint'); if (h) h.textContent = '▾ details'; return; } // collapse
+  if (proofDetails[id]) { showProofDetail(id, proofDetails[id]); return; } // already fetched — free
+  var c = cards.find(function(x) { return x.id === id; }) || {};
+  var line = (emp.textContent || '').replace(/▾ details|▴ hide/g, '').trim();
+  if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', '', 2000); return; }
+  showProofDetail(id, '');
+  var pp = proofSlot(id); if (pp && pp.slot) pp.slot.innerHTML = '<div class="sc-card-loading"><span class="spinner" style="width:12px;height:12px"></span> Getting the full story…</div>';
+  ws.send(JSON.stringify({ type: 'expand_proof', questionId: id, questionText: c.question || '', answer: c.answer || '', proofLine: line }));
+});
 
 function askFollowUp(chipEl) {
   var text = chipEl.textContent || chipEl.innerText;
