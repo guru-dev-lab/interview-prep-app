@@ -3753,7 +3753,7 @@ wss.on('connection', (ws) => {
         transcriptId = tResult.rows[0].id;
         transcript = [];
         // SESSION MEMORY: fresh notes for this call; load what was said in earlier calls of this session (background)
-        ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = ''; ws._bridges = '';
+        ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = ''; ws._bridges = ''; ws._bridgesSeen = 0; ws._bridgesAt = 0; ws._bridgesRuns = 0; clearTimeout(ws._bridgeTimer); ws._bridgeTimer = null;
         const _memT0 = Date.now(), _memTid = transcriptId;
         loadPriorCallsMemory(sessionId, userId, _memTid).then(m => {
           ws._priorMemory = m;
@@ -4744,10 +4744,18 @@ Then one line: CLAIMS: <the candidate's own stated claims to stay consistent wit
 Then one line: AVOID: <the interviewers' distinctive phrases for what they VALUE or how they describe things, comma-separated, e.g. "dig in", "messy", "ownership" — NOT concrete nouns like their tables, tools or team, which are fine to name>.
 Rules: proof comes ONLY from the candidate's resume or their own earlier answers; never invent employers, titles, dates, years, degrees or numbers; never say the candidate did the company's own use case. If nothing has been said about what they care about yet, output NONE.`;
 
+// BRIDGES budget (owner, 26 Sep): about 10–15 runs per hour of interview, each one building on the last.
+// Runs at most once per BRIDGES_MIN_GAP_MS; a question inside the gap queues ONE run for when the gap is up.
+const BRIDGES_MIN_GAP_MS = parseInt(process.env.BRIDGES_GAP_MS, 10) || 4 * 60 * 1000; // → at most 15 per hour (env only for tests)
+const BRIDGES_UPDATE_SYSTEM = BRIDGES_SYSTEM + `
+
+UPDATE MODE: you are given the CURRENT BRIDGES and only what was said SINCE they were written. Return the full updated list in the same format: keep every line that is still true, sharpen lines the new talk adds to, add new ones, drop only what the new talk contradicts. If nothing new matters, return the current list unchanged.`;
 function refreshBridgesSoon(ws) {
   if (!ws || ws._isCanvas) return;
+  const wait = Math.max(1200, (ws._bridgesAt || 0) + BRIDGES_MIN_GAP_MS - Date.now());
+  if (ws._bridgeTimer && wait > 1200) return; // one run already queued for when the gap is up
   clearTimeout(ws._bridgeTimer);
-  ws._bridgeTimer = setTimeout(() => refreshBridges(ws), 1200); // settle after the latest line
+  ws._bridgeTimer = setTimeout(() => { ws._bridgeTimer = null; refreshBridges(ws); }, wait);
 }
 async function refreshBridges(ws) {
   if (ws.readyState !== WebSocket.OPEN) return; // call ended — nothing to prepare
@@ -4755,13 +4763,29 @@ async function refreshBridges(ws) {
   const session = ws._sessionContext || {};
   const labeled = ws._getTranscript ? labelTranscript(ws._getTranscript()) : [];
   if (!ws._priorMemory && !ws._callNotes && labeled.filter(l => l.startsWith('Interviewer:')).length === 0) return;
+  // Only what was said since the last run — nothing new from the interviewer → no call at all
+  const fresh = labeled.slice(Math.min(ws._bridgesSeen || 0, labeled.length));
+  if (ws._bridges && !fresh.some(l => l.startsWith('Interviewer:'))) return;
   ws._bridgesBusy = true;
   const t0 = Date.now();
   try {
-    const user = `RESUME:\n${session.resume || 'N/A'}\n\n${buildConversationContext(ws, { noBridges: true })}\n\nBRIDGES:`;
-    const out = (await callClaude(BRIDGES_SYSTEM, user, 500, MODEL_HAIKU)).trim();
-    ws._bridges = /^NONE\b/i.test(out) ? '' : out;
-    console.log(`[Memory] Bridges refreshed in ${Date.now() - t0}ms (${ws._bridges ? ws._bridges.split('\n').length + ' lines' : 'none yet'})`);
+    let system, user, mode;
+    if (ws._bridges) { // build on the last run: current list + only the new talk
+      mode = 'update';
+      let newTalk = fresh.join('\n');
+      if (newTalk.length > MEMORY_RAW_CHARS) newTalk = newTalk.slice(-MEMORY_RAW_CHARS).replace(/^[^\n]*\n/, '');
+      system = BRIDGES_UPDATE_SYSTEM;
+      user = `RESUME:\n${session.resume || 'N/A'}\n\nCURRENT BRIDGES:\n${ws._bridges}\n\nSAID SINCE THEN (newest last):\n${newTalk}\n\nUPDATED BRIDGES:`;
+    } else { // first run of this call: earlier calls' notes + this call so far
+      mode = 'first';
+      system = BRIDGES_SYSTEM;
+      user = `RESUME:\n${session.resume || 'N/A'}\n\n${buildConversationContext(ws, { noBridges: true })}\n\nBRIDGES:`;
+    }
+    const out = (await callClaude(system, user, 500, MODEL_HAIKU)).trim();
+    if (!/^NONE\b/i.test(out)) ws._bridges = out;
+    ws._bridgesSeen = labeled.length; ws._bridgesAt = Date.now();
+    ws._bridgesRuns = (ws._bridgesRuns || 0) + 1;
+    console.log(`[Memory] Bridges ${mode} #${ws._bridgesRuns} in ${Date.now() - t0}ms (${ws._bridges ? ws._bridges.split('\n').length + ' lines' : 'none yet'}, ${user.length} chars in)`);
   } catch (e) { console.error('[Memory] bridges failed:', e.message); }
   finally {
     ws._bridgesBusy = false;
