@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   permOpenSettings: (kind) => ipcRenderer.invoke('perm-open-settings', kind),
   relaunchApp: () => ipcRenderer.invoke('app-relaunch'),
 
+  // Click-through on the transparent parts of the window (true = clicks pass to the apps behind)
+  setClickThrough: (on) => ipcRenderer.send('set-click-through', !!on),
+
   // Platform info
   platform: process.platform,
   isElectron: true,

@@ -2312,6 +2312,25 @@ function applyRecordInterval(val) {
   ['settings-overlay', 'copilot-gear-overlay'].forEach(function(id) { var el = document.getElementById(id); if (el) document.body.appendChild(el); });
 })();
 
+// Desktop app: only the visible app catches clicks. Anywhere the window is transparent (beside the toolbar, below a
+// collapsed panel, the corners) clicks go to whatever is behind it on the screen. Older desktop builds lack the API.
+(function clickThroughTransparentParts() {
+  var api = window.electronAPI;
+  if (!api || !api.setClickThrough) return;
+  var SOLID = '.toolbar, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle';
+  var through = null, pending = false, lastEvt = null;
+  function apply() {
+    pending = false;
+    var e = lastEvt; if (!e) return;
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var solid = !!(el && el.closest && el.closest(SOLID));
+    var want = !solid;
+    if (want !== through) { through = want; api.setClickThrough(want); }
+  }
+  document.addEventListener('mousemove', function(e) { lastEvt = e; if (!pending) { pending = true; requestAnimationFrame(apply); } }, true);
+  document.addEventListener('mouseleave', function() { if (through !== false) { through = false; api.setClickThrough(false); } }); // never stuck ignoring
+})();
+
 // Re-apply saved settings on launch (after every setter above exists)
 (function restoreSettings() {
   var v;
