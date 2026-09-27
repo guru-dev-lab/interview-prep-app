@@ -407,7 +407,9 @@ function _callClaudeOnce(system, user, maxTokens, model, extras) {
       let d = ''; res.on('data', c => d += c);
       // Take the reply's TEXT blocks wherever they are — Sonnet 5 may put a thinking block first, and reading only
       // content[0] threw real answers away as "API error" (26 Sep: must-have answers, and any Sonnet caller).
-      res.on('end', () => { try { const p = JSON.parse(d); const txt = (p.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); if (txt) return resolve(txt);
+      res.on('end', () => { try { const p = JSON.parse(d); const txt = (p.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+        if (Array.isArray(system) && p.usage) console.log(`[Cache] ${model} input=${p.usage.input_tokens} cached_read=${p.usage.cache_read_input_tokens || 0} cache_write=${p.usage.cache_creation_input_tokens || 0}`); // same check as the streaming path
+        if (txt) return resolve(txt);
         console.log(`[Claude] ${model} returned no leading text — status=${res.statusCode} stop=${p.stop_reason} blocks=[${(p.content || []).map(b => b.type).join(',')}] err=${p.error?.type || ''}:${(p.error?.message || '').slice(0, 80)}`);
         reject(new Error(p.error?.message || 'API error')); } catch (e) { reject(e); } });
     });
@@ -3753,7 +3755,7 @@ wss.on('connection', (ws) => {
         transcriptId = tResult.rows[0].id;
         transcript = [];
         // SESSION MEMORY: fresh notes for this call; load what was said in earlier calls of this session (background)
-        ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = ''; ws._bridges = ''; ws._bridgesSeen = 0; ws._bridgesAt = 0; ws._bridgesRuns = 0; clearTimeout(ws._bridgeTimer); ws._bridgeTimer = null;
+        ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = ''; ws._bridges = ''; ws._bridgesSeen = 0; ws._bridgesAt = 0; ws._bridgesRuns = 0; clearTimeout(ws._bridgeTimer); ws._bridgeTimer = null; ws._bankSnapshot = null;
         const _memT0 = Date.now(), _memTid = transcriptId;
         loadPriorCallsMemory(sessionId, userId, _memTid).then(m => {
           ws._priorMemory = m;
@@ -5179,8 +5181,14 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
 
     // Use in-memory Q&A bank — include up to 15 answered questions for rich context
     // Stable order (DB rows come back unordered) so this block stays byte-identical across answers → prompt cache hits
-    const answeredQs = (ws._sessionQuestions || []).filter(q => q.answer).sort((a, b) => String(a.id).localeCompare(String(b.id))).slice(0, 8);
-    const bankContext = answeredQs.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
+    // FROZEN per call (prod logs 26 Sep: cached_read=0 on every Haiku answer — each live answer added a new answered row with
+    // a random id into this top-8, so the cached block changed every time). Answers given during the call are in THE
+    // CONVERSATION already; the snapshot is reset when a new call starts.
+    if (!ws._bankSnapshot) {
+      const answeredQs = (ws._sessionQuestions || []).filter(q => q.answer).sort((a, b) => String(a.id).localeCompare(String(b.id))).slice(0, 8);
+      ws._bankSnapshot = answeredQs.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
+    }
+    const bankContext = ws._bankSnapshot;
 
 
     // Session identity — critical for role-specific answers
