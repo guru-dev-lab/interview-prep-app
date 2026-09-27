@@ -5059,6 +5059,18 @@ async function expandProofLine(ws, sessionId, { questionText, answer, proofLine 
   return lines.slice(0, 6).join('\n');
 }
 
+// A card taken off the screen must be forgotten everywhere, or the next follow-up / What-should-I-say lands on it and
+// shows an empty "Generating answer…" forever (prod 27 Sep 01:57).
+function forgetCard(ws, id) {
+  if (!ws || !id) return;
+  if (ws._lastCard && ws._lastCard.id === id) ws._lastCard = null;
+  if (ws._lastNewCard && ws._lastNewCard.id === id) ws._lastNewCard = null;
+  if (ws._activeAnswer && ws._activeAnswer.id === id) ws._activeAnswer = null;
+  if (ws._pendingGrow && ws._pendingGrow.id === id) ws._pendingGrow = null;
+  const list = ws._sessionQuestions; // shared with the connection's own list — edit in place, never replace
+  if (Array.isArray(list)) for (let i = list.length - 1; i >= 0; i--) if (list[i] && list[i].id === id) list.splice(i, 1);
+}
+
 const LIVE_CORE = `You write what a job candidate says out loud in a LIVE interview, shown on a tiny overlay they read from.
 QUALITY:
 - Plain English, contractions, sound like a person talking. No jargon or buzzwords (never: leverage, utilize, robust, synergy, facilitate, holistic, scalable, cross-functional).
@@ -5329,7 +5341,9 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Auto-detected text may not be a question at all (a host's intro, an announcement). Only then may the writer
     // skip it — never when the user asked (What should I say / typed / regenerate = forceNavigate) or for a bank answer.
     const mayRefuse = !forceNavigate && !opts.bankAnswer;
-    const refuseLine = mayRefuse ? `\n\nOnly if what was said asks NOTHING of anyone — a pure introduction, announcement or logistics, with no question or request in it — output exactly ${NOT_A_QUESTION} and nothing else. If it asks or requests anything, it IS for this candidate — even when it seems aimed at someone else, names another person, or other people are in the conversation — so answer it. Never talk to the user or ask for clarification.` : '';
+    // The writer may NOT skip a detected question any more (it dropped real questions twice on 26 Sep — a case question
+    // phrased with "they", and one aimed at a video's other candidate). Detection rules decide what is a question.
+    const refuseLine = '';
     const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
@@ -5400,7 +5414,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     }
     // Out of character (talked to the user / about the transcript) on a REAL question: one stricter retry, whoever asked.
     // Only the writer's own NOT_A_QUESTION verdict on auto-detected text is dropped without a retry.
-    const isSkip = mayRefuse && answer.trim().startsWith(NOT_A_QUESTION);
+    const isSkip = false; // skipping is off — see refuseLine above
     if (!isSkip && isNonAnswer(answer)) {
       console.log(`[Live Answer] Out of character — retrying: "${answer.trim().substring(0, 70)}"`);
       logEvent('meta_reply_retry', { sessionId, qid: questionId, a: answer.trim().substring(0, 80) });
@@ -5410,7 +5424,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
         // good now — it replaces whatever part streamed (nothing out of character was shown: the gate held it)
       } else {
         logEvent('dropped_meta_reply', { sessionId, qid: questionId, q: (questionText || '').substring(0, 80) });
-        const dropMsg = { type: 'drop_card', questionId };
+        const dropMsg = { type: 'drop_card', questionId }; forgetCard(ws, questionId);
         try { ws.send(JSON.stringify(dropMsg)); } catch (e) {}
         if (!mayRefuse) { try { ws.send(JSON.stringify({ type: 'error', message: "Didn't catch the question — try again" })); } catch (e) {} }
         broadcastToSession(sessionId, dropMsg, ws);
@@ -5423,7 +5437,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     if (isSkip) {
       console.log(`[Live Answer] Not a question — card dropped: "${(questionText || '').substring(0, 60)}"`);
       logEvent('dropped_non_question', { sessionId, qid: questionId, q: (questionText || '').substring(0, 80) });
-      const dropMsg = { type: 'drop_card', questionId };
+      const dropMsg = { type: 'drop_card', questionId }; forgetCard(ws, questionId);
       try { ws.send(JSON.stringify(dropMsg)); } catch (e) {}
       broadcastToSession(sessionId, dropMsg, ws);
       if (questionId && /^[0-9a-f-]{36}$/i.test(String(questionId))) {

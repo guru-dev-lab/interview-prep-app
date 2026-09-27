@@ -49,7 +49,9 @@ const META_RE = /could you (please )?(provide|clarify|share)|full question|appea
   console.log('cards on screen:'); onScreen.forEach(m => console.log(`  • ${m.questionText}\n    ${String(m.answer || '').split('\n')[0].slice(0, 110)}`));
   console.log(`dropped as not-a-question: ${dropped.size}`);
   const fails = [];
-  const introCards = onScreen.filter(m => !/clean up/i.test(m.questionText || ''));
+  // The 'Which is a pretty cool company' intro must never become a card (detection rule). A stray line like 'Where to
+  // find me after this?' may get a card now (the writer no longer skips — it dropped real questions), but never a meta reply.
+  const introCards = onScreen.filter(m => /pretty cool company|jumping back and forth|custom questions/i.test(m.questionText || ''));
   if (introCards.length) fails.push('intro stayed on screen as a card: ' + introCards.map(m => `"${m.questionText}"`).join(', '));
   const meta = onScreen.filter(m => META_RE.test(m.answer || ''));
   if (meta.length) fails.push('an answer talked to the user: ' + meta.map(m => m.answer.slice(0, 80)).join(' | '));
