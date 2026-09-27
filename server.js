@@ -3768,7 +3768,7 @@ wss.on('connection', (ws) => {
         }).catch(e => console.error('[Memory] load failed:', e.message));
         lastMatchedQId = null;
         let lastAutoMatchTime = 0; // Timestamp of last auto-detected match
-        const AUTO_MATCH_COOLDOWN = 15000; // 15s cooldown — responsive detection while avoiding rapid switching
+        const AUTO_MATCH_COOLDOWN = parseInt(process.env.AUTO_MATCH_COOLDOWN_MS, 10) || 15000; // 15s cooldown (env only for tests) — responsive detection while avoiding rapid switching
 
         // Single Deepgram stream — two detection layers:
         // 1. Fast: isQuestion() pattern match fires instantly on obvious questions
