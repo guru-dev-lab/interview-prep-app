@@ -136,6 +136,10 @@ app.whenReady().then(() => {
     });
   });
 
+  // New version → clear this app's old privacy entries first (each build has a new signature, so macOS kept adding
+  // another "Xhire" row and never removed the old one — owner, 26 Sep). Runs once per version, before anything is asked.
+  clearOldPrivacyEntriesOnNewVersion();
+
   // Request microphone permission on macOS (Windows doesn't need explicit system permission)
   if (process.platform === 'darwin') {
     systemPreferences.askForMediaAccess('microphone').then((granted) => {
@@ -511,6 +515,23 @@ ipcMain.handle('resize-window', (_, deltaW, deltaH, direction) => {
 });
 
 // ===== HELPERS =====
+
+function clearOldPrivacyEntriesOnNewVersion() {
+  if (process.platform !== 'darwin') return;
+  const fs = require('fs');
+  const { execFileSync } = require('child_process');
+  const marker = path.join(app.getPath('userData'), 'privacy-reset-version.txt');
+  let last = '';
+  try { last = fs.readFileSync(marker, 'utf8').trim(); } catch (e) {}
+  const now = app.getVersion();
+  if (last === now) return;
+  for (const service of ['ScreenCapture', 'Microphone', 'AudioCapture']) {
+    try { execFileSync('/usr/bin/tccutil', ['reset', service, 'com.xhire.overlay'], { timeout: 5000 }); }
+    catch (e) { _log('[Perm] reset failed for', service, '-', e.message); }
+  }
+  try { fs.writeFileSync(marker, now); } catch (e) {}
+  _log('[Perm] New version', now, '(was ' + (last || 'none') + ') — cleared old privacy entries');
+}
 
 function toggleOverlay() {
   if (!mainWindow) return;
