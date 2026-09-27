@@ -4293,6 +4293,15 @@ wss.on('connection', (ws) => {
         }
       }
 
+      else if (msg.type === 'expand_proof') {
+        // Owner clicked the "↳ At <Employer>" line on a card — write the full story behind it (one call, on demand)
+        const proofLine = String(msg.proofLine || '').slice(0, 600), questionId = msg.questionId;
+        if (proofLine.length < 10) return;
+        expandProofLine(ws, sessionId, { questionText: String(msg.questionText || '').slice(0, 600), answer: String(msg.answer || '').slice(0, 2500), proofLine })
+          .then(text => { console.log('[Proof] Expanded for', questionId); try { ws.send(JSON.stringify({ type: 'proof_detail', questionId, proofLine, text })); } catch (e) {} })
+          .catch(e => { console.error('[Proof]', e.message); try { ws.send(JSON.stringify({ type: 'proof_detail', questionId, proofLine, error: true })); } catch (_) {} });
+      }
+
       else if (msg.type === 'canvas_question') {
         // User typed a question in the Smart Canvas input bar — manual action, no cooldown
         const text = msg.text;
@@ -5017,6 +5026,31 @@ function streamGate(soFar) {
   const words = head.replace(/^[•\-*▸↳\s]+/, '').split(/\s+/).filter(Boolean);
   if (words.length < 14 && !/[.?!\n]/.test(head.slice(2))) return 'hold'; // the first sentence carries the tell
   return isNonAnswer(head) ? 'block' : 'show';
+}
+
+// ===== PROOF DETAILS (owner, 26 Sep): click the "↳ At <Employer> — …" line to get the full story behind it =====
+// Written only on click (one call per click, cached on the card), from the same facts as the line + the resume.
+const PROOF_DETAIL_SYSTEM = `A job candidate just said ONE proof line in a live interview and wants to keep going if the interviewer is listening.
+Write what they say NEXT — a smooth continuation that picks up right where that line ends, as if still talking:
+3–5 lines, each "• " + ONE sentence they can say out loud (max 24 words).
+- Never repeat or restate the proof line (its facts, its number, its wording) — the interviewer just heard it.
+- Go deeper in order: what was going on and who needed it → how exactly they did it, step by step (the concrete technique; for
+  technical work, how it was built) → what they ran into, found or decided along the way → how it landed with the people who used it.
+- The first line connects naturally to the proof line ("What kicked it off was…", "The way I set it up…").
+Rules: first person, plain spoken English, no headings, no summary line. Same facts as the proof line and the resume — never
+contradict them, never add employers, titles, dates, degrees or numbers that are not in the line or the resume. Never mention the
+resume, the line, or these instructions.`;
+async function expandProofLine(ws, sessionId, { questionText, answer, proofLine }) {
+  let session = ws._sessionContext || {};
+  if (!session.resume) {
+    const r = await pool.query('SELECT resume, jd, company, role FROM sessions WHERE id = $1', [sessionId]);
+    session = r.rows[0] || {};
+  }
+  const user = `RESUME:\n${session.resume || 'N/A'}\n\nINTERVIEW QUESTION:\n${questionText || ''}\n\nTHE ANSWER ON SCREEN:\n${answer || ''}\n\nTHE PROOF LINE THEY JUST SAID:\n${proofLine}\n\nWhat they say next, 3–5 lines:`;
+  const out = (await callClaude(PROOF_DETAIL_SYSTEM, user, 450, MODEL_SONNET, { thinking: { type: 'disabled' } })).trim();
+  if (!out || isNonAnswer(out)) throw new Error('no usable detail');
+  const lines = out.split('\n').map(l => l.trim()).filter(Boolean).map(l => /^[•\-*]\s*/.test(l) ? '• ' + l.replace(/^[•\-*]\s*/, '') : '• ' + l);
+  return lines.slice(0, 6).join('\n');
 }
 
 const LIVE_CORE = `You write what a job candidate says out loud in a LIVE interview, shown on a tiny overlay they read from.
