@@ -7,7 +7,7 @@ a `v*` tag builds the desktop app via `.github/workflows/build-electron.yml`).
 
 Layout: nearly all server logic is one file, `server.js` (~4,700 lines, ~54 routes). Pages are in `public/`
 (`index.html`, `canvas.html`, `launcher.html`, `download.html`). Config is env vars — see `.env.example`.
-There is no test suite yet.
+Tests live in `test/` (unit: node test/<name>.js; end-to-end ones need a LOCAL DATABASE_URL). Keep test spend tiny: reuse one session, run the local server with MUSTHAVE_PREBUILD=0, never an Opus judge.
 
 This is its own project. Do not mix in ApplyPilot, ScoutPilot, trading or any other project's code or memory.
 (Job Scout / ScoutPilot links into xHire only through the launcher; see ../XHIRE_SUITE_INTEGRATION_PLAN.md.)
@@ -17,7 +17,11 @@ This is its own project. Do not mix in ApplyPilot, ScoutPilot, trading or any ot
 - He is building while working; he should not have to repeat a complaint. Read the evidence yourself.
 
 ## Rule 1 — never break the live app on the side
-- Never push to `main` or deploy without his go. Work on a branch; he approves what goes live.
+- Owner's standing order (26 Sep 2026): **I merge and ship my own work** — he should not have to click merge. Every change still
+  goes branch → PR → proof (the tests that change needs, run small) → `known-good-…` tag on main → I merge the PR myself
+  (Railway deploys main) → check the live site → report what shipped, how it was proven, how to roll back.
+- Still never push straight to `main` (the PR is the record and the one-step rollback) and never force-push.
+- Ask first only for: destructive DB work on real data, spending that isn't a small test, or anything he said to hold.
 - Before touching anything: tag the known-good state (`git tag known-good-YYYY-MM-DD-<what>`) so rollback is one step.
 - A fix changes only what is broken. Never "tidy" a working route, page or query while you are in there.
 - Database: no destructive migration, no DROP/DELETE on real data, without a backup and his explicit yes.
