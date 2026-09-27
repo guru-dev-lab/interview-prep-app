@@ -3891,6 +3891,9 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify(qdMsg1));
           broadcastToSession(sessionId, qdMsg1, ws);
           const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
+          // Bridges refresh ONCE per detected question — it used to re-run after every sentence (either side), resending
+          // the resume + whole conversation each time; that was the biggest live cost (owner, 26 Sep: "don't burn my money").
+          refreshBridgesSoon(ws);
           fastMatchAndRespond(q, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, rebuildIdx, false, false, true).then(newLastId => {
             if (newLastId) { lastMatchedQId = newLastId; lastAutoMatchTime = Date.now(); }
           });
@@ -4058,7 +4061,6 @@ wss.on('connection', (ws) => {
                 transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
                 maybeDigestCurrentCall(ws);
-                if (!isEcho) refreshBridgesSoon(ws);
                 if (!isEcho) {
                   if (aiExtractTimer) clearTimeout(aiExtractTimer);
                   // FAST ROUTE: the interviewer's own line is already a clear question → answer now (skips the 0.8 s wait +
@@ -4164,7 +4166,6 @@ wss.on('connection', (ws) => {
                   transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
                   ws._recentTranscript = transcript.slice(-6).map(t => t.text);
                   maybeDigestCurrentCall(ws);
-                  refreshBridgesSoon(ws);
 
                   // Store for echo detection — Ch1 transcripts will be compared against these
                   recentUserUtterances.push({ text: fullUtterance, ts: Date.now(), startWall: userBufStartWall });
@@ -4494,7 +4495,9 @@ wss.on('connection', (ws) => {
 
           // Post-interview learning — runs in the background so 'stop' returns immediately.
           const _tid = transcriptId, _sid = sessionId, _uid = userId;
-          processTranscriptAfterInterview(_sid, _uid, _tid).then(sum => {
+          // Auto-learning after every call is OFF (owner, 26 Sep: "don't keep learning" — it answered every learned question
+          // on Sonnet after each call). LEARN_AFTER_CALL=1 turns it back on; the manual Learn button still works.
+          if (process.env.LEARN_AFTER_CALL === '1') processTranscriptAfterInterview(_sid, _uid, _tid).then(sum => {
             if (sum && sum.added > 0) {
               try { sendAndBroadcast({ type: 'status', message: `Added ${sum.added} new question${sum.added === 1 ? '' : 's'} to your bank from this interview` }); } catch (e) {}
             }
