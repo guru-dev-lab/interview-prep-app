@@ -456,6 +456,18 @@ ipcMain.handle('start-drag', () => {
 });
 
 // Windows drag fallback — renderer calls this on mousedown on the toolbar
+// CLICK-THROUGH (owner, 26 Sep: "the app should be only its own shape"): the window is bigger than what you see
+// (transparent margins, a collapsed panel, rounded corners), and those invisible parts used to catch clicks meant for
+// the apps behind. The page reports whether the mouse is over something visible; over nothing, clicks pass through.
+// forward:true keeps mouse-move events coming, so the page can switch back the moment the pointer reaches the UI.
+let clickThrough = false;
+ipcMain.on('set-click-through', (_, on) => {
+  if (!mainWindow || !!on === clickThrough) return;
+  clickThrough = !!on;
+  mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+  _log('[ClickThrough]', clickThrough ? 'on (transparent area)' : 'off (over the app)');
+});
+
 ipcMain.handle('start-window-drag', () => {
   if (mainWindow && process.platform === 'win32') {
     // On Windows, we need to use moveTop + track position manually
