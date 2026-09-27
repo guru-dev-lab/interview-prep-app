@@ -71,8 +71,8 @@ code{display:block;margin-top:6px;padding:10px 14px;background:rgba(255,255,255,
 
       <div class="step">
         <div class="step-num">2. Run this command in Terminal — before you open Xhire</div>
-        <div class="step-text">Xhire isn't sold through the App Store, so macOS blocks it (you may see "Malware Blocked"). This command clears the block and re-signs the app on your Mac. Open Terminal (Cmd+Space, type Terminal), paste, press Enter:</div>
-        <code id="mac-fix">xattr -cr /Applications/Xhire.app && codesign --force --deep --sign - --identifier com.xhire.overlay /Applications/Xhire.app</code>
+        <div class="step-text">Xhire isn't sold through the App Store, so macOS blocks it (you may see "Malware Blocked"). This command clears the block, re-signs the app on your Mac, and removes any old Xhire entries from your privacy settings (you approve once, fresh, when you first Go Live). Open Terminal (Cmd+Space, type Terminal), paste, press Enter:</div>
+        <code id="mac-fix">xattr -cr /Applications/Xhire.app && codesign --force --deep --sign - --identifier com.xhire.overlay /Applications/Xhire.app && for s in ScreenCapture Microphone AudioCapture; do tccutil reset $s com.xhire.overlay; done</code>
         <button class="copy-btn" onclick="copyFix(this)">Copy command</button>
         <div class="copy-hint">Run it again after every update. If macOS already moved Xhire to the Trash, drag it from the DMG into Applications again first, then run the command.</div>
       </div>
