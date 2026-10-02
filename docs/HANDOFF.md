@@ -1,5 +1,19 @@
 # Handoff
 
+## 2 Oct 2026 (later) — open-bug sweep (PR #24, LIVE; tag known-good-2026-10-02-open-bugs)
+- Fixed: Co-pilot mode — typed box + Assist now go to /copilot (were Q&A / Screen Assist); typed text labelled as the
+  candidate's own note; co-pilot use keeps the live WS open (screenActivity). Web Switch Tab now closes the stream and the
+  next Ch1 packet re-opens via ws._setupInterviewerDG (echo check) — the old copy had none. Mac "Update downloading…" toast
+  was false (latest-mac.yml has DMGs only, no zip; ad-hoc signed) → now "reinstall from xhire.app/download". `npm test`
+  runs the 5 free unit suites.
+- Proof: npm test all pass; test/copilot-switchtab-e2e.js 6/6 (old code fails keep-alive; its switch-tab control was
+  not clean because the socket had already idled out); canvas routing checked in a real browser with stubbed fetch.
+- Rollback: tag known-good-2026-10-02-before-open-bugs (Railway one-click to the PR #23 deployment).
+- Still open (not code bugs I can close alone): real-app proof of screen assist/co-pilot on his Mac; his 17 junk bank rows
+  (needs his yes); Mac real auto-update needs an Apple Developer ID; web app has no "▾ details" proof click (feature port);
+  answer-quality items ("dig in" echo, "your X experience" tie-in).
+- Record loop in co-pilot mode still uses quiet Screen Assist on purpose (co-pilot has no same-screen quietness).
+
 ## 2 Oct 2026 — screen assist rebuilt for ANY assessment (PR #22, LIVE, deployment fdf9a366)
 - Evidence (prod logs 10:21–10:56 UTC, his desktop session on an assessment): Co-pilot route never called; Record loop sent
   14 captures to /screen-assist → a new "answer everything visible" Haiku card every capture; his typed "ONLY GOOD ANSWER!"
