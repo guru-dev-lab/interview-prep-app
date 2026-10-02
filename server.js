@@ -5332,6 +5332,12 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     const theyCare = (ws._bridges || '').split('\n').map(l => l.trim()).filter(l => /^THEY:/i.test(l))
       .map(l => '- ' + l.replace(/^THEY:\s*/i, '').split('→')[0].trim()).filter(l => l.length > 3).slice(0, 4);
     console.log(`[Memory] Answer context: aim=${theyCare.length} bridges=${ws._bridges ? 'yes' : 'no'} priorCalls=${ws._priorMemory ? 'yes' : 'no'} q="${(questionText || '').slice(0, 40)}"`);
+    // AVOID: their own value words ("dig in", "ownership") — the rule sat far up in the system text and answers still
+    // borrowed them (memory-e2e 2 Oct: 2 of 2). Next to the question, like AIM, as a hard word list.
+    const avoidWords = ((ws._bridges || '').split('\n').map(l => l.trim()).find(l => /^AVOID:/i.test(l)) || '')
+      .replace(/^AVOID:\s*/i, '').split(',').map(w => w.trim().replace(/^["'“]+|["'”.]+$/g, '')).filter(w => w.length > 2).slice(0, 12);
+    if (avoidWords.length) console.log(`[Memory] Avoid words: ${avoidWords.join(', ')}`);
+    const avoidBlock = avoidWords.length ? `\n\nTHEIR WORDS — never use these words or any form of them (e.g. "dig in" also bans "digging in"); say the same thing in the candidate's own everyday words: ${avoidWords.map(w => '"' + w + '"').join(', ')}` : '';
     const aimBlock = theyCare.length ? `\n\nWHAT THIS INTERVIEW HAS TOLD YOU THEY CARE ABOUT (use one ONLY if it directly relates to THIS question; never add a line about a different topic — in the candidate's words, never theirs):\n${theyCare.join('\n')}` : '';
     const expFacts = experienceFacts(session.resume);
     // Auto-detected text may not be a question at all (a host's intro, an announcement). Only then may the writer
@@ -5340,7 +5346,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // The writer may NOT skip a detected question any more (it dropped real questions twice on 26 Sep — a case question
     // phrased with "they", and one aimed at a video's other candidate). Detection rules decide what is a question.
     const refuseLine = '';
-    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
+    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}${avoidBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
     // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
