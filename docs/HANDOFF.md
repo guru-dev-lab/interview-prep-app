@@ -1,5 +1,24 @@
 # Handoff
 
+## 2 Oct 2026 — screen assist rebuilt for ANY assessment (PR #22, LIVE, deployment fdf9a366)
+- Evidence (prod logs 10:21–10:56 UTC, his desktop session on an assessment): Co-pilot route never called; Record loop sent
+  14 captures to /screen-assist → a new "answer everything visible" Haiku card every capture; his typed "ONLY GOOD ANSWER!"
+  etc. went to the interview Q&A path blind (model: "I don't see a question"); every capture + typed line saved into
+  the question bank (68 → 86); live WS idled out 3× (screen captures arrive over HTTP, not the socket). No audio flowed.
+- His rules: any kind of assessment; don't answer always, suggest; REAL coding = real working answer; behavioral /
+  personality = good-faith decisive pick.
+- Built: new SCREEN_ASSIST_PROMPT (QUESTION: line + --- + suggestion by kind), Sonnet; auto captures quiet when no item or
+  same item (word overlap ≥0.6); pressed always answers; typed box while screen shared → instruction for the item on screen;
+  no bank rows; screenActivity keeps WS alive (IDLE_TIMEOUT_MS env = tests only); overlay skips only pixel-identical frames
+  (a looser threshold had a thin margin vs one-word question changes — never risk a silent skip).
+- Proof: test/screen-assist-e2e.js 13/13 twice (fixtures in test/fixtures/screens; coding answer passes 6 cases); control:
+  no screen use → WS closes at 20 s; changed-rule run in real Chrome on the fixtures.
+- Rollback: Railway one-click to 0b55b245 (PR #21 state) or tag known-good-2026-10-02-before-assessment.
+- OPEN: not yet proven on his real desktop app during a real assessment — read [Screen Assist] lines after his next one.
+  His session 3cf29ca5 still holds the 14 "[Screen Assist]" rows + 3 typed rows from this morning — delete only with his yes.
+  Co-pilot mode itself untouched (Record/Assist/typed box still bypass it in co-pilot mode).
+- Local test DB: embedded-postgres in session scratchpad (pg/start.cjs, port 54329); server: MUSTHAVE_PREBUILD=0 SEMANTIC_MATCH=0 IDLE_TIMEOUT_MS=20000.
+
 ## 26 Sep 2026 (later) — follow-ups grow on screen; ANTHROPIC CREDIT RAN OUT during testing (topped up by owner)
 - Owner: a question + an immediate second part is ONE question; the answer must grow append-only (no rewrite, no new
   card). Built: isFollowUpOf + no-candidate-speech window → growLiveAnswer (queued if the first answer is still
