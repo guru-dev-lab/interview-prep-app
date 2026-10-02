@@ -981,7 +981,10 @@ if (window.electronAPI && window.electronAPI.onDisplayChanged) {
 if (window.electronAPI) {
   if (window.electronAPI.onUpdateAvailable) {
     window.electronAPI.onUpdateAvailable(function(version) {
-      showToast('Update v' + version + ' downloading...', 'info', 4000);
+      // Mac can't self-update: releases carry no Mac .zip and the app is ad-hoc signed, so the download never finishes
+      // (latest-mac.yml lists DMGs only). Don't claim "downloading" there — point to the install command instead.
+      if (window.electronAPI.isMac) showToast('Update v' + version + ' is out — reinstall from xhire.app/download', 'info', 8000);
+      else showToast('Update v' + version + ' downloading...', 'info', 4000);
     });
   }
   if (window.electronAPI.onUpdateDownloaded) {
@@ -1838,6 +1841,9 @@ function sendQuestion() {
   if (!text) return;
   input.value = '';
 
+  // Co-pilot mode: what he types is an instruction for the task on screen — goes to the co-pilot (it keeps the steps)
+  if (copilotActive) { pendingManualScroll = true; copilotSend(text, 'typed'); return; }
+
   // Screen shared (assessment) — what he types is about the item on screen; it used to be answered blind as an interview
   // question ("I don't see a question", 2 Oct)
   if (screenStream && screenStream.active) {
@@ -2032,6 +2038,15 @@ async function screenAssist() {
   if (!TOKEN) { showToast('Not logged in', '', 2500); return; }
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>';
+  // Co-pilot mode: Assist = check the screen with the co-pilot (same as the 📸 button), not a one-off Screen Assist card
+  if (copilotActive) {
+    var said = copilotTranscriptBuffer.trim();
+    copilotTranscriptBuffer = '';
+    if (copilotAutoTimer) { clearTimeout(copilotAutoTimer); copilotAutoTimer = null; }
+    try { await copilotSend(said, 'check'); } catch (e) { console.warn('Co-pilot assist error:', e); }
+    btn.classList.remove('loading'); btn.innerHTML = assistDefaultHTML;
+    return;
+  }
   try {
     var stream = await getScreenStream();
     if (!stream) { btn.classList.remove('loading'); btn.innerHTML = assistDefaultHTML; return; }

@@ -2745,6 +2745,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
 
     const session = s.rows[0];
     const mem = getCopilotMemory(sessionId);
+    screenActivity.set(sessionId, Date.now()); // co-pilot use is activity too — keep the live connection from idling out
 
     // Build step history context
     let stepHistory = '';
@@ -2760,7 +2761,10 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
 
     let textPrompt = 'INTERVIEW FOR: ' + (session.role || 'this role') + ' at ' + (session.company || 'the company');
 
-    if (transcript) {
+    if (transcript && mode === 'typed') {
+      // Typed into the box by the candidate — their own instruction about the task, never the interviewer's words
+      textPrompt += '\n\nTHE CANDIDATE TYPED (their own note or instruction about this task):\n"' + transcript + '"';
+    } else if (transcript) {
       textPrompt += '\n\nINTERVIEWER JUST SAID:\n"' + transcript + '"';
     } else if (mode === 'check') {
       textPrompt += '\n\nThe candidate clicked CAPTURE to check their progress. Look at the screen and tell them the next step based on what you see.';
@@ -4490,37 +4494,15 @@ wss.on('connection', (ws) => {
       }
 
       else if (msg.type === 'switch_tab') {
-        // User picked a different tab — reset interviewer Deepgram stream
+        // User picked a different tab — close the interviewer stream; the next Ch1 packet re-opens it through
+        // ws._setupInterviewerDG, the ONE interviewer handler (echo check, fast/eager detection). This path used to open its
+        // own copy without the echo check, so the user's own voice from the new tab could be answered.
         console.log('[Live] Switching tab — resetting interviewer Deepgram stream');
-        if (interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
-          try { interviewerDG.send(JSON.stringify({ type: 'CloseStream' })); interviewerDG.close(); } catch(e) {}
+        if (interviewerDG) {
+          try { if (interviewerDG.readyState === WebSocket.OPEN) interviewerDG.send(JSON.stringify({ type: 'CloseStream' })); interviewerDG.close(); } catch(e) {}
         }
+        interviewerDG = null;
         interviewerBuffer = '';
-        // Re-open a fresh Deepgram stream for the new tab audio
-        interviewerDG = openDeepgramStream(
-          (text, isFinal, speechFinal) => {
-            if (!text.trim()) return;
-            if (isFinal) {
-              resetIdleTimer();
-              interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
-              ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
-            } else {
-              const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
-              ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
-            }
-            if (speechFinal && interviewerBuffer.trim()) {
-              const fullUtterance = interviewerBuffer.trim();
-              interviewerBuffer = '';
-              ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true }));
-              transcript.push({ text: fullUtterance, ts: Date.now() });
-              ws._recentTranscript = transcript.slice(-6).map(t => t.text);
-              if (aiExtractTimer) clearTimeout(aiExtractTimer);
-              aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY);
-              setTimeout(() => recentMatchedIds.clear(), 5000);
-            }
-          },
-          (err) => { console.error('[Deepgram Error]', err.message); }
-        );
         ws.send(JSON.stringify({ type: 'status', message: 'Tab switched — listening on new tab' }));
       }
 
