@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node test/question-rules.js && node test/answer-shape.js && node test/followup-rules.js && node test/platform-traps.js && node test/experience-facts.js"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",
