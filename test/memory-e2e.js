@@ -114,6 +114,9 @@ own_words = does NOT parrot the interviewers (no "you mentioned", no copying "di
     console.log(`\n### ${name}`);
     if (!shown) { fails++; console.log('  NO ANSWER ON SCREEN — FAIL'); continue; }
     console.log(`  Q: ${shown.q}  [${shown.kind}]\n  A: ${shown.a.replace(/\n/g, '\n     ')}`);
+    // Free check, no judge: their value phrases copied word for word (owner: never their words)
+    const borrowed = (sc ? ['dig in', 'digging in', 'messy', 'hard to find things', 'ownership', 'independently'] : []).filter(w => shown.a.toLowerCase().includes(w));
+    if (sc) console.log(`  borrowed their words: ${borrowed.length ? borrowed.join(', ') : 'none'}`);
     const g = await judge(sc ? RL_CONTEXT : CONTEXT, shown, sc || {});
     const keys = Object.keys(g).filter(k => k !== 'why'); const sum = keys.reduce((t, k) => t + g[k], 0);
     const ok = sc ? (g.concern === 2 && g.own_env >= 1 && g.facts === 2 && g.own_words >= 1)       // their concern, through MY workplace
