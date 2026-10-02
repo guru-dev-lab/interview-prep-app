@@ -2493,47 +2493,47 @@ Be specific. Reference actual topics, tools, and moments from the reports. No ge
 });
 
 // ============ SCREEN ASSIST — Vision-based screen analysis ============
-const SCREEN_ASSIST_PROMPT = `You are a real-time interview assistant analyzing the candidate's screen during a live interview.
-The candidate is sharing or viewing a screen that contains interview content — it could be:
-- A coding question or challenge
-- Multiple choice questions
-- A technical diagram or architecture question
-- A text-based question or assessment
-- A shared document with questions
-- Data tables, schemas, or datasets that will be referenced later
+const SCREEN_ASSIST_PROMPT = `You help a candidate during an online ASSESSMENT or interview task shown on their screen. It can be ANY kind of
+assessment: multiple choice, true/false, select-all, numerical or logic reasoning, situational judgement, personality
+(agree/disagree, most/least like me), coding, SQL, spreadsheet, data tables, or a written response.
 
-Your job: identify what is being asked and provide a clear, helpful answer.
+You give a SUGGESTION the candidate can act on in seconds — never an essay, never a description of the screen.
 
-IMPORTANT — SESSION MEMORY:
-You may receive "PREVIOUS SCREEN CAPTURES" in the prompt. These are summaries of what you analyzed in earlier screenshots from this same interview session.
-If the current screen references data, tables, schemas, or code from earlier captures, USE that context to build a complete answer.
-Example: if capture 1 showed a users table, capture 2 showed an orders table, and now the screen asks "write a query joining these" — reference the table structures from prior captures.
+OUTPUT CONTRACT — follow exactly:
+Line 1: QUESTION: <the item being asked right now, in at most 20 words>
+        or QUESTION: NONE when no question or task is on screen (instructions page, loading, results, a blank editor
+        with no task, a video call with no question).
+Line 2: ---
+Then the suggestion, by kind:
+- Multiple choice / true-false / select-all: **Suggested: B** — <that option's text>
+  then ONE line: why.
+- Numerical / logic: **Suggested: <value>**
+  then ONE line of working.
+- Behavioral / situational judgement / personality (most/least effective, rank actions, agree-disagree, "most like
+  me"): there is no single right answer — make a GOOD-FAITH best-fit pick for a strong candidate in this role, decisively,
+  never "it depends" and never "unsure". **Suggested: Most — A · Least — D** or **Suggested: Agree**
+  then ONE line: what that choice shows (ownership, teamwork, honesty, calm under pressure…). Keep picks consistent with
+  the earlier items in the step history — personality tests check for contradictions.
+- Coding / SQL / any real programming task: the REAL answer — the complete, working solution in a code block in the
+  language and signature on screen, ready to paste and pass the tests; then one line with the approach and time/space
+  complexity. Handle the edge cases the task names. Do NOT invent functions, APIs or flags.
+- Spreadsheet: **Suggested: <exact formula>** in <cell>, then one line why.
+- Written / open response: 3–5 short lines the candidate can type, in their own voice, using their real experience.
+- Several items visible: the same short block for each, numbered as on screen.
+- Data or tables with no question yet: QUESTION: NONE (it is remembered for later items).
 
 RULES:
-- Identify EVERY question or task visible on screen
-- For coding: write the COMPLETE working solution in the right language, then ONE line on the approach and its time/space complexity, and handle the obvious edge cases. ACCURACY: sanity-check the syntax and do NOT invent functions, APIs, or flags — a confidently wrong solution is worse than a simple correct one.
-- For system design / case-study prompts: give a structured answer — the approach, the key components and tradeoffs, and what you'd clarify first — as short scannable points, not a wall of text.
-- For multiple choice: state the correct answer and why
-- For data/tables: describe the structure clearly (columns, types, sample data) so future captures can reference it
-- For open-ended: answer concisely using the candidate's real experience from their resume and Q&A bank
-- Every sentence on its own line
-- Lead with the answer — no preamble
-- If multiple questions are visible, answer each one separated by a blank line with the question number
-- Natural voice, no buzzwords
-- Use the candidate's actual experience from the Q&A bank when relevant
-- NEVER start with "QUESTION:" or "ANSWER:" labels — just give the answer directly
-- NEVER use ANY section headers, labels, or prefixes like "How it works:", "What this does:", "Simple explanation:", "Overview:", "Key points:", "The approach:", "Summary:", etc.
-- NEVER use preamble phrases like "Let me explain", "Here's how", "Essentially", "Basically", "To put it simply", "Great question"
-- NEVER use closing phrases like "In summary", "Overall", "The key takeaway", "In conclusion"
-- First word of output = the answer itself. No intro. No meta-commentary. JUST THE ANSWER.
-- Use **bold** on key terms, use bullet points (- ) for listing steps or key points
-- Use \`backticks\` for technical terms, SQL keywords, tool names`;
+- Lead with the suggestion. No preamble, no headers, no closing lines, no "the screen shows".
+- Only when the item is cut off or unreadable: write **Suggested (unsure): …** and name what is missing. Never invent options.
+- Use the candidate's real experience only for written responses; never invent employers, dates or numbers.
+- Use \`backticks\` for code terms.`;
 
-// Screen Assist memory — rolling buffer of previous analyses per session
-// So the AI remembers what it saw on earlier captures (tables, code, diagrams)
+// Screen memory — rolling buffer of what was seen per session, so later items can use earlier tables/code
 const screenAssistMemory = new Map(); // sessionId → [{ ts, summary }]
 const SCREEN_MEMORY_MAX = 8; // Keep last 8 captures
 const SCREEN_MEMORY_TTL = 30 * 60 * 1000; // Expire after 30 min
+const screenLastQuestion = new Map(); // sessionId → last item suggested for (auto captures stay quiet while it is unchanged)
+const screenActivity = new Map(); // sessionId → last screen capture time (keeps the live connection from idling out)
 
 function getScreenMemory(sessionId) {
   const mem = screenAssistMemory.get(sessionId) || [];
@@ -2551,70 +2551,79 @@ function addScreenMemory(sessionId, summary) {
   screenAssistMemory.set(sessionId, mem);
 }
 
+// Split the model's reply into the item it saw and the suggestion (see SCREEN_ASSIST_PROMPT's output contract)
+function parseScreenReply(text) {
+  const m = String(text || '').match(/^\s*QUESTION:\s*(.*?)\s*\n\s*-{3,}\s*\n?([\s\S]*)$/i);
+  if (!m) return { question: '', suggestion: String(text || '').trim() };
+  const q = m[1].trim();
+  return { question: /^none\.?$/i.test(q) ? 'NONE' : q, suggestion: m[2].trim() };
+}
+
+// Same item as last time? Word overlap, so a re-read with slightly different wording still counts as the same item
+function sameScreenQuestion(a, b) {
+  const words = s => new Set(String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2));
+  const A = words(a), B = words(b);
+  if (!A.size || !B.size) return false;
+  let inter = 0; for (const w of A) if (B.has(w)) inter++;
+  return inter / (A.size + B.size - inter) >= 0.6;
+}
+
 app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => {
   try {
-    const { image } = req.body;
+    // auto = the Record loop's capture (stay quiet unless a NEW item is on screen); instruction = what the candidate typed
+    const { image, auto, instruction } = req.body;
     if (!image) return res.status(400).json({ error: 'No image provided' });
 
     const sessionId = req.params.id;
     const s = await pool.query('SELECT resume, jd, company, role FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
     if (!s.rows.length) return res.status(404).json({ error: 'Session not found' });
+    screenActivity.set(sessionId, Date.now());
 
     const session = s.rows[0];
     const company = session.company || 'the company';
     const role = session.role || 'this role';
 
-    // Get Q&A bank for context
-    const qResult = await pool.query('SELECT text, answer FROM questions WHERE session_id = $1 AND answer IS NOT NULL AND answer != \'\'', [sessionId]);
-    const bankContext = qResult.rows.slice(0, 10).map(q => 'Q: ' + q.text + '\nA: ' + q.answer).join('\n\n');
-
     // Strip data URL prefix if present, detect media type
     const mediaMatch = image.match(/^data:image\/([\w+]+);base64,/);
     const mediaType = mediaMatch ? 'image/' + mediaMatch[1] : 'image/jpeg';
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
-    console.log('[Screen Assist] Image size:', (base64Data.length / 1024).toFixed(0) + 'KB, type:', mediaType);
+    console.log('[Screen Assist] Image size:', (base64Data.length / 1024).toFixed(0) + 'KB, type:', mediaType, auto ? '(auto)' : '(pressed)', instruction ? 'typed="' + String(instruction).slice(0, 60) + '"' : '');
 
     // Build context from previous screen captures (memory)
     const priorCaptures = getScreenMemory(sessionId);
     let memoryContext = '';
     if (priorCaptures.length > 0) {
-      memoryContext = '\n\nPREVIOUS SCREEN CAPTURES (what you saw earlier in this session):\n' +
-        priorCaptures.map((m, i) => 'Capture ' + (i + 1) + ':\n' + m.summary).join('\n\n') +
-        '\n\nUse the above context if the current screen references data, tables, code, or content from earlier captures.\n';
+      memoryContext = '\n\nSTEP HISTORY — earlier screens in this assessment (use their tables/code/answers when the current item refers to them):\n' +
+        priorCaptures.map((m, i) => 'Screen ' + (i + 1) + ':\n' + m.summary).join('\n\n');
     }
 
-    const textPrompt = 'INTERVIEW FOR: ' + role + ' at ' + company +
-      '\n\nRESUME:\n' + (session.resume || 'N/A') +
-      '\n\nQ&A BANK:\n' + bankContext +
+    const textPrompt = 'ASSESSMENT FOR: ' + role + ' at ' + company +
+      '\n\nCANDIDATE RESUME:\n' + (session.resume || 'N/A') +
       memoryContext +
-      '\n\nAnalyze this screen. What is being asked? Provide clear answers for everything visible.';
+      (instruction ? '\n\nTHE CANDIDATE TYPED (follow it for the item on screen): "' + String(instruction).slice(0, 500) + '"' : '') +
+      '\n\nGive your suggestion for the item on screen now, following the output contract.';
 
-    const answer = await callClaudeVision(SCREEN_ASSIST_PROMPT, base64Data, textPrompt, 2000, MODEL_HAIKU, mediaType);
+    const reply = await callClaudeVision(SCREEN_ASSIST_PROMPT, base64Data, textPrompt, 3000, MODEL_SONNET, mediaType); // room for a full coding solution
+    const { question, suggestion } = parseScreenReply(reply);
+    const prev = screenLastQuestion.get(sessionId);
+    const noItem = question === 'NONE' || !suggestion;
+    const sameItem = !noItem && prev && sameScreenQuestion(prev, question);
 
-    // Save a summary of what was seen + answered for future captures to reference
-    // Truncate to keep memory lean
-    const memorySummary = answer.substring(0, 600);
-    addScreenMemory(sessionId, memorySummary);
-    console.log('[Screen Assist] Memory now has', getScreenMemory(sessionId).length, 'captures for session', sessionId);
+    if (!noItem || !prev) addScreenMemory(sessionId, ('Item: ' + question + '\n' + suggestion).substring(0, 600));
+    if (auto && (noItem || sameItem)) {
+      // Nothing new to suggest — no card (the Record loop used to drop a fresh card every capture, 2 Oct)
+      console.log('[Screen Assist] quiet —', noItem ? 'no item on screen' : 'same item as before', '| q="' + question.slice(0, 80) + '"');
+      return res.json({ unchanged: true, reason: noItem ? 'no_item' : 'same_item', question });
+    }
+    if (!noItem) screenLastQuestion.set(sessionId, question);
+    const answer = noItem ? 'No question on screen yet — capture again when one is showing.' : suggestion;
+    const questionText = noItem ? 'Screen' : question;
+    console.log('[Screen Assist] suggestion | q="' + questionText.slice(0, 80) + '" chars=' + answer.length);
 
-    // Save as a question in DB
-    const newQ = await pool.query(
-      'INSERT INTO questions (session_id, text, type, answer, source) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [sessionId, '[Screen Assist] Visual question from shared screen', 'Technical', answer, 'live']
-    );
-    const qId = newQ.rows[0].id;
-
-    // Broadcast to all WS clients for this session
-    const assistMsg = {
-      type: 'screen_assist',
-      questionId: qId,
-      questionText: 'Screen Assist',
-      answer: answer,
-      generated: true
-    };
-    broadcastToSession(sessionId, assistMsg);
-
-    res.json({ questionId: qId, questionText: 'Screen Assist', answer: answer });
+    // Screen items are NOT saved to the question bank: they were feeding screen output back in as prepared answers
+    const qId = 'screen-' + Date.now();
+    broadcastToSession(sessionId, { type: 'screen_assist', questionId: qId, questionText, answer, generated: true });
+    res.json({ questionId: qId, questionText, answer });
   } catch (e) {
     console.error('[Screen Assist Error]', e.message, e.stack);
     res.status(500).json({ error: 'Screen analysis failed: ' + e.message });
@@ -3527,16 +3536,21 @@ wss.on('connection', (ws) => {
   let questionIndex = null; // TF-IDF + keyword index for smart matching
   let idleTimer = null;
   let idleWarningTimer = null;
-  const IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes — interviewer may leave and rejoin
-  const IDLE_WARNING = 8 * 60 * 1000; // Warn at 8 minutes
+  const IDLE_TIMEOUT = Number(process.env.IDLE_TIMEOUT_MS) || 10 * 60 * 1000; // 10 minutes — interviewer may leave and rejoin (env = tests only)
+  const IDLE_WARNING = Math.round(IDLE_TIMEOUT * 0.8); // Warn at 8 minutes
   function resetIdleTimer() {
     if (isCanvasMode) return; // canvas clients don't have idle timeout
     clearTimeout(idleTimer);
     clearTimeout(idleWarningTimer);
     idleWarningTimer = setTimeout(() => {
+      const lastScreen = sessionId ? screenActivity.get(sessionId) : 0;
+      if (lastScreen && Date.now() - lastScreen < IDLE_WARNING) return; // screen in use — not idle
       try { ws.send(JSON.stringify({ type: 'status', message: 'No audio for 8 min — live will end in 2 min if silence continues' })); } catch(e) {}
     }, IDLE_WARNING);
     idleTimer = setTimeout(() => {
+      // Screen captures arrive over HTTP, not this socket — an assessment with no talking is still a live session (2 Oct)
+      const lastScreen = sessionId ? screenActivity.get(sessionId) : 0;
+      if (lastScreen && Date.now() - lastScreen < IDLE_TIMEOUT) { console.log('[WS] Idle check — screen in use, staying live'); resetIdleTimer(); return; }
       console.log('[WS] Idle timeout — closing connection');
       try { ws.send(JSON.stringify({ type: 'status', message: 'Live mode ended — idle timeout (10 min no audio)' })); } catch(e) {}
       ws.close();

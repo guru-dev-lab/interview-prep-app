@@ -3270,17 +3270,21 @@ function scCaptureFrame(stream) {
   });
 }
 
-async function scSendScreenCapture(base64) {
+// opts.auto = Record loop: the server stays quiet (no card) unless a NEW item is on screen
+async function scSendScreenCapture(base64, opts) {
   if (!S || !S.id) return;
+  opts = opts || {};
   var cardId = 'screen-' + Date.now();
-  addCanvasCard(cardId, 'Analyzing screen...', '', 'Strategic', 'screen', 0, false, true);
+  if (!opts.auto) addCanvasCard(cardId, 'Reading screen...', '', 'Strategic', 'screen', 0, false, true);
   try {
     var r = await apiFetch('/api/sessions/' + S.id + '/screen-assist', {
       method: 'POST',
-      body: JSON.stringify({ image: base64 })
+      body: JSON.stringify({ image: base64, auto: !!opts.auto })
     });
     if (!r.ok) throw new Error('Server error ' + r.status);
     var data = await r.json();
+    if (data.unchanged) return;
+    if (opts.auto) return; // the server's screen_assist broadcast draws the card for auto captures
     // Update the placeholder card
     var el = document.getElementById('sc-card-' + cardId);
     if (el) {
@@ -3336,7 +3340,7 @@ async function scStartRecording() {
     if (!scScreenStream || !scScreenStream.active) { scStopRecording(); return; }
     try {
       var base64 = await scCaptureFrame(scScreenStream);
-      await scSendScreenCapture(base64);
+      await scSendScreenCapture(base64, { auto: true });
     } catch(e) { console.warn('Recording capture failed:', e); scStopRecording(); }
   }, SC_RECORD_INTERVAL_MS);
 }
