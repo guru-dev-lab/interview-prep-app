@@ -1,5 +1,17 @@
 # Handoff
 
+## 2 Oct 2026 (later still) — remaining items (PR #27, #28 LIVE)
+- PR #27: web app live cards — click the ↳ line → full story (expand_proof over liveWS; same as desktop PR #16). Proven
+  in a real browser: 1 request, story shown, collapse, cached reopen. Rollback tag known-good-2026-10-02-before-web-details.
+- PR #28: their AVOID words now sit next to the question as a hard list ([Memory] Avoid words log). memory-e2e prints
+  borrowed words (free). Before 2/2 borrowed ("digging in", "ownership"); after 0/3, judge 8/8. Rollback tag
+  known-good-2026-10-02-before-own-words.
+- "Your X experience" tie-in: does NOT reproduce (2/2 aligned=2). One judge FAIL docked bank-sourced "roles" and the
+  concrete noun "shipment tables" — both allowed by his rules; judge is stricter than the owner. Not changed.
+- BLOCKED: deleting his 17 junk rows (session 3cf29ca5) — prod DB read/write denied by auto-mode ("Production Reads").
+  Needs his permission rule or he deletes them in the app. Railway CLI is now linked to interview-prep/web here.
+- Still his: Mac self-update needs Apple Developer ID; real-app proof of screen assist/co-pilot after his next assessment.
+
 ## 2 Oct 2026 (later) — open-bug sweep (PR #24, LIVE; tag known-good-2026-10-02-open-bugs)
 - Fixed: Co-pilot mode — typed box + Assist now go to /copilot (were Q&A / Screen Assist); typed text labelled as the
   candidate's own note; co-pilot use keeps the live WS open (screenActivity). Web Switch Tab now closes the stream and the
