@@ -1838,6 +1838,14 @@ function sendQuestion() {
   if (!text) return;
   input.value = '';
 
+  // Screen shared (assessment) — what he types is about the item on screen; it used to be answered blind as an interview
+  // question ("I don't see a question", 2 Oct)
+  if (screenStream && screenStream.active) {
+    pendingManualScroll = true;
+    captureFrame(screenStream).then(function(b64) { return sendScreenCapture(b64, { instruction: text }); })
+      .catch(function() { showToast('Screen capture failed — press Assist', '', 2500); });
+    return;
+  }
   if (ws && ws.readyState === WebSocket.OPEN) {
     pendingManualScroll = true; // Manual action — scroll to result
     ws.send(JSON.stringify({ type: 'canvas_question', text: text }));
@@ -1945,6 +1953,7 @@ function captureFrame(stream) {
         canvas.width = w;
         canvas.height = h;
         canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+        lastFrameSig = frameSignature(canvas);
         video.pause();
         video.srcObject = null;
         // JPEG at 70% quality — much smaller than PNG
@@ -1957,20 +1966,45 @@ function captureFrame(stream) {
   });
 }
 
+// Tiny grey thumbnail of a frame — lets the Record loop skip a screen that hasn't changed (no API call, no card)
+var lastFrameSig = null, lastSentSig = null;
+function frameSignature(src) {
+  try {
+    var c = document.createElement('canvas'); c.width = 48; c.height = 27;
+    var g = c.getContext('2d'); g.drawImage(src, 0, 0, 48, 27);
+    var d = g.getImageData(0, 0, 48, 27).data, out = new Uint8Array(48 * 27);
+    for (var i = 0; i < out.length; i++) out[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+    return out;
+  } catch (e) { return null; }
+}
+function screenChanged(a, b) {
+  if (!a || !b || a.length !== b.length) return true;
+  // Skip ONLY a screen that is still identical. A one-word change between two questions moves just a few cells — as few
+  // as a ticking timer — so anything that moved goes to the server, which stays quiet when it is the same item.
+  for (var i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 8) return true;
+  return false;
+}
+
 var screenAssistPending = false;
-async function sendScreenCapture(base64) {
+// opts.auto = Record loop (quiet unless a NEW item is on screen); opts.instruction = what the candidate typed
+async function sendScreenCapture(base64, opts) {
   if (!TOKEN || !SESSION_ID) return;
+  opts = opts || {};
+  if (opts.auto && !screenChanged(lastFrameSig, lastSentSig)) return; // same screen — nothing to send
+  lastSentSig = lastFrameSig;
   screenAssistPending = true;
   var cardId = 'screen-' + Date.now();
-  addCard(cardId, 'Analyzing screen...', '', 'screen', 0, false, true);
+  if (!opts.auto) addCard(cardId, opts.instruction ? opts.instruction : 'Reading screen...', '', 'screen', 0, false, true);
   try {
     var r = await fetch('/api/sessions/' + SESSION_ID + '/screen-assist', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64 })
+      body: JSON.stringify({ image: base64, auto: !!opts.auto, instruction: opts.instruction || '' })
     });
     if (!r.ok) throw new Error('Server error ' + r.status);
     var data = await r.json();
+    if (data.unchanged) { screenAssistPending = false; return; } // same item or no item — stay quiet
+    if (opts.auto) addCard(cardId, data.questionText || 'Screen', '', 'screen', 0, false, true);
     // Update the placeholder card with real answer
     var el = document.getElementById('card-' + cardId);
     if (el) {
@@ -2036,7 +2070,7 @@ async function startRecording() {
     if (!screenStream || !screenStream.active) { stopRecording(); return; }
     try {
       var base64 = await captureFrame(screenStream);
-      await sendScreenCapture(base64);
+      await sendScreenCapture(base64, { auto: true });
     } catch(e) { console.warn('Recording capture failed:', e); stopRecording(); }
   }, RECORD_INTERVAL_MS);
 }
