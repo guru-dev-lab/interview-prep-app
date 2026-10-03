@@ -533,9 +533,9 @@ async function callClaudeStream(system, user, maxTokens = 600, model = MODEL_SON
 }
 
 // Vision API — sends image + text to Claude for screen analysis
-function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, model = MODEL_HAIKU, imgMediaType = 'image/jpeg') {
+function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, model = MODEL_HAIKU, imgMediaType = 'image/jpeg', extras) {
   return new Promise((resolve, reject) => {
-    const bodyObj = {
+    const bodyObj = Object.assign({}, extras || {}, {
       model, max_tokens: maxTokens, system,
       messages: [{
         role: 'user',
@@ -544,7 +544,7 @@ function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, mod
           { type: 'text', text: textPrompt }
         ]
       }]
-    };
+    });
     const body = JSON.stringify(bodyObj);
     const bodyBytes = Buffer.byteLength(body, 'utf8');
     console.log(`[Vision] Sending ${(bodyBytes / 1024 / 1024).toFixed(1)}MB to ${model}`);
@@ -2714,9 +2714,10 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       if (!hasImage) return res.status(400).json({ error: 'auto capture needs an image' });
       if (screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey)) return res.json({ unchanged: true, key: screenKey });
       const t1 = Date.now();
-      const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, imgBlock.source.data, 'Transcribe the screen.', 700, MODEL_HAIKU, imgBlock.source.media_type) || '').trim();
+      const tModel = meetingCopilot.transcribeModelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
+      const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, imgBlock.source.data, 'Transcribe the screen.', 900, tModel, imgBlock.source.media_type, meetingCopilot.transcribeExtras()) || '').trim();
       await recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true, auto: !!req.body.auto, camera: !!req.body.capture });
-      console.log(`[Co-pilot] ${req.body.auto ? 'auto-captured' : 'camera-captured'} page ${screenKey || '(no key)'} in ${Date.now() - t1}ms (${txt.length} chars)`);
+      console.log(`[Co-pilot] ${req.body.auto ? 'auto-captured' : 'camera-captured'} page ${screenKey || '(no key)'} on ${tModel} in ${Date.now() - t1}ms (${txt.length} chars) :: ${txt.replace(/\s+/g, ' ').slice(0, 240)}`);
       broadcastToSession(sessionId, { type: 'copilot_captured', key: screenKey, chars: txt.length });
       maybeCompactCall(sessionId, callId, rows.concat([{ kind: 'seen', text: txt, meta: { key: screenKey }, ts: Date.now() }]), historyOn);
       return res.json({ captured: true, key: screenKey, chars: txt.length });
@@ -2729,6 +2730,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
     const screenState = hasImage ? 'captured' : reusing ? 'same' : rows.some(r => r.kind === 'seen') ? 'last' : 'none';
     broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
+    if (mode === 'smart') console.log('[Co-pilot] screens given:', meetingCopilot.dedupeScreens(rows.filter(r => r.kind === 'seen')).map(r => (r.meta && r.meta.key || '?') + ' "' + r.text.replace(/\s+/g, ' ').slice(0, 50) + '"').join(' | ').slice(0, 1200));
 
     let content = textPrompt;
     if (hasImage) content = [imgBlock, { type: 'text', text: textPrompt }];
@@ -2745,8 +2747,8 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     if (hasImage && historyOn) {
       // Smart mode: the whole page is transcribed in the background (Haiku) so a question pages later can use it
       const t1 = Date.now();
-      writes.push(callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, content[0].source.data, 'Transcribe the screen.', 700, MODEL_HAIKU, content[0].source.media_type)
-        .then(txt => { console.log(`[Co-pilot] screen transcribed in ${Date.now() - t1}ms (${String(txt).length} chars)`); return recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true }); })
+      writes.push(callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, content[0].source.data, 'Transcribe the screen.', 900, MODEL_SONNET, content[0].source.media_type, meetingCopilot.transcribeExtras())
+        .then(txt => { console.log(`[Co-pilot] screen transcribed in ${Date.now() - t1}ms (${String(txt).length} chars) :: ${String(txt).replace(/\s+/g, ' ').slice(0, 240)}`); return recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true }); })
         .catch(e => { console.error('[Co-pilot] transcription failed:', e.message); const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; return seen ? recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey }) : false; }));
     } else if (hasImage) { const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; if (seen) writes.push(recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey })); }
     writes.push(recordCallEvent(sessionId, callId, 'said', answer.slice(0, 600), { mode }));

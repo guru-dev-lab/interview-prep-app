@@ -190,3 +190,25 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
   assert(!fp.fingerprintChanged(base, faint), 'a faint shift everywhere is noise');
   console.log('ALL PASS (fingerprint tuned to a page inside a larger frame)');
 }
+
+// ---- accuracy (owner's run 3 Oct: answer used 80 pallets / $1,000 minimum — page said 60 / $5,000)
+{
+  assert(mc.SMART_SCREENS_CHARS >= 24000, 'smart mode keeps far more screen text (was 9k)');
+  const r = (k, t, ts) => ({ kind: 'seen', text: t, ts, meta: { key: k } });
+  const rows = [r('a', 'PAGE 2 Monthly volumes: Dallas 140, Atlanta 60, Denver 95, Columbus 210. Note: holiday spike excluded.', 1),
+                r('b', 'PAGE 2 Monthly volumes: Dallas 140, Atlanta 60, Denver 95, Columbus 210. Note: holiday spike excluded', 2), // same page, re-captured after a hover
+                r('c', 'PAGE 3 Rate card: Blue Arrow 92, Redline 88, Summit 97; minimums $5,000 / $4,500 / $4,800', 3)];
+  const kept = mc.dedupeScreens(rows);
+  assert(kept.length === 2 && kept[0].meta.key === 'a' && kept[1].meta.key === 'c', 'near-duplicate screens are dropped, first capture kept');
+  const p = mc.buildCopilotPrompt({ mode: 'smart', rows, session: {}, ask: 'Atlanta cheapest?', screenChanged: false });
+  assert((p.match(/PAGE 2 Monthly volumes/g) || []).length === 1, 'the prompt carries each distinct screen once');
+  assert(/name the screen/i.test(mc.MEETING_PROMPT) && /which page you still need/i.test(mc.MEETING_PROMPT), 'every number names its screen; a missing page is named, never invented');
+  console.log('ALL PASS (accuracy: dedupe, bigger screen budget, cite-the-screen rule)');
+}
+
+// ---- owner 3 Oct: "we can upgrade the model a little bit.. haiku just be too dumb" → page reading on Sonnet, thinking off
+{
+  assert(mc.transcribeModelFor('smart') === 'sonnet' && mc.transcribeModelFor('regular') === 'sonnet', 'page transcripts on Sonnet in both modes');
+  assert(mc.transcribeExtras() && mc.transcribeExtras().thinking && mc.transcribeExtras().thinking.type === 'disabled', 'thinking off for transcription (speed)');
+  console.log('ALL PASS (transcription model)');
+}
