@@ -2730,7 +2730,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const live = liveWsForSession(sessionId);
     if (!live) return res.status(409).json({ error: 'Go Live first — co-pilot works during a live call' });
     const callId = live._callId;
-    const s = await pool.query('SELECT company, role FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
+    const s = await pool.query('SELECT company, role, resume, jd FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
     if (!s.rows.length) return res.status(404).json({ error: 'Session not found' });
     screenActivity.set(sessionId, Date.now()); // co-pilot use is activity — keeps the live connection from idling out
 
@@ -2772,7 +2772,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     if (historyOn) { if (await readPendingScreens(sessionId, callId)) rows = await loadCallRows(callId); }
     const isPress = !!pressed || req.body.mode === 'check' || !ask;
     const reusing = !hasImage && screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey);
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], docs, ask, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], priorMemory: live._priorMemory || '', docs, ask, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
