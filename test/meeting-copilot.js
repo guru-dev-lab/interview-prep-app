@@ -304,3 +304,8 @@ console.log('ALL PASS (thinking off, cap 8000)');
 // mid-card, Q3 went wrong) → working first, "Result:" as the LAST line of each block; the card lifts it to the top
 assert(/Result: <the result in one short line/.test(mc.MEETING_PROMPT) && /last line of the block/i.test(mc.MEETING_PROMPT) && !/Answer: <the result/.test(mc.MEETING_PROMPT), 'each block: question, working lines, then Result: as the last line');
 console.log('ALL PASS (work first, result last)');
+
+// ---- 3 Oct 13:19: Part 2 (invoice table) was never captured; the model filled Q2/Q9 from EARLIER-CALL notes with a wrong
+// date and cited a screen it did not have → earlier calls never stand in for a page missing from THIS call
+assert(/never take a table, a figure or a date from earlier-call notes/i.test(mc.MEETING_PROMPT) && /not among the screens shown this call/i.test(mc.MEETING_PROMPT), 'a page missing from this call is reported missing, never filled from earlier-call notes');
+console.log('ALL PASS (missing page is missing)');
