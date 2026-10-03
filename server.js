@@ -2701,7 +2701,7 @@ async function readPendingScreens(sessionId, callId) {
   const one = async p => {
     try {
       const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, p.image.toString('base64'), 'Transcribe the screen.', 900, tModel, p.media_type || 'image/jpeg', meetingCopilot.transcribeExtras()) || '').trim();
-      await pool.query('UPDATE call_screens SET transcript = $1 WHERE id = $2', [txt, p.id]);
+      await pool.query('UPDATE call_screens SET transcript = $1, image = NULL WHERE id = $2', [txt, p.id]); // live keeps no frames: once read, only the text stays
       await recordCallEvent(sessionId, callId, 'seen', txt, Object.assign({ key: p.key, full: true }, p.meta || {}));
       done++;
       console.log(`[Co-pilot] read ${p.key} (${txt.length} chars) :: ${txt.replace(/\s+/g, ' ').slice(0, 200)}`);

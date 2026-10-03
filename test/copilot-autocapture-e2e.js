@@ -49,7 +49,8 @@ const logSince = m => fs.readFileSync(LOG, 'utf8').slice(m);
   check(r.status === 200 && /redline/i.test(r.j.answer || '') && /4,?860/.test(r.j.answer || ''), 'assist answers from the captured pages (Redline $4,860)', r.j.answer);
   check(/read 2 pending screens at assist/.test(logSince(mark)), 'pending screens read at assist time, once', logSince(mark).slice(-500));
   sc = await screens();
-  check(sc.length === 2 && sc.every(x => x.has_text), 'transcripts now stored', JSON.stringify(sc));
+  check(sc.length === 2 && sc.every(x => x.has_text && !x.has_image), 'transcripts stored and the frames dropped the moment they were read (live keeps no images)', JSON.stringify(sc));
+
   const seen = await seenRows();
   check(seen.length === 2 && seen.some(x => /4,?500/.test(x.text)) && seen.some(x => /\b60\b/.test(x.text)), 'seen rows carry the pages (minimums, volumes)', JSON.stringify(seen.map(x => x.text.slice(0, 80))));
   // 2b. The capture list endpoint: every stored screen of this call, read state + first line
@@ -62,10 +63,14 @@ const logSince = m => fs.readFileSync(LOG, 'utf8').slice(m);
   check(r.status === 200 && /\b140\b/.test(r.j.answer || ''), 'second assist answers (140)', r.j.answer);
   check(!/read \d+ pending screens/.test(logSince(mark)), 'nothing re-read');
 
+  // 3b. camera takes AGAIN: same page, new capture (only the auto watcher skips known pages)
+  r = await post({ capture: true, image: raw(2), screenKey: 'cam-p2-again' });
+  check(r.status === 200 && r.j.captured, 'camera press captures the same page again', JSON.stringify(r.j));
+
   // 4. Stop → images dropped, transcripts kept
   ws.send(JSON.stringify({ type: 'stop' })); await sleep(800);
   sc = await screens();
-  check(sc.length === 2 && sc.every(x => !x.has_image && x.has_text), 'after stop: images dropped, transcripts kept', JSON.stringify(sc));
+  check(sc.length === 3 && sc.every(x => !x.has_image), 'after stop: no frame kept (unread retake dropped too), transcripts kept', JSON.stringify(sc));
   ws.close(); await pool.end();
   console.log(`\n${fail ? 'FAILED' : 'ALL PASS'} (${pass} pass, ${fail} fail)`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

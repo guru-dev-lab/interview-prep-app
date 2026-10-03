@@ -2940,7 +2940,7 @@ async function copilotCaptureNow(auto) {
   if (!image || !lastCaptureCanvas) return 'no-frame';
   var print = CopilotFingerprint.fingerprintFrom(lastCaptureCanvas);
   if (auto) { if (!CopilotFingerprint.stableNewScreen(copilotWatchState, print, copilotPrints)) return CopilotFingerprint.matchPrint(copilotPrints, print) ? 'known' : 'unstable'; }
-  else { var known = CopilotFingerprint.matchPrint(copilotPrints, print); if (known) { showToast('Already captured this page', 'info', 1500); return 'known'; } }
+  else if (CopilotFingerprint.matchPrint(copilotPrints, print)) showToast('📸 Captured again', 'info', 1200); // the camera ALWAYS takes (owner: "should be able to take again")
   var key = 'scr-' + Date.now().toString(36);
   copilotPrints.push({ key: key, print: print });
   console.log('[Co-pilot] ' + (auto ? 'auto-' : '') + 'capturing new page (' + key + ')');
