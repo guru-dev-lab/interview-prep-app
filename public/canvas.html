@@ -3185,7 +3185,7 @@ function styleCopilotCard(el) {
     if (QLINE.test(t)) {
       var blk = n.closest('p, div, li') || n; blk.classList.add('cp-q');
       var sp = t.match(QSPLIT);
-      if (sp) blk.innerHTML = '<span class="cp-tag">' + esc(sp[1]) + '</span>' + esc(sp[2]);
+      if (sp) blk.innerHTML = (/\d/.test(sp[1]) ? '<span class="cp-tag">' + esc(sp[1]) + '</span>' : '') + esc(sp[2]); // no number → no tag
     }
     else if (/^(Asked|On screen|Say):/.test(t)) { var blk3 = n.closest('p, div, li') || n; blk3.classList.add('cp-sec'); }
   });
