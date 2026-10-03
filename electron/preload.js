@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServerUrl: () => ipcRenderer.invoke('get-server-url'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
   setStealth: (on) => ipcRenderer.invoke('set-stealth', on),
+  captureDisplay: (maxW) => ipcRenderer.invoke('capture-display', maxW),
+  getBounds: () => ipcRenderer.invoke('get-bounds'),
 
   // Window drag support for Windows (CSS -webkit-app-region can be flaky on Win)
   startWindowDrag: () => ipcRenderer.invoke('start-window-drag'),
