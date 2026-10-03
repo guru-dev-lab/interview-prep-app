@@ -293,3 +293,9 @@ console.log('ALL PASS (code runs as written)');
   assert(!/SESSION MATERIAL/.test(none), 'no block when the session has nothing');
   console.log('ALL PASS (session material rides along, gated)');
 }
+
+// ---- 3 Oct 11:47: on the 9-page + 2-min-briefing context the answer took 29.8 s to first word and was cut at Q5
+// (1358 chars): adaptive thinking at medium ballooned and shared the cap. Effort low; cap no longer competes.
+assert(mc.requestExtrasFor('smart').output_config.effort === 'low', 'History mode thinks at LOW effort (live meeting: seconds matter)');
+assert(mc.maxTokensFor('smart') >= 8000, 'cap leaves room for thinking + a ten-question answer');
+console.log('ALL PASS (thinking low, cap 8000)');
