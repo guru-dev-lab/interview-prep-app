@@ -950,6 +950,7 @@ if (isElectronMode && window.electronAPI && window.electronAPI.isWindows) {
     });
 
     document.addEventListener('mousemove', function(e) {
+      if (isDragging && e.buttons === 0) { isDragging = false; return; } // lost mouse-up — stop following the pointer
       if (!isDragging) return;
       var dx = e.screenX - dragStartX;
       var dy = e.screenY - dragStartY;
@@ -1006,6 +1007,7 @@ if (isElectronMode && window.electronAPI && window.electronAPI.resizeWindow) {
       startX = e.screenX;
       startY = e.screenY;
       function onMove(ev) {
+        if (ev.buttons === 0) return onUp(); // the mouse-up was lost (pointer outran the window) — end the resize now
         var dx = ev.screenX - startX;
         var dy = ev.screenY - startY;
         startX = ev.screenX;
@@ -1943,6 +1945,7 @@ function captureFrame(stream) {
         canvas.height = h;
         canvas.getContext('2d').drawImage(video, 0, 0, w, h);
         lastFrameSig = frameSignature(canvas);
+        lastCaptureCanvas = canvas;
         video.pause();
         video.srcObject = null;
         // JPEG at 70% quality — much smaller than PNG
@@ -1957,6 +1960,7 @@ function captureFrame(stream) {
 
 // Tiny grey thumbnail of a frame — lets the Record loop skip a screen that hasn't changed (no API call, no card)
 var lastFrameSig = null, lastSentSig = null;
+var lastCaptureCanvas = null; // the canvas of the latest captureFrame — co-pilot fingerprints from it (captureFrame returns raw base64, not a data URL)
 function frameSignature(src) {
   try {
     var c = document.createElement('canvas'); c.width = 48; c.height = 27;
@@ -2897,9 +2901,7 @@ async function copilotFrame() {
     if (!image) return { image: null, changed: false, error: 'capture: captureFrame returned nothing (video not ready?)' };
     stage = 'fingerprint';
     if (typeof CopilotFingerprint === 'undefined') return { image: image, changed: true, key: 'scr-' + Date.now().toString(36), error: 'fingerprint: CopilotFingerprint not loaded — sending the frame anyway' };
-    var img = new Image(); img.src = image;
-    await new Promise(function (r) { img.onload = r; img.onerror = r; });
-    var print = CopilotFingerprint.fingerprintFrom(img);
+    var print = CopilotFingerprint.fingerprintFrom(lastCaptureCanvas);
     var key = CopilotFingerprint.matchPrint(copilotPrints, print);
     if (key) { console.log('[Co-pilot] screen seen before (' + key + ') — reusing, not re-sending'); return { image: null, changed: false, key: key }; }
     key = 'scr-' + Date.now().toString(36);
