@@ -85,4 +85,5 @@ ok(/copilotPrints = copilotPrints\.filter\(function \(x\) \{ return x\.key !== k
   ok(/CopilotFingerprint\.overlayRect\(/.test(cf) && /overlay, ignore/.test(cf) && cf.indexOf('overlayRect(') < cf.indexOf('lastFrameSig = frameSignature(canvas)'), 'the overlay masks its own rectangle in the frame before the fingerprint and the stored image (co-pilot captures)'); }
 ok(/lastMaskRect = r/.test(src) && /mask: lastMaskRect/.test(src), 'every co-pilot capture reports the mask rectangle it painted (or none), so the log says what happened');
 ok(!/screen\.availLeft/.test(src.slice(src.indexOf('function captureFrame(stream, maxW)'), src.indexOf('function captureFrame(stream, maxW)') + 2600)), 'no work-area offset: the frame is the full display, window coords are display coords');
+ok(/cap-preview/.test(src) && /lastCaptureCanvas/.test(src.slice(src.indexOf('async function toggleCaptureList('), src.indexOf('async function toggleCaptureList(') + 2600)), 'the capture list shows a real preview of the last frame sent (owner: "still there" — a 64px thumbnail cannot settle it)');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
