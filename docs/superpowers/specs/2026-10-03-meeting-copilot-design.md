@@ -25,6 +25,7 @@ The in-memory transcript stays the live working set; the table is the record.
 
 ## Trigger (both modes)
 Co-pilot fires only on: a question the existing door detects (`question_detected`), a capture press, or a typed note.
+A capture press follows the panic rule: there IS something to answer (screen or last speech), even if not phrased as one.
 Never on a 3-second pause any more. In co-pilot mode the Q&A answer path (bank match, live answer, bridges) is
 skipped for detected questions — one question is paid once. The mode is sent to the server over the WS
 (`update_settings {copilot, copilotHistory}`) and lives on the ws.
@@ -35,13 +36,14 @@ changed since the last send. Unchanged → text-only call that reuses the latest
 
 ## Regular mode (History off) — cheap
 Context = last 6 voice rows (asker/you), the last ask, the last `seen`, the last `said`, pulled with one query; no
-model picks anything. Plus role/company, gear files + instructions, and the current screen if changed. Haiku.
+model picks anything. Plus role/company, gear files + instructions, and the current screen if changed. Haiku, streamed.
 
 ## Smart mode (History on) — precise
 A running `digest` row for the call: what they want, what they shared on screen, what he already said/committed to,
 what co-pilot already told him, open threads. Haiku updates it incrementally (current digest + rows since) at most
 once per 3 minutes, only when new rows exist, only while the checkbox is on, never on the answer's clock.
-Answer context = digest + raw last 20 rows + current screen. Haiku.
+Answer context = digest + raw last 20 rows + current screen. Sonnet (thinking off), streamed — precision is what the
+checkbox buys; the digest itself stays on Haiku.
 
 ## Answer format (both modes)
 ```
@@ -52,7 +54,8 @@ Say:
   <read-aloud line>
 ```
 A task to do on screen turns Say into numbered steps. Never contradict or repeat what he already said (`you` rows).
-Fixed instructions first with prompt caching; output capped short.
+Fixed instructions first with prompt caching; output capped short. Answers STREAM to the card (new
+`callClaudeVisionStream`), so the Asked line shows before Say is finished.
 
 ## UI
 History checkbox on the co-pilot pill (Electron overlay), persisted via `saveSetting('copilotHistory')`.
