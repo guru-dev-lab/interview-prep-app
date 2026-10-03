@@ -2707,15 +2707,16 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       const sniffed = meetingCopilot.sniffImage(image); // raw base64 from the overlay: type decided from the bytes
       imgBlock = { type: 'image', source: { type: 'base64', media_type: sniffed.mediaType, data: sniffed.data } };
     }
-    if (req.body.auto) {
-      // AUTO-CAPTURE (History on): read the new page in the background — no answer, no card, a toast on the overlay
-      if (!historyOn) return res.json({ ignored: true, reason: 'history off' });
+    if (req.body.auto || req.body.capture) {
+      // CAPTURE ONLY: camera press (`capture`, any mode) or the History watcher (`auto`) — read the page into the call
+      // log; no answer, no card; the overlay gets copilot_captured (counter + toast)
+      if (req.body.auto && !historyOn) return res.json({ ignored: true, reason: 'history off' });
       if (!hasImage) return res.status(400).json({ error: 'auto capture needs an image' });
       if (screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey)) return res.json({ unchanged: true, key: screenKey });
       const t1 = Date.now();
       const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, imgBlock.source.data, 'Transcribe the screen.', 700, MODEL_HAIKU, imgBlock.source.media_type) || '').trim();
-      await recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true, auto: true });
-      console.log(`[Co-pilot] auto-captured page ${screenKey || '(no key)'} in ${Date.now() - t1}ms (${txt.length} chars)`);
+      await recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true, auto: !!req.body.auto, camera: !!req.body.capture });
+      console.log(`[Co-pilot] ${req.body.auto ? 'auto-captured' : 'camera-captured'} page ${screenKey || '(no key)'} in ${Date.now() - t1}ms (${txt.length} chars)`);
       broadcastToSession(sessionId, { type: 'copilot_captured', key: screenKey, chars: txt.length });
       maybeCompactCall(sessionId, callId, rows.concat([{ kind: 'seen', text: txt, meta: { key: screenKey }, ts: Date.now() }]), historyOn);
       return res.json({ captured: true, key: screenKey, chars: txt.length });
@@ -4277,6 +4278,10 @@ wss.on('connection', (ws) => {
           clients.forEach(apply); apply(ws);
           console.log(`[Co-pilot] settings: mode=${ws._copilotMode ? 'on' : 'off'} history=${ws._copilotHistory ? 'on' : 'off'} for session ${sessionId}`);
         }
+      }
+
+      else if (msg.type === 'copilot_watch') { // overlay watcher health (its console is out of reach)
+        console.log('[Co-pilot] watch:', JSON.stringify(msg.stats || {}).slice(0, 400));
       }
 
       else if (msg.type === 'expand_proof') {

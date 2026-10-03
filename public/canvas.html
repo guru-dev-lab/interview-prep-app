@@ -2894,35 +2894,55 @@ function copilotWatchSync() {
   if (want && !copilotWatchTimer) { copilotWatchState = {}; copilotWatchTimer = setInterval(copilotWatchTick, COPILOT_WATCH_MS); console.log('[Co-pilot] auto-capture watching'); }
   if (!want && copilotWatchTimer) { clearInterval(copilotWatchTimer); copilotWatchTimer = null; console.log('[Co-pilot] auto-capture off'); }
 }
+// The watcher reports its health to the server (I cannot see the overlay console): every 8 ticks and on any error.
+var watchStats = { ticks: 0, outcomes: {}, lastError: '' };
+function copilotWatchReport(force) {
+  if (!force && watchStats.ticks % 8 !== 0) return;
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'copilot_watch', stats: { ticks: watchStats.ticks, outcomes: watchStats.outcomes, lastError: watchStats.lastError, live: electronLive, copilot: copilotActive, history: copilotHistory, prints: copilotPrints.length, stream: !!(screenStream && screenStream.active) } }));
+}
 async function copilotWatchTick() {
   if (!(copilotActive && copilotHistory && electronLive) || copilotWatchBusy || !SESSION_ID || !TOKEN) return;
-  copilotWatchBusy = true;
+  copilotWatchBusy = true; watchStats.ticks++;
   try {
-    var stream = (screenStream && screenStream.active) ? screenStream : await getScreenStream();
-    if (!stream) return;
-    var image = await captureFrame(stream);
-    if (!image || !lastCaptureCanvas) return;
-    var print = CopilotFingerprint.fingerprintFrom(lastCaptureCanvas);
-    if (!CopilotFingerprint.stableNewScreen(copilotWatchState, print, copilotPrints)) return;
-    var key = 'scr-' + Date.now().toString(36);
-    copilotPrints.push({ key: key, print: print });
-    console.log('[Co-pilot] auto-capturing new page (' + key + ')');
-    var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
-      method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auto: true, image: image, screenChanged: true, screenKey: key, context: getCopilotContext() })
-    });
-    var data = await res.json();
-    if (data.error) console.warn('[Co-pilot] auto-capture refused:', data.error);
-  } catch (e) { console.warn('[Co-pilot] auto-capture tick failed:', e); }
+    var out = await copilotCaptureNow(true);
+    watchStats.outcomes[out] = (watchStats.outcomes[out] || 0) + 1;
+    copilotWatchReport(out === 'captured');
+  } catch (e) {
+    watchStats.lastError = String(e && e.message || e); watchStats.outcomes.error = (watchStats.outcomes.error || 0) + 1;
+    console.warn('[Co-pilot] auto-capture tick failed:', e); copilotWatchReport(true);
+  }
   finally { copilotWatchBusy = false; }
 }
 
-// Capture button = panic rule: there IS something to answer now (screen or last speech), even if not phrased as a question
+// Camera = CAPTURE ONLY (owner, 3 Oct): read this page into the call log, bump the counter — never an answer. Answers
+// come from Assist (press = panic rule), the typed box, or a question heard on the call.
 async function copilotCapture() {
   var btn = $('btn-copilot-capture');
   btn.className = 'copilot-capture-btn loading'; btn.textContent = '⏳';
-  await copilotSend({ pressed: true });
+  try { await copilotCaptureNow(false); } catch (e) { console.warn('[Co-pilot] capture failed:', e); showToast('Capture failed: ' + (e && e.message || e), '', 3500); }
   btn.className = 'copilot-capture-btn'; btn.textContent = '📸';
+}
+
+// One capture routine for the camera (manual) and the watcher (auto). Returns what happened, for the watcher's stats.
+async function copilotCaptureNow(auto) {
+  if (!SESSION_ID || !TOKEN) return 'no-session';
+  var stream = (screenStream && screenStream.active) ? screenStream : await getScreenStream();
+  if (!stream) { if (!auto) showToast('No screen stream — allow Screen Recording and Go Live again', '', 4000); return 'no-stream'; }
+  var image = await captureFrame(stream);
+  if (!image || !lastCaptureCanvas) return 'no-frame';
+  var print = CopilotFingerprint.fingerprintFrom(lastCaptureCanvas);
+  if (auto) { if (!CopilotFingerprint.stableNewScreen(copilotWatchState, print, copilotPrints)) return CopilotFingerprint.matchPrint(copilotPrints, print) ? 'known' : 'unstable'; }
+  else { var known = CopilotFingerprint.matchPrint(copilotPrints, print); if (known) { showToast('Already captured this page', 'info', 1500); return 'known'; } }
+  var key = 'scr-' + Date.now().toString(36);
+  copilotPrints.push({ key: key, print: print });
+  console.log('[Co-pilot] ' + (auto ? 'auto-' : '') + 'capturing new page (' + key + ')');
+  var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
+    method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auto: !!auto, capture: !auto, image: image, screenChanged: true, screenKey: key, context: getCopilotContext() })
+  });
+  var data = await res.json();
+  if (data.error) { if (!auto) showToast('Capture refused: ' + data.error, '', 3500); return 'refused: ' + data.error; }
+  return data.captured ? 'captured' : data.unchanged ? 'unchanged' : data.ignored ? 'ignored' : 'ok';
 }
 
 // Grab a frame; the image is returned only when the screen moved since the last send
