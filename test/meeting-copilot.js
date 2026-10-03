@@ -43,7 +43,7 @@ const row = (kind, text, ts, meta) => ({ kind, text, ts, meta: meta || {} });
 
   const smart = mc.buildCopilotPrompt(Object.assign({ mode: 'smart', rows, digest: 'DIGEST: they want the reclass explained' }, base));
   ok(/DIGEST: they want the reclass explained/.test(smart), 'smart carries the digest');
-  ok(/I said 12\b/.test(smart) && !/I said 10\b/.test(smart), 'smart carries the raw last 20 rows, not more');
+  ok(/I said 2\b/.test(smart) && /I said 30\b/.test(smart), 'smart carries a short call whole, word for word (sized by characters, not rows)');
   ok(mc.modelFor('regular') === 'haiku' && mc.modelFor('smart') === 'sonnet', 'model by mode');
 }
 
@@ -253,3 +253,16 @@ console.log('ALL PASS (question number + wording in each block)');
 // ---- owner 3 Oct 10:45: "question formatting is not good enough… see it faster and answer" → answer first, working after
 assert(/Answer: <the result in one short line/.test(mc.MEETING_PROMPT) && /working/i.test(mc.MEETING_PROMPT) && /\*\*Page 7 — Question 1 — <what was asked>\*\*/.test(mc.MEETING_PROMPT), 'each block: bold question line, then "Answer:" first, then the working');
 console.log('ALL PASS (answer-first blocks)');
+
+// ---- 3 Oct 11:18 listening test: 37 voice rows at the first Assist, no digest yet → only the last 20 rows went in; the
+// first 40 s (revenue, headcount, dates) were stored but never handed over. Raw rows are sized by characters now.
+{
+  const rows = []; for (let i = 1; i <= 40; i++) rows.push(row(i % 2 ? 'asker' : 'you', 'line number ' + i + ' of the update', i));
+  const p = mc.buildCopilotPrompt({ mode: 'smart', rows, session: {}, ask: 'q', screenChanged: false });
+  assert(/line number 1 of the update/.test(p) && /line number 40 of the update/.test(p), 'a short call goes in whole (all 40 rows)');
+  const big = []; for (let i = 1; i <= 400; i++) big.push(row('asker', 'row ' + i + ' ' + 'x'.repeat(80), i));
+  const q = mc.buildCopilotPrompt({ mode: 'smart', rows: big, session: {}, ask: 'q', screenChanged: false });
+  assert(!/\brow 1 x/.test(q) && /\brow 400 x/.test(q) && q.length < 40000, 'a long call keeps the newest ~16k chars word for word');
+  assert(mc.SMART_RAW_CHARS >= 16000 && typeof mc.rawCharsOf === 'function', 'budget and measurer exported (the server compacts first when the raw part overflows and no digest exists)');
+  console.log('ALL PASS (raw transcript by characters)');
+}
