@@ -251,7 +251,7 @@ console.log('ALL PASS (question number + wording in each block)');
 }
 
 // ---- owner 3 Oct 10:45: "question formatting is not good enough… see it faster and answer" → answer first, working after
-assert(/Answer: <the result in one short line/.test(mc.MEETING_PROMPT) && /working/i.test(mc.MEETING_PROMPT) && /\*\*Page 7 — Question 1 — <what was asked>\*\*/.test(mc.MEETING_PROMPT), 'each block: bold question line, then "Answer:" first, then the working');
+assert(/Result: <the result in one short line/.test(mc.MEETING_PROMPT) && /working/i.test(mc.MEETING_PROMPT) && /\*\*Page 7 — Question 1 — <what was asked>\*\*/.test(mc.MEETING_PROMPT), 'each block: bold question line, the working, then "Result:" (the card lifts it to the top)');
 console.log('ALL PASS (answer-first blocks)');
 
 // ---- 3 Oct 11:18 listening test: 37 voice rows at the first Assist, no digest yet → only the last 20 rows went in; the
@@ -299,3 +299,8 @@ console.log('ALL PASS (code runs as written)');
 assert(mc.requestExtrasFor('smart').thinking.type === 'disabled' && !mc.requestExtrasFor('smart').output_config, 'History mode: thinking OFF (measured 3 Oct on the 10-question battery: 10/10 either way; thinking blew first words to 13–30 s on his real context)');
 assert(mc.maxTokensFor('smart') >= 8000, 'cap leaves room for thinking + a ten-question answer');
 console.log('ALL PASS (thinking off, cap 8000)');
+
+// ---- 3 Oct 12:04: with thinking off the model committed to the result before the arithmetic (Q6 corrected itself
+// mid-card, Q3 went wrong) → working first, "Result:" as the LAST line of each block; the card lifts it to the top
+assert(/Result: <the result in one short line/.test(mc.MEETING_PROMPT) && /last line of the block/i.test(mc.MEETING_PROMPT) && !/Answer: <the result/.test(mc.MEETING_PROMPT), 'each block: question, working lines, then Result: as the last line');
+console.log('ALL PASS (work first, result last)');
