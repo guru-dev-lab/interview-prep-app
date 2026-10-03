@@ -309,3 +309,15 @@ console.log('ALL PASS (work first, result last)');
 // date and cited a screen it did not have → earlier calls never stand in for a page missing from THIS call
 assert(/never take a table, a figure or a date from earlier-call notes/i.test(mc.MEETING_PROMPT) && /not among the screens shown this call/i.test(mc.MEETING_PROMPT), 'a page missing from this call is reported missing, never filled from earlier-call notes');
 console.log('ALL PASS (missing page is missing)');
+
+// ---- 3 Oct 15:36: the capture thumbnail showed the overlay's own shape even with the eye on — content protection does
+// not hide the window from the app's own grab. The overlay masks its own rectangle in every frame it stores/fingerprints.
+{
+  // frame 1568×980 of a 2560×1600 (CSS px) display; overlay at CSS (1800, 300) size 700×1100 → scaled by 1568/2560
+  const r = fp.overlayRect(1568, 980, 2560, 1600, 1800, 300, 700, 1100);
+  assert(Math.round(r.x) === 1103 && Math.round(r.y) === 184 && Math.round(r.w) === 429 && Math.round(r.h) === 674, 'overlay rect is scaled into frame pixels: ' + JSON.stringify(r));
+  const c = fp.overlayRect(1568, 980, 2560, 1600, 2400, 1500, 700, 1100);
+  assert(c.x + c.w <= 1568 && c.y + c.h <= 980, 'clamped to the frame');
+  assert(fp.overlayRect(1568, 980, 2560, 1600, -900, 0, 700, 1100) === null, 'an overlay on another display (off this frame) masks nothing');
+  console.log('ALL PASS (overlay rect in frame)');
+}

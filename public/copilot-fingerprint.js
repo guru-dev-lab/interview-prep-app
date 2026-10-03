@@ -47,6 +47,18 @@
     return stable;
   }
 
+  // Where the overlay window sits inside a captured frame (frame px), or null when it is not on this frame.
+  // The OS content-protection flag hides the window from other apps' capture, not from our own grab (3 Oct), so the
+  // overlay paints its own rectangle out before a frame is fingerprinted or stored.
+  function overlayRect(frameW, frameH, screenW, screenH, winX, winY, winW, winH) {
+    if (!frameW || !screenW || !screenH || !winW || !winH) return null;
+    var sx = frameW / screenW, sy = frameH / screenH;
+    var x = winX * sx, y = winY * sy, w = winW * sx, h = winH * sy;
+    var x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(frameW, x + w), y1 = Math.min(frameH, y + h);
+    if (x1 <= x0 || y1 <= y0) return null;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
   // Browser only: draw the video/canvas source into a 32×18 canvas and return its gray values.
   function fingerprintFrom(source) {
     var c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -56,5 +68,5 @@
     return out;
   }
 
-  return { fingerprintChanged: fingerprintChanged, changedRegion: changedRegion, matchPrint: matchPrint, stableNewScreen: stableNewScreen, fingerprintFrom: fingerprintFrom, W: W, H: H };
+  return { fingerprintChanged: fingerprintChanged, changedRegion: changedRegion, overlayRect: overlayRect, matchPrint: matchPrint, stableNewScreen: stableNewScreen, fingerprintFrom: fingerprintFrom, W: W, H: H };
 });
