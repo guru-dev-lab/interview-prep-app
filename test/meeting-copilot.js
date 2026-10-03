@@ -216,3 +216,7 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
 // ---- transcripts are of the CONTENT, not the browser chrome (owner's live run: "Browser tab shows claude.ai, bookmarks bar…")
 assert(/ignore browser tabs|ignore the browser/i.test(mc.TRANSCRIBE_PROMPT) && /menu bar/i.test(mc.TRANSCRIBE_PROMPT), 'transcription skips tabs, bookmarks, menu bars, docks');
 console.log('ALL PASS (transcribe content only)');
+
+// ---- owner 3 Oct: "when answering, it must use the structure.. like question #1 or whatever it saw"
+assert(/same labels/i.test(mc.MEETING_PROMPT) && /Question 1/.test(mc.MEETING_PROMPT) && /same order/i.test(mc.MEETING_PROMPT), 'answers mirror the structure on the page: same labels, same order, one block each');
+console.log('ALL PASS (answer mirrors page structure)');
