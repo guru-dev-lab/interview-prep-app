@@ -86,3 +86,15 @@ const row = (kind, text, ts, meta) => ({ kind, text, ts, meta: meta || {} });
 }
 
 console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
+
+// ---- (added after the keep-alive run showed two slips) no screen yet → say so; a press never gets "nothing new"
+{
+  const noSeen = mc.buildCopilotPrompt({ mode: 'regular', rows: [row('asker', 'hi', 1)], session: {}, ask: 'sum sales by region', screenChanged: false });
+  assert(/No screen has been captured yet/i.test(noSeen) && !/use the latest "Screen shown earlier"/.test(noSeen), 'without any seen row the prompt says no screen yet (not "use the summary above")');
+  const withSeen = mc.buildCopilotPrompt({ mode: 'regular', rows: [row('seen', 'a table', 1)], session: {}, ask: 'x', screenChanged: false });
+  assert(/use the latest "Screen shown earlier"/.test(withSeen), 'with a seen row the prompt points at it');
+  const pressed = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: '', pressed: true, screenChanged: false });
+  assert(/never answer "nothing new"/i.test(pressed), 'a press forbids the nothing-new escape');
+  assert(/a press always gets a real answer/i.test(mc.MEETING_PROMPT), 'system prompt limits "nothing new" to un-pressed turns');
+  console.log('ALL PASS (prompt slips: no-screen wording, press never "nothing new")');
+}

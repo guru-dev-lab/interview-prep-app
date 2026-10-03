@@ -1,5 +1,26 @@
 # Handoff
 
+## 3 Oct 2026 — Meeting co-pilot (PR #30)
+- Owner: co-pilot is for his WORK MEETINGS, not assessments — others share a screen (table, notes, questions) and ask
+  him something; it listens, reads the shared screen, says what to say. Must be cheap by default; a History checkbox
+  buys precision. Spec: docs/superpowers/specs/2026-10-03-meeting-copilot-design.md. Logic: lib/meeting-copilot.js.
+- Call log `call_events` (new table, additive): kinds asker / you / document / seen / said / digest, keyed by the
+  live_transcripts id of the call (`ws._callId`). Written ONLY while live (409 "Go Live first" otherwise); cleared on
+  stop/close. Voice rows come from the real audio path (both channels, bleed/echo excluded).
+- Trigger: detected question (door → `question_detected source:'copilot'`, Q&A path skipped in co-pilot mode), capture
+  press (panic rule: always answers), typed note. The 3-second speech buffer is gone. Screen goes up only when the
+  frame fingerprint changed (public/copilot-fingerprint.js, one copy for browser + tests).
+- Regular (History off): last 6 voice rows + last seen + last said, Haiku, streamed. Smart (History on): running
+  digest (Haiku, ≤1 per 3 min, only with new rows, background) + raw last 20 rows, answer on Sonnet (thinking off),
+  streamed. Cards: copilot_start / copilot_delta / copilot_done over the live socket. Shape: Asked / On screen / Say.
+- Proof: npm test (7 free suites, incl. test/meeting-copilot.js + test/meeting-copilot-wiring.js);
+  test/meeting-copilot-e2e.js 18/18 (real audio → rows; routing; shape + table cited; no-image turn; smart answer
+  consistent with the YOU line; digest row; stop → 409); test/copilot-switchtab-e2e.js 6/6 still passes; real Chrome:
+  page loads clean, History persists, streamed card renders, fingerprint skips a repeat frame. First words 0.36–0.7 s.
+- Not done / open: his real desktop call (Zoom/Teams) in co-pilot mode — read `[Co-pilot]` log lines after it.
+  Prompt caching not used (fixed prompt is far below the cacheable minimum). Web app (index.html) has no co-pilot mode.
+- Rollback: tag known-good-2026-10-03-before-meeting-copilot (table stays; it is additive and harmless).
+
 ## 2 Oct 2026 (later still) — remaining items (PR #27, #28 LIVE)
 - PR #27: web app live cards — click the ↳ line → full story (expand_proof over liveWS; same as desktop PR #16). Proven
   in a real browser: 1 request, story shown, collapse, cached reopen. Rollback tag known-good-2026-10-02-before-web-details.
