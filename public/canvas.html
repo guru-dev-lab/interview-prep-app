@@ -1964,7 +1964,15 @@ function captureFrame(stream, maxW) {
         var canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
-        canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+        var cx = canvas.getContext('2d');
+        cx.drawImage(video, 0, 0, w, h);
+        // Co-pilot captures: paint the overlay's own window out of the frame (flat grey + label) so its panel never
+        // covers page content in the stored image, never reads as page text, and its streaming cards never count as a
+        // screen change. Content protection hides us from other apps, not from this grab (owner's thumbnail, 3 Oct).
+        if (maxW && window.CopilotFingerprint && screen && screen.width) {
+          var r = CopilotFingerprint.overlayRect(w, h, screen.width, screen.height, window.screenX - (screen.availLeft || 0), window.screenY - (screen.availTop || 0), window.outerWidth, window.outerHeight);
+          if (r) { cx.fillStyle = '#8a8d94'; cx.fillRect(r.x, r.y, r.w, r.h); cx.fillStyle = '#2a2d33'; cx.font = 'bold ' + Math.max(14, Math.round(r.w / 18)) + 'px sans-serif'; cx.textAlign = 'center'; cx.fillText('xHire overlay, ignore', r.x + r.w / 2, r.y + Math.min(r.h / 2, 60)); }
+        }
         lastFrameSig = frameSignature(canvas);
         lastCaptureCanvas = canvas;
         video.pause();

@@ -81,4 +81,6 @@ ok(/sendCopilotSettings\(\);/.test(src.slice(src.indexOf("type: 'update_settings
 ok(/electronLive = true; copilotWatchSync\(\);/.test(src), 'the watcher starts the moment the call goes live if co-pilot is already on');
 ok(/function deleteCapture\(/.test(src) && /method: 'DELETE'/.test(src) && /cap-del/.test(src), 'each capture in the list has an × that deletes it (owner, 3 Oct)');
 ok(/copilotPrints = copilotPrints\.filter\(function \(x\) \{ return x\.key !== key; \}\)/.test(src.slice(src.indexOf('function deleteCapture('), src.indexOf('function deleteCapture(') + 1200)) && /copilotUnnoteCapture\(\)/.test(src.slice(src.indexOf('function deleteCapture('), src.indexOf('function deleteCapture(') + 1200)), 'a deleted capture leaves the counter and the known-pages memory, so it can be retaken');
+{ const cf = src.slice(src.indexOf('function captureFrame(stream, maxW)'), src.indexOf('function captureFrame(stream, maxW)') + 2600);
+  ok(/CopilotFingerprint\.overlayRect\(/.test(cf) && /overlay, ignore/.test(cf) && cf.indexOf('overlayRect(') < cf.indexOf('lastFrameSig = frameSignature(canvas)'), 'the overlay masks its own rectangle in the frame before the fingerprint and the stored image (co-pilot captures)'); }
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
