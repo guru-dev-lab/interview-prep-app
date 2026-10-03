@@ -2969,8 +2969,34 @@ async function copilotCapture() {
 }
 
 // One capture routine for the camera (manual) and the watcher (auto). Returns what happened, for the watcher's stats.
+// A frame from the desktop app's own screenshot-backend capture → the capture canvas (same shape as captureFrame's
+// output: raw base64 JPEG returned, canvas kept in lastCaptureCanvas). The overlay is not in these frames.
+function frameFromShot(shot) {
+  return new Promise(function (resolve, reject) {
+    var img = new Image();
+    img.onload = function () {
+      var canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      lastFrameSig = frameSignature(canvas); lastCaptureCanvas = canvas;
+      lastMaskRect = { backend: 'app', bounds: shot.bounds, frame: canvas.width + 'x' + canvas.height };
+      resolve(shot.jpeg);
+    };
+    img.onerror = function () { reject(new Error('shot did not decode')); };
+    img.src = 'data:image/jpeg;base64,' + shot.jpeg;
+  });
+}
+
 async function copilotCaptureNow(auto) {
   if (!SESSION_ID || !TOKEN) return 'no-session';
+  // v1.1.4+: the app captures the display through the screenshot backend (honours the eye, no overlay in the frame,
+  // true bounds). Older apps fall through to the page's own stream + mask.
+  if (window.electronAPI && window.electronAPI.captureDisplay) {
+    try {
+      var shot = await window.electronAPI.captureDisplay(COPILOT_CAPTURE_W);
+      if (shot && shot.jpeg) { var appImage = await frameFromShot(shot); return copilotSendFrame(auto, appImage); }
+      console.warn('[Co-pilot] app capture returned nothing — falling back to the page stream');
+    } catch (e) { console.warn('[Co-pilot] app capture failed — falling back:', e); }
+  }
   var stream = (screenStream && screenStream.active) ? screenStream : await getScreenStream();
   if (!stream) { if (!auto) showToast('No screen stream — allow Screen Recording and Go Live again', '', 4000); return 'no-stream'; }
   // The overlay must never be in the frame (3 Oct: a capture with the panel over the terms table read "obscured"):
@@ -2988,6 +3014,11 @@ async function copilotCaptureNow(auto) {
     if (hid) { try { window.electronAPI.setStealth(false); } catch (e) {} }
   }
   if (!image || !lastCaptureCanvas) return 'no-frame';
+  return copilotSendFrame(auto, image);
+}
+
+// The frame is in hand (whichever backend): fingerprint, decide, count, send
+async function copilotSendFrame(auto, image) {
   var print = CopilotFingerprint.fingerprintFrom(lastCaptureCanvas);
   if (auto) { if (!CopilotFingerprint.stableNewScreen(copilotWatchState, print, copilotPrints)) return CopilotFingerprint.matchPrint(copilotPrints, print) ? 'known' : 'unstable'; }
   else if (CopilotFingerprint.matchPrint(copilotPrints, print)) showToast('📸 Captured again', 'info', 1200); // the camera ALWAYS takes (owner: "should be able to take again")

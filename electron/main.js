@@ -354,6 +354,27 @@ function createOverlay() {
 // ===== IPC HANDLERS =====
 
 // Opacity control from renderer
+// True window bounds (the renderer's window.screenX/outerWidth go stale after moves/resizes — 3 Oct)
+ipcMain.handle('get-bounds', () => mainWindow ? mainWindow.getBounds() : null);
+
+// Capture the display the overlay is on through desktopCapturer — on macOS that is ScreenCaptureKit, the same backend
+// as the system screenshot, which honours content protection: the overlay itself is left out of the frame (3 Oct:
+// the page's getDisplayMedia stream did include it). Returns a JPEG at up to maxW wide plus the window bounds.
+ipcMain.handle('capture-display', async (_, maxW) => {
+  try {
+    const b = mainWindow ? mainWindow.getBounds() : { x: 0, y: 0, width: 1, height: 1 };
+    const disp = screen.getDisplayNearestPoint({ x: b.x + Math.round(b.width / 2), y: b.y + Math.round(b.height / 2) });
+    const nativeW = Math.round(disp.size.width * disp.scaleFactor), nativeH = Math.round(disp.size.height * disp.scaleFactor);
+    const w = Math.min(maxW || 1568, nativeW), h = Math.round(w * nativeH / nativeW);
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: w, height: h } });
+    const src = sources.find(s => String(s.display_id) === String(disp.id)) || sources[0];
+    if (!src || src.thumbnail.isEmpty()) return null;
+    const size = src.thumbnail.getSize();
+    return { jpeg: src.thumbnail.toJPEG(85).toString('base64'), width: size.width, height: size.height, bounds: b,
+             display: { x: disp.bounds.x, y: disp.bounds.y, w: disp.bounds.width, h: disp.bounds.height, scale: disp.scaleFactor } };
+  } catch (e) { _log('[Xhire] capture-display failed:', e && e.message); return null; }
+});
+
 ipcMain.handle('set-opacity', (_, value) => {
   if (mainWindow) mainWindow.setOpacity(Math.max(0.2, Math.min(1.0, value)));
 });
