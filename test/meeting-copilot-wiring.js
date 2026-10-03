@@ -54,4 +54,10 @@ ok(/function styleCopilotCard\(/.test(src) && /cp-q/.test(src) && /cp-a/.test(sr
 ok(/cp-block/.test(src) && /function styleCopilotCard\([\s\S]{0,1800}cp-block/.test(src), 'each question + answer is wrapped in its own card inside the co-pilot answer');
 ok(/nextElementSibling/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 1800)), 'the line right after a question line is the result line (label or not)');
 ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mode \.sh-kw\{color:#0000FF/.test(src), 'code blocks use the VS Code Dark+ / Light+ palettes (owner: the red is straining)');
+{ // the question-line matcher must accept the shapes the model actually writes (3 Oct: "Part 9 — Q1 — …" broke the cards)
+  const m = src.match(/var QLINE = (\/.*?\/i);/); ok(!!m, 'QLINE regex is declared in one place');
+  const QLINE = m ? eval(m[1]) : /$^/;
+  ['Page 7 — Question 1 — Dallas cost', 'Part 9 — Q1 — Why is INV-1043 disputed?', 'Question 2: best carrier', 'Q3 — Dallas pallets', 'Screen 8 — Question — cheapest carrier', 'Page 8 — Question — cheapest'].forEach(t => ok(QLINE.test(t), 'matches: ' + t));
+  ['Quarterly numbers look fine', 'Answer: $14,426', '140 pallets × $92'].forEach(t => ok(!QLINE.test(t), 'does not match: ' + t));
+  ok(/QLINE\.test\(t\)/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 900)), 'styleCopilotCard uses QLINE'); }
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
