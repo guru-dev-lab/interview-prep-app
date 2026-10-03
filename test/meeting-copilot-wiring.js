@@ -50,4 +50,5 @@ ok(/copilotActive && copilotHistory && electronLive && !copilotAutoPaused/.test(
 { const cs = src.slice(src.indexOf('function copilotCardStart('), src.indexOf('function copilotCardStart(') + 1200);
   ok(!/copilotNoteCapture\(/.test(cs), 'the counter counts collected pages only (camera + auto), never an Assist frame'); }
 ok(/paused: copilotAutoPaused/.test(src), 'the watcher reports paused in its health line');
+ok(/function styleCopilotCard\(/.test(src) && /cp-q/.test(src) && /cp-a/.test(src) && /styleCopilotCard\(c\.el\)/.test(src), 'co-pilot cards style the question line and the Answer line so he can scan and speak');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

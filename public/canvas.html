@@ -123,6 +123,10 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 /* Co-pilot tag */
 .sc-tag.copilot{background:rgba(99,102,241,.2);color:#A5B4FC}
 .sc-card.copilot-card{border-left-color:#818CF8}
+.copilot-card .cp-q{font-weight:700;color:#E0E7FF;margin-top:12px;padding-top:8px;border-top:1px solid rgba(99,102,241,.25);font-size:1.02em}
+.copilot-card .cp-q .hl-key{background:none;color:inherit;padding:0}
+.copilot-card .cp-a{font-weight:700;color:#34D399;font-size:1.06em;margin:4px 0 2px}
+.copilot-card .cp-sec{opacity:.75;font-size:.95em}
 .copilot-screen-chip{margin-left:auto;font:600 9px Inter,sans-serif;color:#A5B4FC;background:rgba(99,102,241,.14);border-radius:4px;padding:2px 6px;white-space:nowrap}
 .copilot-screen-chip.bad{color:#FCA5A5;background:rgba(248,113,113,.14)}
 .copilot-transcript{font:400 9px Inter,sans-serif;color:var(--text4);margin-bottom:4px;padding:2px 8px;background:rgba(255,255,255,.02);border-radius:4px;font-style:italic}
@@ -3077,15 +3081,26 @@ function copilotCardStart(cardId, ask, mode, screen, reason) {
   cards.push({ id: cardId, question: ask || 'Co-pilot', answer: '', source: 'copilot', ts: Date.now() });
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
+// Scan-and-speak styling (owner, 3 Oct): the question line stands out, the Answer line is the loud one, the working is quiet
+function styleCopilotCard(el) {
+  var a = el && el.querySelector('.sc-card-a'); if (!a) return;
+  var nodes = a.querySelectorAll('p, div, li, span.hl-key');
+  nodes.forEach(function (n) {
+    var t = (n.textContent || '').trim();
+    if (/^(Page \d+ — )?Question( \d+)?( — |:)/.test(t)) { var blk = n.closest('p, div, li') || n; blk.classList.add('cp-q'); }
+    else if (/^Answer:/.test(t)) { var blk2 = n.closest('p, div, li') || n; blk2.classList.add('cp-a'); }
+    else if (/^(Asked|On screen|Say):/.test(t)) { var blk3 = n.closest('p, div, li') || n; blk3.classList.add('cp-sec'); }
+  });
+}
 function copilotCardDelta(cardId, text) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
   c.text += text || '';
-  var a = c.el.querySelector('.sc-card-a'); if (a) a.innerHTML = formatAnswer(c.text);
+  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); }
 }
 function copilotCardDone(cardId, answer) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
   c.text = answer || c.text;
-  var a = c.el.querySelector('.sc-card-a'); if (a) a.innerHTML = formatAnswer(c.text);
+  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); }
   for (var i = 0; i < cards.length; i++) if (cards[i].id === cardId) cards[i].answer = c.text;
 }
 

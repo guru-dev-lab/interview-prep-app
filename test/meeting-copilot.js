@@ -249,3 +249,7 @@ console.log('ALL PASS (question number + wording in each block)');
   assert(/every question found across the captured screens/i.test(p) && /Page 7 — Question 1 — <what was asked>/.test(p) && /already answered/i.test(p), 'a press with nothing typed answers every open question across the captured pages, grouped by page, numbered with its wording');
   console.log('ALL PASS (press answers all open questions)');
 }
+
+// ---- owner 3 Oct 10:45: "question formatting is not good enough… see it faster and answer" → answer first, working after
+assert(/Answer: <the result in one short line/.test(mc.MEETING_PROMPT) && /working/i.test(mc.MEETING_PROMPT) && /\*\*Page 7 — Question 1 — <what was asked>\*\*/.test(mc.MEETING_PROMPT), 'each block: bold question line, then "Answer:" first, then the working');
+console.log('ALL PASS (answer-first blocks)');
