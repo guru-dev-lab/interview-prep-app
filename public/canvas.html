@@ -126,6 +126,7 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .copilot-card .cp-block{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:10px;padding:10px 12px;margin:10px 0}
 .copilot-card .cp-q{font-weight:700;color:#E0E7FF;margin:0 0 6px;font-size:1.02em}
 .copilot-card .cp-q .hl-key{background:none;color:inherit;padding:0}
+.copilot-card .cp-tag{display:inline-block;font:700 9px Inter,sans-serif;letter-spacing:.4px;text-transform:uppercase;color:#A5B4FC;background:rgba(99,102,241,.18);border-radius:4px;padding:2px 6px;margin-right:8px;vertical-align:middle}
 .copilot-card .cp-a{font-weight:700;color:#34D399;font-size:1.1em;margin:0 0 6px;padding:4px 8px;background:rgba(52,211,153,.1);border-radius:6px;display:inline-block}
 .copilot-card .cp-sec{opacity:.75;font-size:.95em}
 .copilot-screen-chip{margin-left:auto;font:600 9px Inter,sans-serif;color:#A5B4FC;background:rgba(99,102,241,.14);border-radius:4px;padding:2px 6px;white-space:nowrap}
@@ -3087,13 +3088,19 @@ function copilotCardStart(cardId, ask, mode, screen, reason) {
 // Scan-and-speak styling (owner, 3 Oct): the question line stands out, the Answer line is the loud one, the working is quiet
 // One matcher for a question line, whatever the model wrote: "Page 7 — Question 1 —", "Part 9 — Q1 —", "Question 2:", "Q3 —"
 var QLINE = /^(?:(?:page|part|screen|memo|section)\s*\d*\s*[—:–-]\s*)?(?:question|q)\s*\d*\s*(?:[—:–-]|$)/i;
+// "Page 7 — Question 1 — …" → tag "Page 7" + title "Question 1 — …" (owner, 3 Oct: the page is a tag, not part of the line)
+var QSPLIT = /^((?:page|part|screen|memo|section)\s*\d*)\s*[—:–-]\s*((?:question|q)\s*\d*.*)$/i;
 function styleCopilotCard(el) {
   var a = el && el.querySelector('.sc-card-a'); if (!a) return;
   if (a.querySelector('.cp-block')) return; // already shaped (done after the stream)
   var nodes = a.querySelectorAll('p, div, li, span.hl-key');
   nodes.forEach(function (n) {
     var t = (n.textContent || '').trim();
-    if (QLINE.test(t)) { var blk = n.closest('p, div, li') || n; blk.classList.add('cp-q'); }
+    if (QLINE.test(t)) {
+      var blk = n.closest('p, div, li') || n; blk.classList.add('cp-q');
+      var sp = t.match(QSPLIT);
+      if (sp) blk.innerHTML = '<span class="cp-tag">' + esc(sp[1]) + '</span>' + esc(sp[2]);
+    }
     else if (/^(Asked|On screen|Say):/.test(t)) { var blk3 = n.closest('p, div, li') || n; blk3.classList.add('cp-sec'); }
   });
   // Each question + its answer = its own card (owner, 3 Oct): the question line is the title, the next line is the
