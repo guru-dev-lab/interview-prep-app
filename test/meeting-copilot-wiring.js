@@ -102,4 +102,25 @@ ok(/ipcMain\.handle\('capture-display'/.test(main) && /desktopCapturer\.getSourc
 ok(/captureDisplay: \(maxW\) => ipcRenderer\.invoke\('capture-display', maxW\)/.test(pre) && /getBounds: \(\) => ipcRenderer\.invoke\('get-bounds'\)/.test(pre), 'preload exposes captureDisplay + getBounds');
 ok(/"version": "1\.1\.4"/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'electron', 'package.json'), 'utf8')), 'desktop version 1.1.4');
 ok(/\/\\d\/\.test\(sp\[1\]\)/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 1600)), 'a page tag with no number is not shown (single-page test showed an empty PAGE chip)');
+
+// ---- SAY button in co-pilot mode (owner, 3 Oct): one brain — the server pulls what they just asked from the call, the overlay
+// answers it through the co-pilot door with résumé + bank; a press on an already-answered ask jumps to that card
+const srv = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+const sayH = srv.slice(srv.indexOf("msg.type === 'what_should_i_say'"), srv.indexOf("msg.type === 'what_should_i_say'") + 6000);
+ok(/if \(ws\._copilotMode\)/.test(sayH) && /type: 'copilot_say'/.test(sayH), 'Say in co-pilot mode routes to the co-pilot (copilot_say), never the QA jump/bank path');
+ok(/_copilotAskTs/.test(sayH) && /_copilotAskTs/.test(srv.slice(srv.indexOf('question routed to co-pilot'), srv.indexOf('question routed to co-pilot') + 400)), 'what counts as "just asked" starts after the last co-pilot ask (heard or say)');
+const ep = srv.slice(srv.indexOf("app.post('/api/sessions/:id/copilot'"), srv.indexOf("app.post('/api/sessions/:id/copilot'") + 9000);
+ok(/const say = !!req\.body\.say/.test(ep) && /say,/.test(ep.slice(ep.indexOf('buildCopilotPrompt('), ep.indexOf('buildCopilotPrompt(') + 400)), 'endpoint passes say into the prompt');
+ok(/FROM questions WHERE session_id = \$1 AND answer != ''/.test(ep) && /bank,/.test(ep.slice(ep.indexOf('buildCopilotPrompt('), ep.indexOf('buildCopilotPrompt(') + 400)), 'endpoint loads the Q&A bank and passes it to the prompt');
+ok(/maxTokensFor\(mode, say\)/.test(ep), 'say gets the larger token room in regular mode');
+ok(/type: 'copilot_start', cardId, ask, mode, say,/.test(ep), 'copilot_start tells the overlay this card is a Say');
+const sayC = src.slice(src.indexOf("msg.type === 'copilot_say'"), src.indexOf("msg.type === 'copilot_say'") + 300);
+ok(/copilotSay\(msg\.text\)/.test(sayC), 'overlay handles copilot_say');
+const sayF = src.slice(src.indexOf('function copilotSay('), src.indexOf('function copilotSay(') + 1400);
+ok(/copilotSend\(\{ ask: /.test(sayF) && /say: true/.test(sayF) && /pressed: true/.test(sayF), 'copilotSay goes through the one co-pilot door as a say press');
+ok(/90000/.test(sayF) && /scrollIntoView/.test(sayF), 'same ask already answered in the last 90 s: jump to that card, no second call');
+ok(/say: !!opts\.say/.test(src.slice(src.indexOf('async function copilotSend('), src.indexOf('async function copilotSend(') + 900)), 'request body carries say');
+ok(/copilotLastAsk = \{/.test(src.slice(src.indexOf('function copilotCardStart('), src.indexOf('function copilotCardStart(') + 1800)), 'the last co-pilot ask is remembered when its card starts');
+ok(/say \? ' · say'/.test(src.slice(src.indexOf('function copilotCardStart('), src.indexOf('function copilotCardStart(') + 1800)), 'a Say card is tagged as such');
+
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

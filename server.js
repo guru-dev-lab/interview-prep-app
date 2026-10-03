@@ -2727,6 +2727,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const captureError = String(req.body.captureError || '').slice(0, 200);
     if (captureError) console.warn('[Co-pilot] capture problem on the client:', captureError); // client's id for this screen: new capture → tags the seen row; repeat → reuse that row
     const ask = String(req.body.ask || req.body.transcript || '').trim(); // `transcript` = the older client field
+    const say = !!req.body.say; // the Say button: answer what they just asked of this person (owner, 3 Oct)
     const live = liveWsForSession(sessionId);
     if (!live) return res.status(409).json({ error: 'Go Live first — co-pilot works during a live call' });
     const callId = live._callId;
@@ -2772,18 +2773,21 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     if (historyOn) { if (await readPendingScreens(sessionId, callId)) rows = await loadCallRows(callId); }
     const isPress = !!pressed || req.body.mode === 'check' || !ask;
     const reusing = !hasImage && screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey);
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], priorMemory: live._priorMemory || '', docs, ask, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    // Q&A bank = his real answers about himself; it rides with the résumé so "tell me about yourself" on a work call is true to him
+    const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
+    const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
-    console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
+    console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
     const screenState = hasImage ? 'captured' : reusing ? 'same' : rows.some(r => r.kind === 'seen') ? 'last' : 'none';
-    broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
+    broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, say, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
     if (mode === 'smart') console.log('[Co-pilot] screens given:', meetingCopilot.dedupeScreens(rows.filter(r => r.kind === 'seen')).map(r => (r.meta && r.meta.key || '?') + ' "' + r.text.replace(/\s+/g, ' ').slice(0, 50) + '"').join(' | ').slice(0, 1200));
 
     let content = textPrompt;
     if (hasImage) content = [imgBlock, { type: 'text', text: textPrompt }];
     const t0 = Date.now(); let first = 0;
-    const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, meetingCopilot.maxTokensFor(mode), model, t => {
+    const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, meetingCopilot.maxTokensFor(mode, say), model, t => {
       if (!first) first = Date.now() - t0;
       broadcastToSession(sessionId, { type: 'copilot_delta', cardId, text: t });
     }, meetingCopilot.requestExtrasFor(mode)) || '').trim();
@@ -3870,6 +3874,7 @@ wss.on('connection', (ws) => {
           // no Q&A card, no bank match, no bridges. One question is paid once.
           if (ws._copilotMode) {
             console.log('[Co-pilot] question routed to co-pilot:', q.substring(0, 60));
+            ws._copilotAskTs = Date.now(); // "just asked" for a later Say press starts after this
             const qd = { type: 'question_detected', text: q, source: 'copilot' };
             ws.send(JSON.stringify(qd)); broadcastToSession(sessionId, qd, ws);
             return;
@@ -4428,6 +4433,19 @@ wss.on('connection', (ws) => {
         const substantive = txt => { const t = String(txt || '').trim().toLowerCase(); if (!t) return false;
           if (/^(okay|ok|great|good|sure|right|thanks|thank you|makes sense|got it|perfect|awesome|cool|nice|alright|all right|mm+|hmm+|yeah|yes|no rush|take your time)\b[\s,.!]*((take your time|no rush)[\s,.!]*)?$/.test(t)) return false;
           return t.split(/\s+/).length >= 3 && !isLowValueQuestion(t); };
+        // MEETING CO-PILOT MODE (owner, 3 Oct): Say = "answer what they just asked me, right now" through the co-pilot door —
+        // with the pages, the call log, résumé + bank. Never the QA jump / bank-match below (that ignores the screen).
+        if (ws._copilotMode) {
+          const since = ws._copilotAskTs || 0;
+          let fresh = interviewerLines().filter(t => (t.ts || 0) > since && substantive(t.text)).slice(-3).map(t => t.text.trim());
+          if (substantive(currentBuf) && !fresh.includes(currentBuf)) fresh.push(currentBuf);
+          if (!fresh.length) fresh = recentLines.filter(t => substantive(t.text)).slice(-2).map(t => t.text.trim()); // nothing new since the last ask: they may be re-asking — take the last thing said
+          const text = fresh.join(' ').slice(0, 1200);
+          ws._copilotAskTs = Date.now();
+          console.log('[Co-pilot] Say pressed — ' + (text ? 'they just asked: "' + text.slice(0, 80) + '"' : 'nothing caught, answering the latest thing said'));
+          ws.send(JSON.stringify({ type: 'copilot_say', text }));
+          return;
+        }
         const newerQuestion = !lc || interviewerLines().some(t => (t.ts || 0) > lc.ts && substantive(t.text)) || substantive(currentBuf);
         // The jump ALWAYS happens first (owner: "don't remove the jump — it may be answered already, or the AI is still
         // writing it and I just need something to start talking"). If the interviewer asked something newer, the re-read
