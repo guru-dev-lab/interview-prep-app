@@ -23,6 +23,15 @@
     return null;
   }
 
+  // Auto-capture: true when this frame is a NEW page (matches no earlier capture) and has held still since the last
+  // check — a scroll or page transition is never captured mid-way. The caller registers the print once it sends it.
+  function stableNewScreen(state, print, prints) {
+    if (matchPrint(prints, print)) { state.prev = null; return false; }
+    var stable = !!(state.prev && !fingerprintChanged(state.prev, print));
+    state.prev = print;
+    return stable;
+  }
+
   // Browser only: draw the video/canvas source into a 32×18 canvas and return its gray values.
   function fingerprintFrom(source) {
     var c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -32,5 +41,5 @@
     return out;
   }
 
-  return { fingerprintChanged: fingerprintChanged, matchPrint: matchPrint, fingerprintFrom: fingerprintFrom, W: W, H: H };
+  return { fingerprintChanged: fingerprintChanged, matchPrint: matchPrint, stableNewScreen: stableNewScreen, fingerprintFrom: fingerprintFrom, W: W, H: H };
 });
