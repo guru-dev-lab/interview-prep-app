@@ -114,6 +114,8 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 /* Co-pilot tag */
 .sc-tag.copilot{background:rgba(99,102,241,.2);color:#A5B4FC}
 .sc-card.copilot-card{border-left-color:#818CF8}
+.copilot-screen-chip{margin-left:auto;font:600 9px Inter,sans-serif;color:#A5B4FC;background:rgba(99,102,241,.14);border-radius:4px;padding:2px 6px;white-space:nowrap}
+.copilot-screen-chip.bad{color:#FCA5A5;background:rgba(248,113,113,.14)}
 .copilot-transcript{font:400 9px Inter,sans-serif;color:var(--text4);margin-bottom:4px;padding:2px 8px;background:rgba(255,255,255,.02);border-radius:4px;font-style:italic}
 
 /* ===== CO-PILOT GEAR MODAL ===== */
@@ -1361,7 +1363,7 @@ function connect() {
         addCard(msg.questionId, msg.questionText || 'Screen Assist', msg.answer || '', 'screen', 0, false, true);
       }
     }
-    else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode); }
+    else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason); }
     else if (msg.type === 'copilot_delta') { copilotCardDelta(msg.cardId, msg.text); }
     else if (msg.type === 'copilot_done') { copilotCardDone(msg.cardId, msg.answer); }
     else if (msg.type === 'status') {
@@ -2883,32 +2885,44 @@ async function copilotCapture() {
 }
 
 // Grab a frame; the image is returned only when the screen moved since the last send
+// Every failure names its stage — the server logs it and the card shows it (3 Oct: presses arrived as "no image" with
+// no reason anywhere; never a silent no-image again).
 async function copilotFrame() {
-  var stream = (screenStream && screenStream.active) ? screenStream : await getScreenStream();
-  if (!stream) { console.warn('[Co-pilot] No screen stream'); return { image: null, changed: false }; }
-  var image = await captureFrame(stream);
-  if (!image) return { image: null, changed: false };
-  var img = new Image(); img.src = image;
-  await new Promise(function (r) { img.onload = r; img.onerror = r; });
-  var print = CopilotFingerprint.fingerprintFrom(img);
-  var key = CopilotFingerprint.matchPrint(copilotPrints, print);
-  if (key) { console.log('[Co-pilot] screen seen before (' + key + ') — reusing, not re-sending'); return { image: null, changed: false, key: key }; }
-  key = 'scr-' + Date.now().toString(36);
-  copilotPrints.push({ key: key, print: print });
-  console.log('[Co-pilot] new screen (' + key + ') — sending it');
-  return { image: image, changed: true, key: key };
+  var stage = 'stream';
+  try {
+    var stream = (screenStream && screenStream.active) ? screenStream : await getScreenStream();
+    if (!stream) return { image: null, changed: false, error: 'stream: no screen stream (permission or no display)' };
+    stage = 'capture';
+    var image = await captureFrame(stream);
+    if (!image) return { image: null, changed: false, error: 'capture: captureFrame returned nothing (video not ready?)' };
+    stage = 'fingerprint';
+    if (typeof CopilotFingerprint === 'undefined') return { image: image, changed: true, key: 'scr-' + Date.now().toString(36), error: 'fingerprint: CopilotFingerprint not loaded — sending the frame anyway' };
+    var img = new Image(); img.src = image;
+    await new Promise(function (r) { img.onload = r; img.onerror = r; });
+    var print = CopilotFingerprint.fingerprintFrom(img);
+    var key = CopilotFingerprint.matchPrint(copilotPrints, print);
+    if (key) { console.log('[Co-pilot] screen seen before (' + key + ') — reusing, not re-sending'); return { image: null, changed: false, key: key }; }
+    key = 'scr-' + Date.now().toString(36);
+    copilotPrints.push({ key: key, print: print });
+    console.log('[Co-pilot] new screen (' + key + ') — sending it');
+    return { image: image, changed: true, key: key };
+  } catch (e) {
+    console.warn('[Co-pilot] capture failed at ' + stage + ':', e);
+    // a fingerprint failure must not cost the capture: send the frame without a key
+    if (stage === 'fingerprint' && image) return { image: image, changed: true, key: 'scr-' + Date.now().toString(36), error: stage + ': ' + (e && e.message || e) + ' — frame sent anyway' };
+    return { image: null, changed: false, error: stage + ': ' + (e && e.message || e) };
+  }
 }
 
 async function copilotSend(opts) {
   if (!SESSION_ID || !TOKEN) return;
   opts = opts || {};
-  var frame = { image: null, changed: false };
-  try { frame = await copilotFrame(); } catch (e) { console.warn('[Co-pilot] Screen capture failed:', e); }
+  var frame = await copilotFrame();
   try {
     var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, image: frame.image, screenChanged: frame.changed, screenKey: frame.key || '', context: getCopilotContext() })
+      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, image: frame.image, screenChanged: frame.changed, screenKey: frame.key || '', captureError: frame.error || '', context: getCopilotContext() })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -2925,13 +2939,15 @@ function removeCard(id) {
 }
 
 // Streamed card: start → one card; deltas fill it; done fixes the final text
-function copilotCardStart(cardId, ask, mode) {
+function copilotCardStart(cardId, ask, mode, screen, reason) {
   var feed = $('feed'); if (!feed) return;
   var empty = $('empty-state'); if (empty) empty.style.display = 'none';
   var askHtml = ask ? '<div class="copilot-transcript">🎙 "' + esc(String(ask).substring(0, 200)) + '"</div>' : '';
+  // what happened to the screen on this press — the owner must SEE that a capture landed (or why not)
+  var chip = screen === 'captured' ? '📸 captured' : screen === 'same' ? '♻️ same page as before' : screen === 'last' ? '🗂 last capture' : '⚠️ no screen' + (reason ? ': ' + esc(String(reason).slice(0, 90)) : '');
   feed.insertAdjacentHTML('beforeend',
     '<div class="sc-card copilot-card" id="card-' + cardId + '">' +
-      '<div class="sc-card-q"><span class="sc-tag copilot">🤖 Co-pilot' + (mode === 'smart' ? ' · history' : '') + '</span></div>' +
+      '<div class="sc-card-q"><span class="sc-tag copilot">🤖 Co-pilot' + (mode === 'smart' ? ' · history' : '') + '</span><span class="copilot-screen-chip' + (screen === 'none' ? ' bad' : '') + '">' + chip + '</span></div>' +
       askHtml + '<div class="sc-card-a">…</div></div>');
   var el = document.getElementById('card-' + cardId);
   copilotCards[cardId] = { el: el, text: '' };

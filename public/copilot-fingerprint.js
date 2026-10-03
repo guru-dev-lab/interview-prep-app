@@ -1,9 +1,10 @@
 // Screen fingerprint — ONE copy shared by the browser (canvas.html <script>) and node tests.
 // A frame is reduced to a tiny grayscale thumbnail (32×18); two thumbnails differ when enough pixels moved.
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.CopilotFingerprint = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  var api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.CopilotFingerprint = api; // always set the global too (a page may have a `module` object)
+})(typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : this), function () {
   var W = 32, H = 18;
   var PIXEL_DELTA = 24;     // one pixel counts as moved when its gray value shifts by more than this (0–255)
   var CHANGED_SHARE = 0.03; // the frame counts as changed when more than 3% of pixels moved
