@@ -2360,10 +2360,15 @@ function applyRecordInterval(val) {
     var e = lastEvt; if (!e) return;
     var el = document.elementFromPoint(e.clientX, e.clientY);
     var solid = !!(el && el.closest && el.closest(SOLID));
-    var want = !solid;
+    // A drag in progress (corner resize, toolbar move) must never flip the window to click-through: the pointer outruns
+    // the resizing window onto a see-through spot, the OS then sends the mouse-up to the app behind, and the resize
+    // keeps following the mouse (owner, 3 Oct: "mouse won't release it"). Button held = stay solid until it is released.
+    var held = (e.buttons || 0) !== 0;
+    var want = !solid && !held;
     if (want !== through) { through = want; api.setClickThrough(want); }
   }
   document.addEventListener('mousemove', function(e) { lastEvt = e; if (!pending) { pending = true; requestAnimationFrame(apply); } }, true);
+  document.addEventListener('mouseup', function(e) { lastEvt = e; if (!pending) { pending = true; requestAnimationFrame(apply); } }, true); // a finished drag re-evaluates where the pointer is
   document.addEventListener('mouseleave', function() { if (through !== false) { through = false; api.setClickThrough(false); } }); // never stuck ignoring
 })();
 
