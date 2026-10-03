@@ -296,6 +296,6 @@ console.log('ALL PASS (code runs as written)');
 
 // ---- 3 Oct 11:47: on the 9-page + 2-min-briefing context the answer took 29.8 s to first word and was cut at Q5
 // (1358 chars): adaptive thinking at medium ballooned and shared the cap. Effort low; cap no longer competes.
-assert(mc.requestExtrasFor('smart').output_config.effort === 'low', 'History mode thinks at LOW effort (live meeting: seconds matter)');
+assert(mc.requestExtrasFor('smart').thinking.type === 'disabled' && !mc.requestExtrasFor('smart').output_config, 'History mode: thinking OFF (measured 3 Oct on the 10-question battery: 10/10 either way; thinking blew first words to 13–30 s on his real context)');
 assert(mc.maxTokensFor('smart') >= 8000, 'cap leaves room for thinking + a ten-question answer');
-console.log('ALL PASS (thinking low, cap 8000)');
+console.log('ALL PASS (thinking off, cap 8000)');
