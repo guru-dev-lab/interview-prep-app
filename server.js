@@ -2714,7 +2714,7 @@ async function readPendingScreens(sessionId, callId) {
       console.log(`[Co-pilot] read ${p.key} (${txt.length} chars) :: ${txt.replace(/\s+/g, ' ').slice(0, 200)}`);
     } catch (e) { console.error('[Co-pilot] read failed for', p.key, e.message); }
   };
-  for (let i = 0; i < pend.length; i += 4) await Promise.all(pend.slice(i, i + 4).map(one));
+  for (let i = 0; i < pend.length; i += 8) await Promise.all(pend.slice(i, i + 8).map(one)); // 8 at a time: 9 pages took 18 s at 4
   console.log(`[Co-pilot] read ${done} pending screens at assist in ${Date.now() - t0}ms on ${tModel}`);
   return done;
 }

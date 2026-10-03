@@ -2952,7 +2952,13 @@ async function copilotCaptureNow(auto) {
   if (!SESSION_ID || !TOKEN) return 'no-session';
   var stream = (screenStream && screenStream.active) ? screenStream : await getScreenStream();
   if (!stream) { if (!auto) showToast('No screen stream — allow Screen Recording and Go Live again', '', 4000); return 'no-stream'; }
-  var image = await captureFrame(stream, COPILOT_CAPTURE_W);
+  // The overlay must never be in the frame (3 Oct: a capture with the panel over the terms table read "obscured"):
+  // hide it from capture for the grab when the eye toggle has it visible, then put it back.
+  var hid = false;
+  if (!stealthOn && window.electronAPI && window.electronAPI.setStealth) { try { await window.electronAPI.setStealth(true); hid = true; await new Promise(function (r) { setTimeout(r, 120); }); } catch (e) {} }
+  var image;
+  try { image = await captureFrame(stream, COPILOT_CAPTURE_W); }
+  finally { if (hid) { try { window.electronAPI.setStealth(false); } catch (e) {} } }
   if (!image || !lastCaptureCanvas) return 'no-frame';
   var print = CopilotFingerprint.fingerprintFrom(lastCaptureCanvas);
   if (auto) { if (!CopilotFingerprint.stableNewScreen(copilotWatchState, print, copilotPrints)) return CopilotFingerprint.matchPrint(copilotPrints, print) ? 'known' : 'unstable'; }
@@ -2969,8 +2975,13 @@ async function copilotCaptureNow(auto) {
       body: JSON.stringify({ auto: !!auto, capture: !auto, image: image, screenChanged: true, screenKey: key, context: getCopilotContext() })
     });
     data = await res.json();
-  } catch (e) { copilotPendingKeys.delete(key); copilotUnnoteCapture(); throw e; }
-  if (!data.captured) { copilotPendingKeys.delete(key); copilotUnnoteCapture(); }
+  } catch (e) { copilotPendingKeys.delete(key); copilotUnnoteCapture(); copilotPrints = copilotPrints.filter(function (x) { return x.key !== key; }); throw e; }
+  if (!data.captured) {
+    copilotPendingKeys.delete(key); copilotUnnoteCapture();
+    // not kept by the server (refused / error) → forget the print so the next tick or press retries this page;
+    // "unchanged" means the server already has it under another key, so keep it known
+    if (!data.unchanged) copilotPrints = copilotPrints.filter(function (x) { return x.key !== key; });
+  }
   if (data.error) { if (!auto) showToast('Capture refused: ' + data.error, '', 3500); return 'refused: ' + data.error; }
   return data.captured ? 'captured' : data.unchanged ? 'unchanged' : data.ignored ? 'ignored' : 'ok';
 }
@@ -3110,13 +3121,15 @@ function styleCopilotCard(el) {
     if (q.parentNode !== a) return;
     var block = document.createElement('div'); block.className = 'cp-block';
     a.insertBefore(block, q);
-    var cur = q, first = true;
+    var cur = q, res = null;
     while (cur && !(cur !== q && cur.classList && cur.classList.contains('cp-q'))) {
       var nxt = cur.nextElementSibling;
       block.appendChild(cur);
-      if (first && nxt && !(nxt.classList && nxt.classList.contains('cp-q'))) { nxt.classList.add('cp-a'); }
-      first = false; cur = nxt;
+      if (cur !== q && /^Result:/.test((cur.textContent || '').trim())) res = cur;
+      cur = nxt;
     }
+    // the model writes the working first and "Result:" last; the owner reads the result first
+    if (res) { res.classList.add('cp-a'); res.innerHTML = res.innerHTML.replace(/^\s*Result:\s*/, ''); block.insertBefore(res, q.nextSibling); }
   });
 }
 function copilotCardDelta(cardId, text) {
