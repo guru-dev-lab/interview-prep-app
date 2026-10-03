@@ -53,4 +53,5 @@ ok(/paused: copilotAutoPaused/.test(src), 'the watcher reports paused in its hea
 ok(/function styleCopilotCard\(/.test(src) && /cp-q/.test(src) && /cp-a/.test(src) && /styleCopilotCard\(c\.el\)/.test(src), 'co-pilot cards style the question line and the Answer line so he can scan and speak');
 ok(/cp-block/.test(src) && /function styleCopilotCard\([\s\S]{0,1800}cp-block/.test(src), 'each question + answer is wrapped in its own card inside the co-pilot answer');
 ok(/nextElementSibling/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 1800)), 'the line right after a question line is the result line (label or not)');
+ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mode \.sh-kw\{color:#0000FF/.test(src), 'code blocks use the VS Code Dark+ / Light+ palettes (owner: the red is straining)');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

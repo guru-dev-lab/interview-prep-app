@@ -266,3 +266,8 @@ console.log('ALL PASS (answer-first blocks)');
   assert(mc.SMART_RAW_CHARS >= 16000 && typeof mc.rawCharsOf === 'function', 'budget and measurer exported (the server compacts first when the raw part overflows and no digest exists)');
   console.log('ALL PASS (raw transcript by characters)');
 }
+
+// ---- 3 Oct 11:37: the SQL used EXTRACT(DAY FROM date - date) — fails on Postgres (date - date is an integer) — and
+// multiplied by a percent column without saying whether it holds 2 or 0.02 → code must run as written, assumptions stated
+assert(/run as written/i.test(mc.MEETING_PROMPT) && /date - date/i.test(mc.MEETING_PROMPT) && /state the assumption/i.test(mc.MEETING_PROMPT), 'code must run as written on the stated engine; types/units respected; assumptions stated in the plain line');
+console.log('ALL PASS (code runs as written)');
