@@ -101,4 +101,5 @@ const pre = require('fs').readFileSync(require('path').join(__dirname, '..', 'el
 ok(/ipcMain\.handle\('capture-display'/.test(main) && /desktopCapturer\.getSources\(\{ types: \['screen'\], thumbnailSize/.test(main) && /ipcMain\.handle\('get-bounds'/.test(main), 'desktop app: capture-display via desktopCapturer thumbnails + get-bounds');
 ok(/captureDisplay: \(maxW\) => ipcRenderer\.invoke\('capture-display', maxW\)/.test(pre) && /getBounds: \(\) => ipcRenderer\.invoke\('get-bounds'\)/.test(pre), 'preload exposes captureDisplay + getBounds');
 ok(/"version": "1\.1\.4"/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'electron', 'package.json'), 'utf8')), 'desktop version 1.1.4');
+ok(/\/\\d\/\.test\(sp\[1\]\)/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 1600)), 'a page tag with no number is not shown (single-page test showed an empty PAGE chip)');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
