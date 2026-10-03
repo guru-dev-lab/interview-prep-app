@@ -2683,7 +2683,9 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   try {
     const sessionId = req.params.id;
     const { image, pressed, context } = req.body;
-    const screenKey = String(req.body.screenKey || '').slice(0, 40); // client's id for this screen: new capture → tags the seen row; repeat → reuse that row
+    const screenKey = String(req.body.screenKey || '').slice(0, 40);
+    const captureError = String(req.body.captureError || '').slice(0, 200);
+    if (captureError) console.warn('[Co-pilot] capture problem on the client:', captureError); // client's id for this screen: new capture → tags the seen row; repeat → reuse that row
     const ask = String(req.body.ask || req.body.transcript || '').trim(); // `transcript` = the older client field
     const live = liveWsForSession(sessionId);
     if (!live) return res.status(409).json({ error: 'Go Live first — co-pilot works during a live call' });
@@ -2706,7 +2708,8 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
-    broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode });
+    const screenState = hasImage ? 'captured' : reusing ? 'same' : rows.some(r => r.kind === 'seen') ? 'last' : 'none';
+    broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
 
     let content = textPrompt;
     if (hasImage) {

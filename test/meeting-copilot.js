@@ -134,3 +134,14 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
   assert(mc.modelFor('smart') === 'sonnet' && typeof mc.requestExtrasFor === 'function', 'per-mode request extras (thinking/effort) come from one place');
   console.log('ALL PASS (smartest-mode rules)');
 }
+
+// ---- the fingerprint file must expose window.CopilotFingerprint even where `module` exists (Electron renderer with
+// node integration: 3 Oct the overlay captured nothing — the UMD check saw `module` and never set the global)
+{
+  const src = require('fs').readFileSync(path.join(__dirname, '..', 'public', 'copilot-fingerprint.js'), 'utf8');
+  const fakeWindow = {}; const fakeModule = { exports: {} };
+  new Function('module', 'self', 'window', src)(fakeModule, fakeWindow, fakeWindow);
+  assert(fakeWindow.CopilotFingerprint && typeof fakeWindow.CopilotFingerprint.matchPrint === 'function', 'global set even when module exists');
+  assert(fakeModule.exports && typeof fakeModule.exports.matchPrint === 'function', 'module export still set');
+  console.log('ALL PASS (fingerprint global under Electron)');
+}
