@@ -1153,7 +1153,7 @@ function setMode(mode) {
     // Only show the pulsing dot when actually live
     if (electronLive) { cpDot.style.display = ''; }
     var cb = $('copilot-history'); if (cb) cb.checked = copilotHistory;
-    copilotScreenPrint = null; // first capture of this co-pilot stint always goes up
+    copilotPrints = []; // first capture of this co-pilot stint always goes up
   } else {
     copilotActive = false;
     qaBtn.className = 'mode-btn active';
@@ -2862,7 +2862,7 @@ async function goLiveElectron() {
 // on this call (server runs it as smart mode). Cards stream in over the live socket (copilot_start/delta/done).
 var copilotActive = false;
 var copilotHistory = !!loadSetting('copilotHistory');
-var copilotScreenPrint = null; // fingerprint of the last frame sent
+var copilotPrints = []; // [{ key, print }] every screen sent this stint — a page shown again is reused, not re-sent
 var copilotFiles = []; // { name, size, content (extracted text) }
 var copilotInstructions = ''; // Custom instructions text
 var copilotCards = {}; // cardId → { el, text }
@@ -2895,10 +2895,12 @@ async function copilotFrame() {
   var img = new Image(); img.src = image;
   await new Promise(function (r) { img.onload = r; img.onerror = r; });
   var print = CopilotFingerprint.fingerprintFrom(img);
-  var changed = CopilotFingerprint.fingerprintChanged(copilotScreenPrint, print);
-  if (changed) copilotScreenPrint = print;
-  console.log('[Co-pilot] screen ' + (changed ? 'changed — sending it' : 'unchanged — text only'));
-  return { image: changed ? image : null, changed: changed };
+  var key = CopilotFingerprint.matchPrint(copilotPrints, print);
+  if (key) { console.log('[Co-pilot] screen seen before (' + key + ') — reusing, not re-sending'); return { image: null, changed: false, key: key }; }
+  key = 'scr-' + Date.now().toString(36);
+  copilotPrints.push({ key: key, print: print });
+  console.log('[Co-pilot] new screen (' + key + ') — sending it');
+  return { image: image, changed: true, key: key };
 }
 
 async function copilotSend(opts) {
@@ -2910,7 +2912,7 @@ async function copilotSend(opts) {
     var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, image: frame.image, screenChanged: frame.changed, context: getCopilotContext() })
+      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, image: frame.image, screenChanged: frame.changed, screenKey: frame.key || '', context: getCopilotContext() })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);

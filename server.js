@@ -2683,6 +2683,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   try {
     const sessionId = req.params.id;
     const { image, pressed, context } = req.body;
+    const screenKey = String(req.body.screenKey || '').slice(0, 40); // client's id for this screen: new capture → tags the seen row; repeat → reuse that row
     const ask = String(req.body.ask || req.body.transcript || '').trim(); // `transcript` = the older client field
     const live = liveWsForSession(sessionId);
     if (!live) return res.status(409).json({ error: 'Go Live first — co-pilot works during a live call' });
@@ -2700,10 +2701,11 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     if (!digest) { const d = rows.filter(r => r.kind === 'digest').pop(); if (d) digest = d.text; }
     const hasImage = !!image;
     const isPress = !!pressed || req.body.mode === 'check' || !ask;
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], docs, ask, pressed: isPress, screenChanged: hasImage });
+    const reusing = !hasImage && screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey);
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], docs, ask, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
-    console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
+    console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
     broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode });
 
     let content = textPrompt;
@@ -2713,16 +2715,22 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       content = [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: image.replace(/^data:image\/\w+;base64,/, '') } }, { type: 'text', text: textPrompt }];
     }
     const t0 = Date.now(); let first = 0;
-    const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, 500, model, t => {
+    const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, meetingCopilot.maxTokensFor(mode), model, t => {
       if (!first) first = Date.now() - t0;
       broadcastToSession(sessionId, { type: 'copilot_delta', cardId, text: t });
-    }) || '').trim();
+    }, meetingCopilot.requestExtrasFor(mode)) || '').trim();
     console.log(`[Co-pilot] answered in ${Date.now() - t0}ms (first words ${first}ms, ${answer.length} chars)`);
     broadcastToSession(sessionId, { type: 'copilot_done', cardId, answer });
 
     // Log what was seen (the model's own "On screen" line) and what was said, then compact in the background
     const writes = [];
-    if (hasImage) { const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; if (seen) writes.push(recordCallEvent(sessionId, callId, 'seen', seen, {})); }
+    if (hasImage && historyOn) {
+      // Smart mode: the whole page is transcribed in the background (Haiku) so a question pages later can use it
+      const t1 = Date.now();
+      writes.push(callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, content[0].source.data, 'Transcribe the screen.', 700, MODEL_HAIKU, content[0].source.media_type)
+        .then(txt => { console.log(`[Co-pilot] screen transcribed in ${Date.now() - t1}ms (${String(txt).length} chars)`); return recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true }); })
+        .catch(e => { console.error('[Co-pilot] transcription failed:', e.message); const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; return seen ? recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey }) : false; }));
+    } else if (hasImage) { const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; if (seen) writes.push(recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey })); }
     writes.push(recordCallEvent(sessionId, callId, 'said', answer.slice(0, 600), { mode }));
     await Promise.all(writes); // on record before we answer — the response never claims what isn't logged yet
     maybeCompactCall(sessionId, callId, rows, historyOn);
