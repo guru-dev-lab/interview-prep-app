@@ -2895,10 +2895,17 @@ function setCopilotHistory(on) {
 // ===== AUTO-CAPTURE (History on, Electron, live): a new page that has settled is read in the background — no card, a
 // short toast. Owner (3 Oct): "It should!!" — he clicked through pages 2–6 without the camera and co-pilot never saw them.
 var copilotWatchTimer = null, copilotWatchState = {}, copilotWatchBusy = false;
+var copilotAutoPaused = false; // play/pause on the pill (owner, 3 Oct): he tells the watcher when to stop and continue
+function toggleCopilotPause() {
+  copilotAutoPaused = !copilotAutoPaused;
+  var b = $('copilot-pause'); if (b) { b.innerHTML = copilotAutoPaused ? '&#9654;' : '&#10074;&#10074;'; b.style.color = copilotAutoPaused ? '#FCA5A5' : ''; }
+  showToast(copilotAutoPaused ? 'Auto-capture paused — camera still works' : 'Auto-capture on', 'info', 1400);
+  copilotWatchSync();
+}
 var COPILOT_WATCH_MS = 1000; // a page settles (two identical checks) in ~2 s
 var COPILOT_CAPTURE_W = 1568; // the most the model uses on the long edge; a page that is 1/3 of a Retina display needs every pixel
 function copilotWatchSync() {
-  var want = !!(copilotActive && copilotHistory && electronLive);
+  var want = !!(copilotActive && copilotHistory && electronLive && !copilotAutoPaused);
   if (want && !copilotWatchTimer) { copilotWatchState = {}; copilotWatchTimer = setInterval(copilotWatchTick, COPILOT_WATCH_MS); console.log('[Co-pilot] auto-capture watching'); }
   if (!want && copilotWatchTimer) { clearInterval(copilotWatchTimer); copilotWatchTimer = null; console.log('[Co-pilot] auto-capture off'); }
 }
@@ -2909,7 +2916,7 @@ function copilotWatchReport(force) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'copilot_watch', stats: { ticks: watchStats.ticks, outcomes: watchStats.outcomes, lastError: watchStats.lastError, live: electronLive, copilot: copilotActive, history: copilotHistory, prints: copilotPrints.length, stream: !!(screenStream && screenStream.active) } }));
 }
 async function copilotWatchTick() {
-  if (!(copilotActive && copilotHistory && electronLive) || copilotWatchBusy || !SESSION_ID || !TOKEN) return;
+  if (!(copilotActive && copilotHistory && electronLive && !copilotAutoPaused) || copilotWatchBusy || !SESSION_ID || !TOKEN) return;
   copilotWatchBusy = true; watchStats.ticks++;
   try {
     var out = await copilotCaptureNow(true);
@@ -3378,6 +3385,7 @@ startElapsedTimer();
   <div class="cpf-sep"></div>
   <label class="copilot-history" data-tip="History: use everything said and shown on this call"><input type="checkbox" id="copilot-history" onchange="setCopilotHistory(this.checked)"><span>Hist</span></label>
   <div class="cpf-sep"></div>
+  <button class="copilot-gear-btn" id="copilot-pause" data-tip="Pause / continue auto-capture" onclick="toggleCopilotPause()">&#10074;&#10074;</button>
   <span class="copilot-count" id="copilot-count" data-tip="Pages captured — click to see them" onclick="toggleCaptureList()">0</span>
 </div>
 </body>
