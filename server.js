@@ -2702,6 +2702,24 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     let digest = (copilotDigests.get(callId) || {}).text;
     if (!digest) { const d = rows.filter(r => r.kind === 'digest').pop(); if (d) digest = d.text; }
     const hasImage = !!image;
+    let imgBlock = null;
+    if (hasImage) {
+      const sniffed = meetingCopilot.sniffImage(image); // raw base64 from the overlay: type decided from the bytes
+      imgBlock = { type: 'image', source: { type: 'base64', media_type: sniffed.mediaType, data: sniffed.data } };
+    }
+    if (req.body.auto) {
+      // AUTO-CAPTURE (History on): read the new page in the background — no answer, no card, a toast on the overlay
+      if (!historyOn) return res.json({ ignored: true, reason: 'history off' });
+      if (!hasImage) return res.status(400).json({ error: 'auto capture needs an image' });
+      if (screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey)) return res.json({ unchanged: true, key: screenKey });
+      const t1 = Date.now();
+      const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, imgBlock.source.data, 'Transcribe the screen.', 700, MODEL_HAIKU, imgBlock.source.media_type) || '').trim();
+      await recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true, auto: true });
+      console.log(`[Co-pilot] auto-captured page ${screenKey || '(no key)'} in ${Date.now() - t1}ms (${txt.length} chars)`);
+      broadcastToSession(sessionId, { type: 'copilot_captured', key: screenKey, chars: txt.length });
+      maybeCompactCall(sessionId, callId, rows.concat([{ kind: 'seen', text: txt, meta: { key: screenKey }, ts: Date.now() }]), historyOn);
+      return res.json({ captured: true, key: screenKey, chars: txt.length });
+    }
     const isPress = !!pressed || req.body.mode === 'check' || !ask;
     const reusing = !hasImage && screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey);
     const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], docs, ask, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
@@ -2712,11 +2730,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
 
     let content = textPrompt;
-    if (hasImage) {
-      const mediaMatch = image.match(/^data:image\/([\w+]+);base64,/);
-      const mediaType = mediaMatch ? 'image/' + mediaMatch[1] : 'image/jpeg';
-      content = [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: image.replace(/^data:image\/\w+;base64,/, '') } }, { type: 'text', text: textPrompt }];
-    }
+    if (hasImage) content = [imgBlock, { type: 'text', text: textPrompt }];
     const t0 = Date.now(); let first = 0;
     const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, meetingCopilot.maxTokensFor(mode), model, t => {
       if (!first) first = Date.now() - t0;

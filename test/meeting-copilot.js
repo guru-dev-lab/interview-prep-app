@@ -145,3 +145,33 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
   assert(fakeModule.exports && typeof fakeModule.exports.matchPrint === 'function', 'module export still set');
   console.log('ALL PASS (fingerprint global under Electron)');
 }
+
+// ---- auto-capture (History on): a NEW page that has settled for two checks is captured once; scrolling/transitions and
+// pages already captured are not
+{
+  const a = new Array(32 * 18).fill(50), b = a.map((v, i) => (i % 32 > 10 ? 220 : v));
+  const prints = [{ key: 'scr-1', print: a }];
+  const st = {};
+  assert(fp.stableNewScreen(st, b, prints) === false, 'first sight of a new page: not yet (unstable)');
+  assert(fp.stableNewScreen(st, b, prints) === true, 'same new page on the next check: capture');
+  assert(fp.stableNewScreen(st, b, prints) === true, 'still new until the caller registers it');
+  assert(fp.stableNewScreen(st, a, prints) === false, 'a page already captured: never');
+  assert(fp.stableNewScreen(st, a.map(v => v + 2), prints) === false, 'same page with noise: never');
+  const c = a.map((v, i) => (i < 300 ? 200 : v));
+  assert(fp.stableNewScreen(st, c, prints) === false && fp.stableNewScreen(st, b, prints) === false, 'flipping between pages resets stability');
+  console.log('ALL PASS (auto-capture stability)');
+}
+
+// ---- the overlay sends raw base64 (no data-URL prefix): the server must sniff the real type, never assume JPEG
+{
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).toString('base64');
+  const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]).toString('base64');
+  const webp = Buffer.from('RIFF\u0000\u0000\u0000\u0000WEBPVP8 ', 'binary').toString('base64');
+  assert.deepStrictEqual(mc.sniffImage(png), { mediaType: 'image/png', data: png }, 'raw PNG');
+  assert.deepStrictEqual(mc.sniffImage(jpg), { mediaType: 'image/jpeg', data: jpg }, 'raw JPEG');
+  assert.strictEqual(mc.sniffImage(webp).mediaType, 'image/webp', 'raw WEBP');
+  assert.deepStrictEqual(mc.sniffImage('data:image/png;base64,' + png), { mediaType: 'image/png', data: png }, 'data URL stripped + typed');
+  assert.strictEqual(mc.sniffImage('data:image/jpeg;base64,' + png).mediaType, 'image/png', 'bytes beat a wrong data-URL label');
+  assert.strictEqual(mc.sniffImage('').data, '', 'empty stays empty');
+  console.log('ALL PASS (image type sniffing)');
+}
