@@ -1970,9 +1970,10 @@ function captureFrame(stream, maxW) {
         // covers page content in the stored image, never reads as page text, and its streaming cards never count as a
         // screen change. Content protection hides us from other apps, not from this grab (owner's thumbnail, 3 Oct).
         if (maxW && window.CopilotFingerprint && screen && screen.width) {
-          var r = CopilotFingerprint.overlayRect(w, h, screen.width, screen.height, window.screenX - (screen.availLeft || 0), window.screenY - (screen.availTop || 0), window.outerWidth, window.outerHeight);
+          var r = CopilotFingerprint.overlayRect(w, h, screen.width, screen.height, window.screenX, window.screenY, window.outerWidth, window.outerHeight);
+          lastMaskRect = r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), frame: w + 'x' + h, screen: screen.width + 'x' + screen.height, win: window.screenX + ',' + window.screenY + ' ' + window.outerWidth + 'x' + window.outerHeight } : { none: true, screen: screen.width + 'x' + screen.height, win: window.screenX + ',' + window.screenY + ' ' + window.outerWidth + 'x' + window.outerHeight };
           if (r) { cx.fillStyle = '#8a8d94'; cx.fillRect(r.x, r.y, r.w, r.h); cx.fillStyle = '#2a2d33'; cx.font = 'bold ' + Math.max(14, Math.round(r.w / 18)) + 'px sans-serif'; cx.textAlign = 'center'; cx.fillText('xHire overlay, ignore', r.x + r.w / 2, r.y + Math.min(r.h / 2, 60)); }
-        }
+        } else lastMaskRect = null;
         lastFrameSig = frameSignature(canvas);
         lastCaptureCanvas = canvas;
         video.pause();
@@ -1989,6 +1990,7 @@ function captureFrame(stream, maxW) {
 
 // Tiny grey thumbnail of a frame — lets the Record loop skip a screen that hasn't changed (no API call, no card)
 var lastFrameSig = null, lastSentSig = null;
+var lastMaskRect = null; // what the last co-pilot capture painted out (reported to the server: the log must say)
 var lastCaptureCanvas = null; // the canvas of the latest captureFrame — co-pilot fingerprints from it (captureFrame returns raw base64, not a data URL)
 function frameSignature(src) {
   try {
@@ -2982,7 +2984,7 @@ async function copilotCaptureNow(auto) {
   try {
     var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
       method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auto: !!auto, capture: !auto, image: image, screenChanged: true, screenKey: key, context: getCopilotContext() })
+      body: JSON.stringify({ auto: !!auto, capture: !auto, image: image, screenChanged: true, screenKey: key, mask: lastMaskRect, context: getCopilotContext() })
     });
     data = await res.json();
   } catch (e) { copilotPendingKeys.delete(key); copilotUnnoteCapture(); copilotPrints = copilotPrints.filter(function (x) { return x.key !== key; }); throw e; }

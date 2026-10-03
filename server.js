@@ -2764,7 +2764,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       }
       await pool.query('INSERT INTO call_screens (session_id, call_id, key, media_type, image, meta) VALUES ($1, $2, $3, $4, $5, $6)',
         [sessionId, callId, screenKey || ('scr-' + Date.now().toString(36)), imgBlock.source.media_type, Buffer.from(imgBlock.source.data, 'base64'), JSON.stringify({ auto: !!req.body.auto, camera: !!req.body.capture })]);
-      console.log(`[Co-pilot] ${req.body.auto ? 'auto-captured' : 'camera-captured'} page ${screenKey || '(no key)'} stored (${(imgBlock.source.data.length / 1024).toFixed(0)}KB) — read at assist`);
+      console.log(`[Co-pilot] ${req.body.auto ? 'auto-captured' : 'camera-captured'} page ${screenKey || '(no key)'} stored (${(imgBlock.source.data.length / 1024).toFixed(0)}KB) — read at assist | mask=${JSON.stringify(req.body.mask || null)}`);
       broadcastToSession(sessionId, { type: 'copilot_captured', key: screenKey });
       return res.json({ captured: true, stored: true, key: screenKey });
     }
