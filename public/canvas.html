@@ -1371,7 +1371,7 @@ function connect() {
     else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason); }
     else if (msg.type === 'copilot_delta') { copilotCardDelta(msg.cardId, msg.text); }
     else if (msg.type === 'copilot_done') { copilotCardDone(msg.cardId, msg.answer); }
-    else if (msg.type === 'copilot_captured') { if (copilotPendingKeys.has(msg.key)) { copilotPendingKeys.delete(msg.key); var cel = $('copilot-count'); if (cel) { cel.classList.add('flash'); setTimeout(function () { cel.classList.remove('flash'); }, 600); } } else copilotNoteCapture(); showToast('📸 Page captured — read in full', 'info', 1500); }
+    else if (msg.type === 'copilot_captured') { if (copilotPendingKeys.has(msg.key)) { copilotPendingKeys.delete(msg.key); var cel = $('copilot-count'); if (cel) { cel.classList.add('flash'); setTimeout(function () { cel.classList.remove('flash'); }, 600); } } else copilotNoteCapture(); showToast('📸 Page captured', 'info', 1200); } // read happens at Assist (data collection only)
     else if (msg.type === 'status') {
       // Server status message (e.g. "Canvas connected")
       console.log('[Server]', msg.message);

@@ -220,3 +220,7 @@ console.log('ALL PASS (transcribe content only)');
 // ---- owner 3 Oct: "when answering, it must use the structure.. like question #1 or whatever it saw"
 assert(/same labels/i.test(mc.MEETING_PROMPT) && /Question 1/.test(mc.MEETING_PROMPT) && /same order/i.test(mc.MEETING_PROMPT), 'answers mirror the structure on the page: same labels, same order, one block each');
 console.log('ALL PASS (answer mirrors page structure)');
+
+// ---- owner 3 Oct: "if answer is code then use code editor.. exact and style" → always a fenced block with the language
+assert(/```/.test(mc.MEETING_PROMPT) && /fenced code block/i.test(mc.MEETING_PROMPT) && /language/i.test(mc.MEETING_PROMPT) && /ready to paste/i.test(mc.MEETING_PROMPT), 'code/formula/SQL answers come as a fenced block with the language, complete, ready to paste');
+console.log('ALL PASS (code answers fenced)');
