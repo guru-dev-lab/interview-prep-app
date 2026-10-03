@@ -1,5 +1,30 @@
 # Handoff
 
+## 3 Oct 2026 (evening) — meeting co-pilot, PRs #42–#66, all LIVE
+- State: co-pilot (Electron only) = collect-then-assist. Auto-capture (Hist on, play on, 0.7 s tick, settle ~1.4 s) and
+  the camera store frames only (`call_screens`); nothing goes to a model until Assist / typed / heard question; then the
+  unread pages are read once (Sonnet, 8 at a time, overlay hidden from the frame), frames dropped after the read. A press
+  with nothing typed answers every open question across captured pages, one card each (page tag, question title,
+  working, "Result:" last → lifted to a green badge). Code: fenced with the language, must run as written on the stated
+  engine, VS Code palette, solid ground, 12.5px (font setting applies 1:1). Thinking OFF in History mode (measured 10/10
+  either way; thinking blew first words to 13–30 s on his real context). Session résumé/JD/earlier-call notes ride along,
+  gated "only if the call is about that job"; earlier-call notes never stand in for a page missing from this call.
+- Proven on his Mac today: 8-page pack 4/4; canal page 6/6 (voice+screen); ops-update listening test 8/8 (voice only);
+  Vendor Settlement (2-min briefing + 9 scroll parts + SQL + Python + 10 Qs) 10/10 twice with code that runs; first words
+  ~0.8 s, full 10-question answer 16–20 s incl. ~10 s reading nine pages.
+- Misses found and fixed today (each has a test): pill unclickable (SOLID list + DOM order), drag stuck, captures with
+  no image (captureFrame returns raw base64), fingerprint too coarse for a page at 1/3 of a Retina frame (64×36 Δ12 1%),
+  region rule that missed his pages (removed; owner control via play/pause instead), adaptive thinking eating the cap,
+  "Part 9 — Q1" wording breaking cards (QLINE), RESULT chip defeating the lift (match the chip), a 60% glass code block,
+  old `pre code{font-size:11px}` + grey base overriding the new look, uncaptured page filled from earlier-call notes.
+- Process slips to remember: shipped a look change (Open-in-browser button) he had not asked for → removed (#64); he
+  wants LOOK changes mocked in a Chrome artifact first. One merge went through with 2 red checks because the ship
+  command was chained without gating → gate on the test exit code (done since).
+- Open: his yes/no on re-asserting content protection every Go Live + 30 s with a clear hidden/visible state on the eye.
+  Watcher "Failed to fetch" at the start of a stint (live socket not up yet) is retried now but still noisy in the log.
+  All test artifacts deleted. Keys: ElevenLabs in DisasterForensics/.env (creator tier) for test audio.
+- Rollback: any `known-good-2026-10-03-*` tag; last = known-good-2026-10-03-missing-page.
+
 ## 3 Oct 2026 (afternoon) — co-pilot live-test fixes (PRs #32–#40)
 - His live runs drove these, in order: pill not clickable (#32 SOLID list; #34 DOM ORDER — any fixed element over the
   panel must be LAST in <body>); resize stuck to the mouse (#33 stay solid while a button is held; #36 end on the first
