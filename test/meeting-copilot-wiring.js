@@ -34,4 +34,6 @@ ok(/id="copilot-count"/.test(src) && /function copilotNoteCapture/.test(src) && 
 { const cam = src.slice(src.indexOf('async function copilotCapture()'), src.indexOf('async function copilotCaptureNow('));
   ok(/copilotCaptureNow\(false\)/.test(cam) && !/copilotSend\(/.test(cam) && !/pressed: true/.test(cam) && /capture: !auto/.test(src), 'camera = capture only (never an answer); Assist/typed/heard question answer'); }
 ok(/type: 'copilot_watch'/.test(src) && /watchStats/.test(src), 'the auto-capture watcher reports its health to the server (ticks, stable, errors)');
+ok(/COPILOT_WATCH_MS = 1500/.test(src), 'watcher ticks every 1.5 s (owner: slow when changing pages)');
+ok(/function captureFrame\(stream, maxW\)/.test(src) && /captureFrame\(stream, COPILOT_CAPTURE_W\)/.test(src) && /COPILOT_CAPTURE_W = 1568/.test(src), 'co-pilot captures at 1568 wide (the most the model uses), other callers unchanged');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
