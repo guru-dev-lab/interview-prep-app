@@ -47,4 +47,7 @@ ok(/function captureThumb\(/.test(src) && /CopilotFingerprint\.W/.test(src), 'th
   ok(!/Already captured this page/.test(cap) && /Captured again/.test(cap), 'camera always takes again (no "already captured" refusal); only auto skips known pages'); }
 ok(/id="copilot-pause"/.test(src) && /function toggleCopilotPause/.test(src) && /copilotAutoPaused/.test(src), 'play/pause on the pill: the owner tells the watcher when to stop and continue');
 ok(/copilotActive && copilotHistory && electronLive && !copilotAutoPaused/.test(src), 'paused = the watcher captures nothing');
+{ const cs = src.slice(src.indexOf('function copilotCardStart('), src.indexOf('function copilotCardStart(') + 1200);
+  ok(!/copilotNoteCapture\(/.test(cs), 'the counter counts collected pages only (camera + auto), never an Assist frame'); }
+ok(/paused: copilotAutoPaused/.test(src), 'the watcher reports paused in its health line');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

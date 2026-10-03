@@ -2901,6 +2901,7 @@ function toggleCopilotPause() {
   var b = $('copilot-pause'); if (b) { b.innerHTML = copilotAutoPaused ? '&#9654;' : '&#10074;&#10074;'; b.style.color = copilotAutoPaused ? '#FCA5A5' : ''; }
   showToast(copilotAutoPaused ? 'Auto-capture paused — camera still works' : 'Auto-capture on', 'info', 1400);
   copilotWatchSync();
+  copilotWatchReport(true); // the server log shows the toggle
 }
 var COPILOT_WATCH_MS = 1000; // a page settles (two identical checks) in ~2 s
 var COPILOT_CAPTURE_W = 1568; // the most the model uses on the long edge; a page that is 1/3 of a Retina display needs every pixel
@@ -2913,7 +2914,7 @@ function copilotWatchSync() {
 var watchStats = { ticks: 0, outcomes: {}, lastError: '' };
 function copilotWatchReport(force) {
   if (!force && watchStats.ticks % 8 !== 0) return;
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'copilot_watch', stats: { ticks: watchStats.ticks, outcomes: watchStats.outcomes, lastError: watchStats.lastError, live: electronLive, copilot: copilotActive, history: copilotHistory, prints: copilotPrints.length, stream: !!(screenStream && screenStream.active) } }));
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'copilot_watch', stats: { ticks: watchStats.ticks, outcomes: watchStats.outcomes, lastError: watchStats.lastError, live: electronLive, copilot: copilotActive, history: copilotHistory, paused: copilotAutoPaused, prints: copilotPrints.length, stream: !!(screenStream && screenStream.active) } }));
 }
 async function copilotWatchTick() {
   if (!(copilotActive && copilotHistory && electronLive && !copilotAutoPaused) || copilotWatchBusy || !SESSION_ID || !TOKEN) return;
@@ -3062,8 +3063,7 @@ function copilotUnnoteCapture() { // a grab the server did not keep (already cap
 }
 
 function copilotCardStart(cardId, ask, mode, screen, reason) {
-  var feed = $('feed'); if (!feed) return;
-  if (screen === 'captured') copilotNoteCapture();
+  var feed = $('feed'); if (!feed) return; // (an Assist frame is not a collected page — the counter is for camera + auto only)
   var empty = $('empty-state'); if (empty) empty.style.display = 'none';
   var askHtml = ask ? '<div class="copilot-transcript">🎙 "' + esc(String(ask).substring(0, 200)) + '"</div>' : '';
   // what happened to the screen on this press — the owner must SEE that a capture landed (or why not)
