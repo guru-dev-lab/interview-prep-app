@@ -3085,13 +3085,15 @@ function copilotCardStart(cardId, ask, mode, screen, reason) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 // Scan-and-speak styling (owner, 3 Oct): the question line stands out, the Answer line is the loud one, the working is quiet
+// One matcher for a question line, whatever the model wrote: "Page 7 — Question 1 —", "Part 9 — Q1 —", "Question 2:", "Q3 —"
+var QLINE = /^(?:(?:page|part|screen|memo|section)\s*\d*\s*[—:–-]\s*)?(?:question|q)\s*\d*\s*(?:[—:–-]|$)/i;
 function styleCopilotCard(el) {
   var a = el && el.querySelector('.sc-card-a'); if (!a) return;
   if (a.querySelector('.cp-block')) return; // already shaped (done after the stream)
   var nodes = a.querySelectorAll('p, div, li, span.hl-key');
   nodes.forEach(function (n) {
     var t = (n.textContent || '').trim();
-    if (/^(Page \d+ — )?Question( \d+)?( — |:)/.test(t)) { var blk = n.closest('p, div, li') || n; blk.classList.add('cp-q'); }
+    if (QLINE.test(t)) { var blk = n.closest('p, div, li') || n; blk.classList.add('cp-q'); }
     else if (/^(Asked|On screen|Say):/.test(t)) { var blk3 = n.closest('p, div, li') || n; blk3.classList.add('cp-sec'); }
   });
   // Each question + its answer = its own card (owner, 3 Oct): the question line is the title, the next line is the
