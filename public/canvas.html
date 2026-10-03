@@ -1972,8 +1972,9 @@ function captureFrame(stream, maxW) {
         // covers page content in the stored image, never reads as page text, and its streaming cards never count as a
         // screen change. Content protection hides us from other apps, not from this grab (owner's thumbnail, 3 Oct).
         if (maxW && window.CopilotFingerprint && screen && screen.width) {
-          var r = CopilotFingerprint.overlayRect(w, h, screen.width, screen.height, window.screenX, window.screenY, window.outerWidth, window.outerHeight);
-          lastMaskRect = r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), frame: w + 'x' + h, screen: screen.width + 'x' + screen.height, win: window.screenX + ',' + window.screenY + ' ' + window.outerWidth + 'x' + window.outerHeight } : { none: true, screen: screen.width + 'x' + screen.height, win: window.screenX + ',' + window.screenY + ' ' + window.outerWidth + 'x' + window.outerHeight };
+          var r = CopilotFingerprint.overlayRect(w, h, screen.width, screen.height, copilotWinOrigin.x, copilotWinOrigin.y, document.documentElement.clientWidth, document.documentElement.clientHeight);
+          var winDesc = copilotWinOrigin.x + ',' + copilotWinOrigin.y + ' ' + document.documentElement.clientWidth + 'x' + document.documentElement.clientHeight;
+          lastMaskRect = r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), frame: w + 'x' + h, screen: screen.width + 'x' + screen.height, win: winDesc } : { none: true, screen: screen.width + 'x' + screen.height, win: winDesc };
           if (r) { cx.fillStyle = '#8a8d94'; cx.fillRect(r.x, r.y, r.w, r.h); cx.fillStyle = '#2a2d33'; cx.font = 'bold ' + Math.max(14, Math.round(r.w / 18)) + 'px sans-serif'; cx.textAlign = 'center'; cx.fillText('xHire overlay, ignore', r.x + r.w / 2, r.y + Math.min(r.h / 2, 60)); }
         } else lastMaskRect = null;
         lastFrameSig = frameSignature(canvas);
@@ -1993,6 +1994,12 @@ function captureFrame(stream, maxW) {
 // Tiny grey thumbnail of a frame — lets the Record loop skip a screen that hasn't changed (no API call, no card)
 var lastFrameSig = null, lastSentSig = null;
 var lastMaskRect = null; // what the last co-pilot capture painted out (reported to the server: the log must say)
+// The window's TRUE screen origin. window.screenX/outerWidth never update after moves/resizes in this Electron build
+// (3 Oct log: every capture said 2184,80 420x650 after the window had moved), so the origin is taken from mouse events:
+// screenX - clientX is the window's left edge wherever it is now. Size comes from the document, which does update.
+var copilotWinOrigin = { x: window.screenX, y: window.screenY };
+document.addEventListener('mousemove', function (e) { copilotWinOrigin = { x: e.screenX - e.clientX, y: e.screenY - e.clientY }; }, true);
+document.addEventListener('mousedown', function (e) { copilotWinOrigin = { x: e.screenX - e.clientX, y: e.screenY - e.clientY }; }, true);
 var lastCaptureCanvas = null; // the canvas of the latest captureFrame — co-pilot fingerprints from it (captureFrame returns raw base64, not a data URL)
 function frameSignature(src) {
   try {
