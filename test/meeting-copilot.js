@@ -286,7 +286,7 @@ console.log('ALL PASS (code runs as written)');
 {
   const p = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: { role: 'Data Analyst', company: 'Acme', resume: 'RESUME TEXT HERE', jd: 'JD TEXT HERE' }, priorMemory: 'EARLIER CALLS NOTES', ask: 'x', screenChanged: true });
   assert(/SESSION MATERIAL/.test(p) && /RESUME TEXT HERE/.test(p) && /JD TEXT HERE/.test(p) && /EARLIER CALLS NOTES/.test(p), 'résumé, JD and earlier-call notes ride along');
-  assert(/use (it|them|this) only if this call is clearly about that job/i.test(p), 'under the same rule: only when the call is about that job');
+  assert(/(use|used) ?(it|them|this)? ?only if this call is clearly about that job/i.test(p), 'under the same rule: only when the call is about that job');
   const big = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: { resume: 'r'.repeat(20000), jd: 'j'.repeat(20000) }, ask: 'x', screenChanged: true });
   assert(big.length < 20000, 'session material is capped');
   const none = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: 'x', screenChanged: true });
@@ -321,3 +321,23 @@ console.log('ALL PASS (missing page is missing)');
   assert(fp.overlayRect(1568, 980, 2560, 1600, -900, 0, 700, 1100) === null, 'an overlay on another display (off this frame) masks nothing');
   console.log('ALL PASS (overlay rect in frame)');
 }
+// ---- SAY (owner, 3 Oct): the Say button answers what they JUST asked of this person; questions about the person come from
+// résumé + Q&A bank whatever the call is about; technical asks get approach → exact code/steps → trade-off
+{
+  const base = { mode: 'smart', rows: [], session: { role: 'Data Analyst', company: 'Acme', resume: 'RESUME TEXT' }, bank: 'Q: tell me about yourself\nA: I am a data analyst with 5 years…', screenChanged: false };
+  const say = mc.buildCopilotPrompt(Object.assign({}, base, { ask: 'have you done this before?', say: true, pressed: true }));
+  ok(/Q&A BANK/.test(say) && /I am a data analyst with 5 years/.test(say), 'the Q&A bank rides along with the session material');
+  ok(/THEY JUST ASKED/.test(say) && /have you done this before\?/.test(say), 'say mode names what they just asked');
+  ok(/about THIS PERSON/i.test(say) && /RESUME and Q&A BANK/.test(say), 'questions about the person always use résumé + bank (no job gate)');
+  ok(/trade-off/i.test(say) && /Approach/.test(say), 'technical say: approach → exact code/steps → trade-off');
+  ok(/every part of the ask/i.test(say), 'technical say covers every part of the ask inside the code (flags AND per-carrier totals, not a note)');
+  const plain = mc.buildCopilotPrompt(Object.assign({}, base, { ask: 'what does row 12 mean?' }));
+  ok(!/THEY JUST ASKED/.test(plain), 'a heard/typed question is not labelled as a Say press');
+  ok(/about THIS PERSON/i.test(plain), 'the person rule holds for heard questions too (tell me about yourself heard on the call)');
+  const empty = mc.buildCopilotPrompt(Object.assign({}, base, { ask: '', say: true, pressed: true }));
+  ok(/THEY JUST ASKED/.test(empty) && /latest thing they said/i.test(empty), 'say with nothing caught: answer the latest thing they said that needs a reply');
+  ok(!/PRESSED the co-pilot button with nothing typed/.test(empty), 'say never turns into the all-pages Assist sweep');
+  ok(mc.maxTokensFor('regular', true) >= 1500 && mc.maxTokensFor('regular') === 700, 'say in regular mode has room for code (1500+), plain regular stays 700');
+  ok(mc.maxTokensFor('smart', true) === mc.maxTokensFor('smart'), 'smart cap unchanged by say');
+}
+

@@ -1387,7 +1387,8 @@ function connect() {
         addCard(msg.questionId, msg.questionText || 'Screen Assist', msg.answer || '', 'screen', 0, false, true);
       }
     }
-    else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason); }
+    else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason, msg.say); }
+    else if (msg.type === 'copilot_say') { copilotSay(msg.text); } // Say pressed in co-pilot mode: the server caught what they just asked
     else if (msg.type === 'copilot_delta') { copilotCardDelta(msg.cardId, msg.text); }
     else if (msg.type === 'copilot_done') { copilotCardDone(msg.cardId, msg.answer); }
     else if (msg.type === 'copilot_captured') { if (copilotPendingKeys.has(msg.key)) { copilotPendingKeys.delete(msg.key); var cel = $('copilot-count'); if (cel) { cel.classList.add('flash'); setTimeout(function () { cel.classList.remove('flash'); }, 600); } } else copilotNoteCapture(); showToast('📸 Page captured', 'info', 1200); } // read happens at Assist (data collection only)
@@ -3081,7 +3082,7 @@ async function copilotSend(opts) {
     var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, image: frame.image, screenChanged: frame.changed, screenKey: frame.key || '', captureError: frame.error || '', context: getCopilotContext() })
+      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, say: !!opts.say, image: frame.image, screenChanged: frame.changed, screenKey: frame.key || '', captureError: frame.error || '', context: getCopilotContext() })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -3156,15 +3157,30 @@ function copilotUnnoteCapture() { // a grab the server did not keep (already cap
   var el = $('copilot-count'); if (el) el.textContent = String(copilotCaptures);
 }
 
-function copilotCardStart(cardId, ask, mode, screen, reason) {
+// SAY in co-pilot mode (owner, 3 Oct): "answer what they just asked me, right now" — in his voice, résumé + bank for questions
+// about him, approach → code → trade-off for technical ones. Same ask already answered in the last 90 s → jump to that card.
+var copilotLastAsk = null; // { text, ts, cardId } — set when a co-pilot card starts
+function copilotSay(text) {
+  if (!copilotActive) return;
+  var norm = String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  var last = copilotLastAsk;
+  if (norm && last && last.text === norm && Date.now() - last.ts < 90000) {
+    var el = document.getElementById('card-' + last.cardId);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'end' }); el.classList.add('flash'); setTimeout(function () { el.classList.remove('flash'); }, 900); showToast('Already answered — this card', 'info', 1500); return; }
+  }
+  pendingManualScroll = true;
+  copilotSend({ ask: text || '', say: true, pressed: true }).catch(function (e) { console.warn('Co-pilot say error:', e); });
+}
+function copilotCardStart(cardId, ask, mode, screen, reason, say) {
   var feed = $('feed'); if (!feed) return; // (an Assist frame is not a collected page — the counter is for camera + auto only)
+  copilotLastAsk = { text: String(ask || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(), ts: Date.now(), cardId: cardId };
   var empty = $('empty-state'); if (empty) empty.style.display = 'none';
   var askHtml = ask ? '<div class="copilot-transcript">🎙 "' + esc(String(ask).substring(0, 200)) + '"</div>' : '';
   // what happened to the screen on this press — the owner must SEE that a capture landed (or why not)
   var chip = screen === 'captured' ? '📸 captured' : screen === 'same' ? '♻️ same page as before' : screen === 'last' ? '🗂 last capture' : '⚠️ no screen' + (reason ? ': ' + esc(String(reason).slice(0, 90)) : '');
   feed.insertAdjacentHTML('beforeend',
     '<div class="sc-card copilot-card" id="card-' + cardId + '">' +
-      '<div class="sc-card-q"><span class="sc-tag copilot">🤖 Co-pilot' + (mode === 'smart' ? ' · history' : '') + '</span><span class="copilot-screen-chip' + (screen === 'none' ? ' bad' : '') + '">' + chip + '</span></div>' +
+      '<div class="sc-card-q"><span class="sc-tag copilot">🤖 Co-pilot' + (say ? ' · say' : '') + (mode === 'smart' ? ' · history' : '') + '</span><span class="copilot-screen-chip' + (screen === 'none' ? ' bad' : '') + '">' + chip + '</span></div>' +
       askHtml + '<div class="sc-card-a">…</div></div>');
   var el = document.getElementById('card-' + cardId);
   copilotCards[cardId] = { el: el, text: '' };

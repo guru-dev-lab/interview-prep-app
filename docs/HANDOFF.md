@@ -279,3 +279,10 @@
 ## 25 Sep 2026 — project set up
 - Fresh clone of origin/main (1116138). CLAUDE.md written. Nothing changed in the app yet.
 - Next: owner lists the craziest issues; reproduce each before fixing.
+
+## 3 Oct 2026 — late: Say button in co-pilot mode (one brain)
+- Before: Say in co-pilot mode ran the old QA panic path (jump + bank match, no screens). Owner: "I expect it to be interactive, more technical support."
+- Now (PR #78): server `what_should_i_say` in `_copilotMode` pulls the substantive interviewer lines since the last co-pilot ask (`ws._copilotAskTs`, stamped on heard questions and Say) and sends `copilot_say {text}` to the presser; overlay `copilotSay` goes through `copilotSend({ask, say:true, pressed:true})`; same ask answered <90 s ago → jump to that card, no call. Card tagged "· say".
+- Endpoint loads the Q&A bank (`questions` of the session, 60 rows, 6000-char cap) into the co-pilot material for EVERY ask; prompt rule: a question about the person (yourself / background / have you done) is ALWAYS answered from résumé + bank, first person, no job gate — JD/earlier calls stay gated. Say block: technical → Approach / fenced code covering every part of the ask / Trade-off; yes-no → yes/no + one concrete example.
+- `maxTokensFor(mode, say)`: regular+say 1500 (code room), else unchanged. Real-model proof (3 Sonnet calls, scratchpad say-proof.js): about-you and have-you-done true to résumé+bank with screen numbers; technical SQL runs on Postgres with FILTER + window SUM after the every-part rule.
+- Tests: pure 48 checks, wiring 101. No desktop rebuild needed (canvas served by the server).
