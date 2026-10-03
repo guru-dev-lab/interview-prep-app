@@ -63,6 +63,16 @@ const logSince = m => fs.readFileSync(LOG, 'utf8').slice(m);
   check(r.status === 200 && /\b140\b/.test(r.j.answer || ''), 'second assist answers (140)', r.j.answer);
   check(!/read \d+ pending screens/.test(logSince(mark)), 'nothing re-read');
 
+  // 3a. × on a capture: the stored page and its text leave the call
+  r = await post({ capture: true, image: raw(3), screenKey: 'del-p3' });
+  check(r.status === 200 && r.j.captured, 'a capture to delete is stored', JSON.stringify(r.j));
+  const dr = await fetch(BASE + '/api/sessions/' + s.id + '/copilot/screens/del-p3', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+  const dj = await dr.json();
+  check(dr.ok && dj.deleted === 1, 'DELETE removes the capture', JSON.stringify(dj));
+  check((await screens()).every(x => x.key !== 'del-p3'), 'the capture is gone from the call');
+  const dr2 = await fetch(BASE + '/api/sessions/' + s.id + '/copilot/screens/del-p3', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+  check(dr2.ok && (await dr2.json()).deleted === 0, 'deleting again is a no-op');
+
   // 3b. camera takes AGAIN: same page, new capture (only the auto watcher skips known pages)
   r = await post({ capture: true, image: raw(2), screenKey: 'cam-p2-again' });
   check(r.status === 200 && r.j.captured, 'camera press captures the same page again', JSON.stringify(r.j));

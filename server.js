@@ -2819,6 +2819,19 @@ app.get('/api/sessions/:id/copilot/screens', authMiddleware, async (req, res) =>
   } catch (e) { console.error('[Co-pilot] screens list failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// × on a capture (owner, 3 Oct): the stored page, its frame and its text leave the live call
+app.delete('/api/sessions/:id/copilot/screens/:key', authMiddleware, async (req, res) => {
+  try {
+    const live = liveWsForSession(req.params.id);
+    if (!live) return res.status(409).json({ error: 'Go Live first' });
+    const key = String(req.params.key || '').slice(0, 40);
+    const a = await pool.query('DELETE FROM call_screens WHERE call_id = $1 AND key = $2', [live._callId, key]);
+    await pool.query("DELETE FROM call_events WHERE call_id = $1 AND kind = 'seen' AND meta->>'key' = $2", [live._callId, key]);
+    console.log(`[Co-pilot] capture ${key} deleted (${a.rowCount} frame)`);
+    res.json({ deleted: a.rowCount, key });
+  } catch (e) { console.error('[Co-pilot] delete capture failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // Extract text from uploaded file for co-pilot context
 app.post('/api/sessions/:id/copilot/extract', authMiddleware, upload.single('file'), async (req, res) => {
   try {

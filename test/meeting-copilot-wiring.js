@@ -79,4 +79,6 @@ ok(/codeSz = Math\.max\(11, canvasFontSize\)/.test(src), 'code size follows the 
 ok(/var copilotHistory = loadSetting\('copilotHistory'\) !== false;/.test(src), 'Hist defaults ON in co-pilot mode (owner, 3 Oct); a saved off stays off');
 ok(/sendCopilotSettings\(\);/.test(src.slice(src.indexOf("type: 'update_settings', maxLines: settingsMaxLines, followUps"), src.indexOf("type: 'update_settings', maxLines: settingsMaxLines, followUps") + 300)), 'co-pilot flags are re-sent on every live connect, so toggling before Go Live still works');
 ok(/electronLive = true; copilotWatchSync\(\);/.test(src), 'the watcher starts the moment the call goes live if co-pilot is already on');
+ok(/function deleteCapture\(/.test(src) && /method: 'DELETE'/.test(src) && /cap-del/.test(src), 'each capture in the list has an × that deletes it (owner, 3 Oct)');
+ok(/copilotPrints = copilotPrints\.filter\(function \(x\) \{ return x\.key !== key; \}\)/.test(src.slice(src.indexOf('function deleteCapture('), src.indexOf('function deleteCapture(') + 1200)) && /copilotUnnoteCapture\(\)/.test(src.slice(src.indexOf('function deleteCapture('), src.indexOf('function deleteCapture(') + 1200)), 'a deleted capture leaves the counter and the known-pages memory, so it can be retaken');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
