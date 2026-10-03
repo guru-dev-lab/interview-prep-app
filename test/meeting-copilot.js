@@ -271,3 +271,12 @@ console.log('ALL PASS (answer-first blocks)');
 // multiplied by a percent column without saying whether it holds 2 or 0.02 → code must run as written, assumptions stated
 assert(/run as written/i.test(mc.MEETING_PROMPT) && /date - date/i.test(mc.MEETING_PROMPT) && /state the assumption/i.test(mc.MEETING_PROMPT), 'code must run as written on the stated engine; types/units respected; assumptions stated in the plain line');
 console.log('ALL PASS (code runs as written)');
+
+// ---- 3 Oct 11:39, owner: a meeting may or may not relate to the selected session → the session line is a hint, not a frame
+{
+  const p = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: { role: 'Data Analyst', company: 'Acme' }, ask: 'x', screenChanged: true });
+  assert(/only if this call is clearly about that job/i.test(p) && /otherwise ignore it/i.test(p), 'session role/company used only when the call is about that job');
+  const q = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: 'x', screenChanged: true });
+  assert(!/THIS PERSON/.test(q), 'no session line at all when the session has no role/company');
+  console.log('ALL PASS (session is a hint)');
+}
