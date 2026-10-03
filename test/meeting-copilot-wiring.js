@@ -35,8 +35,8 @@ ok(/id="copilot-count"/.test(src) && /function copilotNoteCapture/.test(src) && 
   ok(/copilotCaptureNow\(false\)/.test(cam) && !/copilotSend\(/.test(cam) && !/pressed: true/.test(cam) && /capture: !auto/.test(src), 'camera = capture only (never an answer); Assist/typed/heard question answer'); }
 ok(/type: 'copilot_watch'/.test(src) && /watchStats/.test(src), 'the auto-capture watcher reports its health to the server (ticks, stable, errors)');
 ok(/COPILOT_WATCH_MS = 700/.test(src), 'watcher ticks every 0.7 s (a page settles in ~1.4 s — Part 2 was scrolled past in under 2 s, 3 Oct)');
-ok(/function captureFrame\(stream, maxW\)/.test(src) && /captureFrame\(stream, COPILOT_CAPTURE_W\)/.test(src) && /COPILOT_CAPTURE_W = 1568/.test(src), 'co-pilot captures at 1568 wide (the most the model uses), other callers unchanged');
-{ const cap = src.slice(src.indexOf('async function copilotCaptureNow('), src.indexOf('async function copilotCaptureNow(') + 2600);
+ok(/function captureFrame\(stream, maxW, opts\)/.test(src) && /captureFrame\(stream, COPILOT_CAPTURE_W/.test(src) && /COPILOT_CAPTURE_W = 1568/.test(src), 'co-pilot captures at 1568 wide (the most the model uses), other callers unchanged');
+{ const cap = src.slice(src.indexOf('async function copilotCaptureNow('), src.indexOf('async function copilotCaptureNow(') + 4200);
   ok(/copilotPendingKeys/.test(cap) && cap.indexOf('copilotNoteCapture(') < cap.indexOf("fetch('/api/sessions/' + SESSION_ID + '/copilot'"), 'the counter moves the moment the frame is grabbed (owner leaves the page on seeing it), before the read');
   ok(/copilotPendingKeys\.delete\(/.test(cap) && /copilotUnnoteCapture\(\)/.test(cap), 'a refused/unchanged capture takes the count back'); }
 ok(/msg\.type === 'copilot_captured'[^\n]*copilotPendingKeys\.has\(msg\.key\)/.test(src), 'the read confirmation does not double-count the sender\'s own capture');
@@ -68,7 +68,7 @@ ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mo
   ok(!('Question 2: best carrier'.match(QSPLIT)), 'no prefix → no split');
   ok(/cp-tag/.test(src) && /class="cp-tag"/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 2500)), 'the card renders the page as a small tag'); }
 { const cap = src.slice(src.indexOf('async function copilotCaptureNow('), src.indexOf('async function copilotCaptureNow(') + 3200);
-  ok(/setStealth\(true\)/.test(cap) && cap.indexOf('setStealth(true)') < cap.indexOf('captureFrame(stream, COPILOT_CAPTURE_W)'), 'the overlay is hidden from the frame before every capture (3 Oct: a 57 KB Part 3 capture had the panel over the table)');
+  ok(/setStealth\(true\)/.test(cap) && cap.indexOf('setStealth(true)') < cap.indexOf('captureFrame(stream, COPILOT_CAPTURE_W'), 'the overlay is hidden from the frame before every capture (3 Oct: a 57 KB Part 3 capture had the panel over the table)');
   ok(/copilotPrints = copilotPrints\.filter/.test(cap), 'a refused or failed capture forgets the print so the page is retried (3 Oct: "Go Live first" refusals left pages marked known)'); }
 { const sc = src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 3000);
   ok(/star-inline/.test(sc) && /insertBefore\(res, /.test(sc) && !/RESULT\\b/.test(sc), 'the Result line is found by its RESULT chip element (the chip runs into the next word, so a word-boundary match never fired), and lifted to the top'); }
@@ -81,12 +81,16 @@ ok(/sendCopilotSettings\(\);/.test(src.slice(src.indexOf("type: 'update_settings
 ok(/electronLive = true; copilotWatchSync\(\);/.test(src), 'the watcher starts the moment the call goes live if co-pilot is already on');
 ok(/function deleteCapture\(/.test(src) && /method: 'DELETE'/.test(src) && /cap-del/.test(src), 'each capture in the list has an × that deletes it (owner, 3 Oct)');
 ok(/copilotPrints = copilotPrints\.filter\(function \(x\) \{ return x\.key !== key; \}\)/.test(src.slice(src.indexOf('function deleteCapture('), src.indexOf('function deleteCapture(') + 1200)) && /copilotUnnoteCapture\(\)/.test(src.slice(src.indexOf('function deleteCapture('), src.indexOf('function deleteCapture(') + 1200)), 'a deleted capture leaves the counter and the known-pages memory, so it can be retaken');
-{ const cf = src.slice(src.indexOf('function captureFrame(stream, maxW)'), src.indexOf('function captureFrame(stream, maxW)') + 2600);
+{ const cf = src.slice(src.indexOf('function captureFrame(stream, maxW'), src.indexOf('function captureFrame(stream, maxW') + 4200);
   ok(/CopilotFingerprint\.overlayRect\(/.test(cf) && /overlay, ignore/.test(cf) && cf.indexOf('overlayRect(') < cf.indexOf('lastFrameSig = frameSignature(canvas)'), 'the overlay masks its own rectangle in the frame before the fingerprint and the stored image (co-pilot captures)'); }
 ok(/lastMaskRect = r/.test(src) && /mask: lastMaskRect/.test(src), 'every co-pilot capture reports the mask rectangle it painted (or none), so the log says what happened');
 ok(!/screen\.availLeft/.test(src.slice(src.indexOf('function captureFrame(stream, maxW)'), src.indexOf('function captureFrame(stream, maxW)') + 2600)), 'no work-area offset: the frame is the full display, window coords are display coords');
 ok(/cap-preview/.test(src) && /lastCaptureCanvas/.test(src.slice(src.indexOf('async function toggleCaptureList('), src.indexOf('async function toggleCaptureList(') + 2600)), 'the capture list shows a real preview of the last frame sent (owner: "still there" — a 64px thumbnail cannot settle it)');
 ok(/copilotWinOrigin = \{ x: e\.screenX - e\.clientX, y: e\.screenY - e\.clientY \}/.test(src), 'the window origin comes from mouse events (window.screenX is stale in this Electron build: log showed 2184,80 420x650 after moves)');
-{ const cf = src.slice(src.indexOf('function captureFrame(stream, maxW)'), src.indexOf('function captureFrame(stream, maxW)') + 2800);
+{ const cf = src.slice(src.indexOf('function captureFrame(stream, maxW'), src.indexOf('function captureFrame(stream, maxW') + 4200);
   ok(/overlayRect\(w, h, screen\.width, screen\.height, copilotWinOrigin\.x, copilotWinOrigin\.y, document\.documentElement\.clientWidth, document\.documentElement\.clientHeight\)/.test(cf), 'the mask uses the true origin and the live content size'); }
+{ const cap = src.slice(src.indexOf('async function copilotCaptureNow('), src.indexOf('async function copilotCaptureNow(') + 4600);
+  ok(/setOpacity\(0\.2\)/.test(cap) && /setOpacity\(1\)/.test(cap) && /captureFrame\(stream, COPILOT_CAPTURE_W, blinked \? \{ noMask: true \} : undefined\)/.test(cap), 'a camera press blinks the panel away and grabs the full page underneath (owner, 3 Oct: "it will not block what is behind?")');
+  ok(!/if \(auto\)[\s\S]{0,400}setOpacity\(0\)/.test(cap) || /!auto/.test(cap.slice(0, cap.indexOf('setOpacity(0)'))), 'auto captures never blink'); }
+ok(/function captureFrame\(stream, maxW, opts\)/.test(src) && /opts && opts\.noMask/.test(src), 'captureFrame can skip the mask when the panel is already out of the frame');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

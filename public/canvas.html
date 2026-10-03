@@ -1950,7 +1950,7 @@ async function switchScreen() {
   }
 }
 
-function captureFrame(stream, maxW) {
+function captureFrame(stream, maxW, opts) {
   return new Promise(function(resolve, reject) {
     var track = stream.getVideoTracks()[0];
     if (!track || track.readyState !== 'live') { reject(new Error('Track not live')); return; }
@@ -1971,7 +1971,7 @@ function captureFrame(stream, maxW) {
         // Co-pilot captures: paint the overlay's own window out of the frame (flat grey + label) so its panel never
         // covers page content in the stored image, never reads as page text, and its streaming cards never count as a
         // screen change. Content protection hides us from other apps, not from this grab (owner's thumbnail, 3 Oct).
-        if (maxW && window.CopilotFingerprint && screen && screen.width) {
+        if (maxW && !(opts && opts.noMask) && window.CopilotFingerprint && screen && screen.width) {
           var r = CopilotFingerprint.overlayRect(w, h, screen.width, screen.height, copilotWinOrigin.x, copilotWinOrigin.y, document.documentElement.clientWidth, document.documentElement.clientHeight);
           var winDesc = copilotWinOrigin.x + ',' + copilotWinOrigin.y + ' ' + document.documentElement.clientWidth + 'x' + document.documentElement.clientHeight;
           lastMaskRect = r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), frame: w + 'x' + h, screen: screen.width + 'x' + screen.height, win: winDesc } : { none: true, screen: screen.width + 'x' + screen.height, win: winDesc };
@@ -2975,11 +2975,18 @@ async function copilotCaptureNow(auto) {
   if (!stream) { if (!auto) showToast('No screen stream — allow Screen Recording and Go Live again', '', 4000); return 'no-stream'; }
   // The overlay must never be in the frame (3 Oct: a capture with the panel over the terms table read "obscured"):
   // hide it from capture for the grab when the eye toggle has it visible, then put it back.
-  var hid = false;
+  var hid = false, blinked = false;
   if (!stealthOn && window.electronAPI && window.electronAPI.setStealth) { try { await window.electronAPI.setStealth(true); hid = true; await new Promise(function (r) { setTimeout(r, 120); }); } catch (e) {} }
+  // Camera press = the FULL page, including what the panel covers (owner, 3 Oct): blink the panel away for the grab.
+  // Auto captures never blink (0.7 s ticks would strobe); they mask the panel's rectangle instead.
+  // (the app's opacity floor is 0.2 — the page beneath shows at 80%; hiding the window instead could stall the grab)
+  if (!auto && window.electronAPI && window.electronAPI.setOpacity) { try { await window.electronAPI.setOpacity(0.2); blinked = true; await new Promise(function (r) { setTimeout(r, 140); }); } catch (e) {} }
   var image;
-  try { image = await captureFrame(stream, COPILOT_CAPTURE_W); }
-  finally { if (hid) { try { window.electronAPI.setStealth(false); } catch (e) {} } }
+  try { image = await captureFrame(stream, COPILOT_CAPTURE_W, blinked ? { noMask: true } : undefined); }
+  finally {
+    if (blinked) { try { window.electronAPI.setOpacity(1); } catch (e) {} }
+    if (hid) { try { window.electronAPI.setStealth(false); } catch (e) {} }
+  }
   if (!image || !lastCaptureCanvas) return 'no-frame';
   var print = CopilotFingerprint.fingerprintFrom(lastCaptureCanvas);
   if (auto) { if (!CopilotFingerprint.stableNewScreen(copilotWatchState, print, copilotPrints)) return CopilotFingerprint.matchPrint(copilotPrints, print) ? 'known' : 'unstable'; }
