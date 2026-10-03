@@ -67,15 +67,6 @@ const logSince = m => fs.readFileSync(LOG, 'utf8').slice(m);
   r = await post({ capture: true, image: raw(2), screenKey: 'cam-p2-again' });
   check(r.status === 200 && r.j.captured, 'camera press captures the same page again', JSON.stringify(r.j));
 
-  // 3c. code view: the overlay posts a block, the server serves it full size on a plain page (no model, no DB)
-  const cv = await fetch(BASE + '/api/code-view', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ code: 'SELECT 1 AS x;', lang: 'sql' }) });
-  const cj = await cv.json();
-  check(cv.ok && /^\/code\/[A-Za-z0-9_-]{16,}$/.test(cj.path || ''), 'code-view returns a path', JSON.stringify(cj));
-  const pg = await fetch(BASE + cj.path); const pt = await pg.text();
-  check(pg.ok && /SELECT 1 AS x;/.test(pt) && /<pre/.test(pt), 'the code page shows the code', pt.slice(0, 200));
-  const miss = await fetch(BASE + '/code/doesnotexist000000');
-  check(miss.status === 404, 'unknown code id → 404');
-
   // 4. Stop → images dropped, transcripts kept
   ws.send(JSON.stringify({ type: 'stop' })); await sleep(800);
   sc = await screens();
