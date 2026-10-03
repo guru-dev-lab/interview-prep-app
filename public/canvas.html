@@ -2882,7 +2882,7 @@ async function goLiveElectron() {
 // only when it changed (fingerprint, public/copilot-fingerprint.js). History checkbox = use everything said and shown
 // on this call (server runs it as smart mode). Cards stream in over the live socket (copilot_start/delta/done).
 var copilotActive = false;
-var copilotHistory = !!loadSetting('copilotHistory');
+var copilotHistory = loadSetting('copilotHistory') !== false; // default ON in co-pilot mode (owner, 3 Oct); only a saved off turns it off
 var copilotPrints = []; // [{ key, print }] every screen sent this stint — a page shown again is reused, not re-sent
 var copilotFiles = []; // { name, size, content (extracted text) }
 var copilotInstructions = ''; // Custom instructions text
