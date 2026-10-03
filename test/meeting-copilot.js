@@ -175,3 +175,18 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
   assert.strictEqual(mc.sniffImage('').data, '', 'empty stays empty');
   console.log('ALL PASS (image type sniffing)');
 }
+
+// ---- measured 3 Oct (owner's display: the pack page is ~1/3 of the captured frame): at 32×18/Δ24 the two closest
+// pages differed on 0.87% of pixels (< the 3% bar → "already captured" on every page); at 64×36/Δ12 the closest pair
+// is 2.4% and same-page noise (menu-bar clock tick) is 0. Bar is 1%.
+{
+  assert(fp.W === 64 && fp.H === 36, 'thumbnail is 64×36');
+  const base = new Array(64 * 36).fill(120);
+  const twoPct = base.map((v, i) => (i < Math.round(64 * 36 * 0.024) ? v + 40 : v));
+  const halfPct = base.map((v, i) => (i < Math.round(64 * 36 * 0.005) ? v + 40 : v));
+  const faint = base.map((v, i) => (i < Math.round(64 * 36 * 0.3) ? v + 10 : v)); // 30% of pixels moved by 10 → below the delta → noise
+  assert(fp.fingerprintChanged(base, twoPct), '2.4% moved → a different page');
+  assert(!fp.fingerprintChanged(base, halfPct), '0.5% moved → same page');
+  assert(!fp.fingerprintChanged(base, faint), 'a faint shift everywhere is noise');
+  console.log('ALL PASS (fingerprint tuned to a page inside a larger frame)');
+}

@@ -5,9 +5,12 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.CopilotFingerprint = api; // always set the global too (a page may have a `module` object)
 })(typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : this), function () {
-  var W = 32, H = 18;
-  var PIXEL_DELTA = 24;     // one pixel counts as moved when its gray value shifts by more than this (0–255)
-  var CHANGED_SHARE = 0.03; // the frame counts as changed when more than 3% of pixels moved
+  // Tuned 3 Oct against the owner's real case: the captured frame is his whole display and the shared page is only
+  // ~1/3 of it. Measured on the 8-page pack at that size — 32×18/Δ24: closest pages 0.87% apart (missed under a 3%
+  // bar); 64×36/Δ12: closest pages 2.4% apart, same-page noise (menu-bar clock) 0. Bar 1%.
+  var W = 64, H = 36;
+  var PIXEL_DELTA = 12;     // one pixel counts as moved when its gray value shifts by more than this (0–255)
+  var CHANGED_SHARE = 0.01; // the frame counts as changed when more than 1% of pixels moved
 
   function fingerprintChanged(prev, next) {
     if (!next) return false;
