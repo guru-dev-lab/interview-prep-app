@@ -1,5 +1,17 @@
 # Handoff
 
+## 3 Oct 2026 (night) — desktop v1.1.4, capture via the screenshot backend
+- Found: the OS content-protection flag (the eye) hides xHire from other apps and from Cmd+Shift+3, NOT from the app's
+  own getDisplayMedia stream — every co-pilot frame had the panel in it (obscured tables, panel text read as content,
+  streaming cards counted as screen changes). Page-side mask attempts (#70–#73) were defeated by stale window.screenX.
+- Fix: v1.1.4 (PR #75) — main.js `capture-display` (desktopCapturer thumbnail = ScreenCaptureKit, same backend as the
+  screenshot) + `get-bounds`; preload captureDisplay/getBounds; canvas.html uses the app path when present, falls back
+  to the page stream + mask on older apps. Verified on his Mac: log mask={backend:"app",…}, preview shows no overlay.
+- Installed on his Mac (ditto → xattr -cr → ad-hoc codesign com.xhire.overlay → `tccutil reset All` → relaunch); his
+  rule: on reinstall wipe ALL old permission rows. PR #74 = camera dim-and-grab (opacity floor 0.2) — now only a fallback.
+- Also today after the evening block: Hist default on (#68), × per capture (#69), capture list preview (#72).
+- Open: nothing blocking. Next real test is a live meeting. The capture is the whole display: private windows off it.
+
 ## 3 Oct 2026 (evening) — meeting co-pilot, PRs #42–#66, all LIVE
 - State: co-pilot (Electron only) = collect-then-assist. Auto-capture (Hist on, play on, 0.7 s tick, settle ~1.4 s) and
   the camera store frames only (`call_screens`); nothing goes to a model until Assist / typed / heard question; then the
