@@ -34,7 +34,7 @@ ok(/id="copilot-count"/.test(src) && /function copilotNoteCapture/.test(src) && 
 { const cam = src.slice(src.indexOf('async function copilotCapture()'), src.indexOf('async function copilotCaptureNow('));
   ok(/copilotCaptureNow\(false\)/.test(cam) && !/copilotSend\(/.test(cam) && !/pressed: true/.test(cam) && /capture: !auto/.test(src), 'camera = capture only (never an answer); Assist/typed/heard question answer'); }
 ok(/type: 'copilot_watch'/.test(src) && /watchStats/.test(src), 'the auto-capture watcher reports its health to the server (ticks, stable, errors)');
-ok(/COPILOT_WATCH_MS = 1000/.test(src), 'watcher ticks every second (a page settles in ~2 s)');
+ok(/COPILOT_WATCH_MS = 700/.test(src), 'watcher ticks every 0.7 s (a page settles in ~1.4 s — Part 2 was scrolled past in under 2 s, 3 Oct)');
 ok(/function captureFrame\(stream, maxW\)/.test(src) && /captureFrame\(stream, COPILOT_CAPTURE_W\)/.test(src) && /COPILOT_CAPTURE_W = 1568/.test(src), 'co-pilot captures at 1568 wide (the most the model uses), other callers unchanged');
 { const cap = src.slice(src.indexOf('async function copilotCaptureNow('), src.indexOf('async function copilotCaptureNow(') + 2600);
   ok(/copilotPendingKeys/.test(cap) && cap.indexOf('copilotNoteCapture(') < cap.indexOf("fetch('/api/sessions/' + SESSION_ID + '/copilot'"), 'the counter moves the moment the frame is grabbed (owner leaves the page on seeing it), before the read');
@@ -71,7 +71,7 @@ ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mo
   ok(/setStealth\(true\)/.test(cap) && cap.indexOf('setStealth(true)') < cap.indexOf('captureFrame(stream, COPILOT_CAPTURE_W)'), 'the overlay is hidden from the frame before every capture (3 Oct: a 57 KB Part 3 capture had the panel over the table)');
   ok(/copilotPrints = copilotPrints\.filter/.test(cap), 'a refused or failed capture forgets the print so the page is retried (3 Oct: "Go Live first" refusals left pages marked known)'); }
 { const sc = src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 3000);
-  ok(/\^\(Result:\|RESULT\\b\)/.test(sc) && /insertBefore\(res, /.test(sc), 'the Result line is found even after the formatter turns "Result:" into its RESULT label chip, and lifted to the top (3 Oct: it stayed at the bottom)'); }
+  ok(/star-inline/.test(sc) && /insertBefore\(res, /.test(sc) && !/RESULT\\b/.test(sc), 'the Result line is found by its RESULT chip element (the chip runs into the next word, so a word-boundary match never fired), and lifted to the top'); }
 ok(/\.sc-card-a pre\{background:#1E1E1E;/.test(src) && /font:400 12\.5px/.test(src.slice(src.indexOf('.sc-card-a pre{'), src.indexOf('.sc-card-a pre{') + 400)), 'code blocks: solid VS Code background, bigger monospace (owner: make the code part more visible)');
 ok(!/code-open-btn/.test(src) && !/openCodeInBrowser/.test(src) && !/\/api\/code-view/.test(src), 'no Open-in-browser button (owner: "Not open in chrome", 3 Oct)');
 ok(!/\.sc-card-a pre code\{[^}]*font-size:11px/.test(src) && /\.code-content\{flex:1;color:#D4D4D4\}/.test(src) && /\.sh-kw\{color:#569CD6;font-weight:600\}/.test(src), 'code text: no 11px pin, VS Code base colour, bold keywords (owner: not the same colouring as the sample)');

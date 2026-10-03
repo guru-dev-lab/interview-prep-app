@@ -2911,7 +2911,7 @@ function toggleCopilotPause() {
   copilotWatchSync();
   copilotWatchReport(true); // the server log shows the toggle
 }
-var COPILOT_WATCH_MS = 1000; // a page settles (two identical checks) in ~2 s
+var COPILOT_WATCH_MS = 700; // a page settles (two identical checks) in ~1.4 s — Part 2 was scrolled past in under 2 s (3 Oct)
 var COPILOT_CAPTURE_W = 1568; // the most the model uses on the long edge; a page that is 1/3 of a Retina display needs every pixel
 function copilotWatchSync() {
   var want = !!(copilotActive && copilotHistory && electronLive && !copilotAutoPaused);
@@ -3125,8 +3125,9 @@ function styleCopilotCard(el) {
     while (cur && !(cur !== q && cur.classList && cur.classList.contains('cp-q'))) {
       var nxt = cur.nextElementSibling;
       block.appendChild(cur);
-      // the shared formatter turns a "Result:" line into <span class="star-inline">RESULT</span> + text — match either
-      if (cur !== q && /^(Result:|RESULT\b)/.test((cur.textContent || '').trim())) res = cur;
+      // the shared formatter turns a "Result:" line into <span class="star-inline">RESULT</span> + text, with no space
+      // after the chip — so match the chip element, or a raw "Result:" line
+      if (cur !== q) { var chipEl = cur.querySelector && cur.querySelector('.star-inline'); if ((chipEl && /^RESULT$/i.test(chipEl.textContent.trim())) || /^Result:/.test((cur.textContent || '').trim())) res = cur; }
       cur = nxt;
     }
     // the model writes the working first and "Result:" last; the owner reads the result first
