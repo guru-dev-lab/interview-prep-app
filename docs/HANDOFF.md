@@ -1,5 +1,22 @@
 # Handoff
 
+## 3 Oct 2026 (afternoon) — co-pilot live-test fixes (PRs #32–#40)
+- His live runs drove these, in order: pill not clickable (#32 SOLID list; #34 DOM ORDER — any fixed element over the
+  panel must be LAST in <body>); resize stuck to the mouse (#33 stay solid while a button is held; #36 end on the first
+  move with no button); presses arrived with no image (#35 capture reports its stage + screen chip; #36 fingerprint from
+  `lastCaptureCanvas` — captureFrame returns RAW base64, an <img> was always broken); auto-capture in History mode (#37,
+  settled new page → background read, counter + toast); camera = CAPTURE ONLY, answers from Assist/typed/heard question,
+  watcher health → `[Co-pilot] watch:` log lines (#38, #39 test scope); every page read as "already captured" (#40 —
+  his capture is the WHOLE DISPLAY, page ~1/3 of it; measured: 64×36/Δ12, bar 1%).
+- Rules in his words: co-pilot is ELECTRON ONLY; capture = everything on the display (he runs the page full screen);
+  "indication it has captured, only then I move on"; history is per Go Live call (not yet carried from earlier calls).
+- Deploy of #40 FAILED at BUILD_IMAGE with no logs (Railway-side) — this docs commit re-triggers the build. Live was
+  still on #39 meanwhile (safe).
+- Slip to remember: #38 merged with 2 red e2e checks because the ship command was chained without gating on the test
+  exit code (rows were right; test mis-scoped, fixed in #39). Gate the merge on the tests.
+- Next: his re-test with the tuned fingerprint → counter climbs page by page; read `[Co-pilot] watch:` and
+  `camera-captured` / `auto-captured` lines against the pack answer key. Pack artifact still hosted — delete on his word.
+
 ## 3 Oct 2026 (later) — Co-pilot smartest mode (PR #31)
 - Owner: "this MUST be the smartest" (embarrassed on a call when asked which Excel function to use). Everything
   co-pilot is ELECTRON ONLY (his words) — no web port, ever.
