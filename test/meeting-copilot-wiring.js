@@ -45,4 +45,6 @@ ok(/\/copilot\/screens/.test(src) && /copilot-capture-list/.test(src) && /not re
 ok(/function captureThumb\(/.test(src) && /CopilotFingerprint\.W/.test(src), 'thumbnails are drawn from the local fingerprints (no image download)');
 { const cap = src.slice(src.indexOf('async function copilotCaptureNow('), src.indexOf('async function copilotCaptureNow(') + 2600);
   ok(!/Already captured this page/.test(cap) && /Captured again/.test(cap), 'camera always takes again (no "already captured" refusal); only auto skips known pages'); }
+ok(/id="copilot-pause"/.test(src) && /function toggleCopilotPause/.test(src) && /copilotAutoPaused/.test(src), 'play/pause on the pill: the owner tells the watcher when to stop and continue');
+ok(/copilotActive && copilotHistory && electronLive && !copilotAutoPaused/.test(src), 'paused = the watcher captures nothing');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

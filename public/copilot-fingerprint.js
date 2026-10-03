@@ -12,8 +12,6 @@
   var PIXEL_DELTA = 12;     // one pixel counts as moved when its gray value shifts by more than this (0–255)
   var CHANGED_SHARE = 0.01; // the frame counts as changed when more than 1% of pixels moved
 
-  var NEW_PAGE_REGION = 0.09; // the changed pixels must spread over ≥ 9% of the frame to be a NEW PAGE (measured 3 Oct:
-                              // page→page regions 11–34%; hover 2.2%, tooltip 0.7%, popup 7.4%, cursor 0 — all "same page")
 
   // How much moved, and how widely: share of pixels moved, and the bounding box of those pixels as a share of the frame.
   function changedRegion(prev, next) {
@@ -33,17 +31,10 @@
     return changedRegion(prev, next).share > CHANGED_SHARE;
   }
 
-  // A different page: enough moved AND spread across the content, not a hover / tooltip / popup / cursor
-  function isNewPage(prev, next) {
-    if (!next) return false;
-    if (!prev || prev.length !== next.length) return true;
-    var r = changedRegion(prev, next);
-    return r.share > CHANGED_SHARE && r.bbox >= NEW_PAGE_REGION;
-  }
-
   // Which earlier capture (if any) is this frame? prints = [{ key, print }]; returns the key or null.
+  // Share rule on purpose (owner, 3 Oct 09:59): a region rule missed his pages; a duplicate is cheap, a miss is not.
   function matchPrint(prints, print) {
-    for (var i = (prints || []).length - 1; i >= 0; i--) if (!isNewPage(prints[i].print, print)) return prints[i].key;
+    for (var i = (prints || []).length - 1; i >= 0; i--) if (!fingerprintChanged(prints[i].print, print)) return prints[i].key;
     return null;
   }
 
@@ -65,5 +56,5 @@
     return out;
   }
 
-  return { fingerprintChanged: fingerprintChanged, changedRegion: changedRegion, isNewPage: isNewPage, matchPrint: matchPrint, stableNewScreen: stableNewScreen, fingerprintFrom: fingerprintFrom, W: W, H: H };
+  return { fingerprintChanged: fingerprintChanged, changedRegion: changedRegion, matchPrint: matchPrint, stableNewScreen: stableNewScreen, fingerprintFrom: fingerprintFrom, W: W, H: H };
 });
