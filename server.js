@@ -11,6 +11,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const WebSocket = require('ws');
 const stringSimilarity = require('string-similarity');
+const meetingCopilot = require('./lib/meeting-copilot'); // meeting co-pilot logic (call log, prompts, budget)
 // Import only the submodules we need — avoid loading SentimentAnalyzer which has ESM-only deps
 const TfIdf = require('natural/lib/natural/tfidf/tfidf');
 const PorterStemmer = require('natural/lib/natural/stemmers/porter_stemmer');
@@ -43,6 +44,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' && process.env.DATABASE_PUBLIC_URL ? { rejectUnauthorized: false } : false
 });
+const recordCallEvent = meetingCopilot.makeRecorder(pool); // call log: writes ONLY during a live call (callId set)
 
 async function initDB() {
   const client = await pool.connect();
@@ -133,6 +135,16 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_meetings_session ON meetings(session_id);
       CREATE INDEX IF NOT EXISTS idx_live_transcripts_session ON live_transcripts(session_id);
       CREATE INDEX IF NOT EXISTS idx_session_creations_user ON session_creations(user_id);
+      CREATE TABLE IF NOT EXISTS call_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        call_id UUID NOT NULL,
+        ts TIMESTAMPTZ DEFAULT NOW(),
+        kind TEXT NOT NULL,
+        text TEXT NOT NULL,
+        meta JSONB DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_call_events_call ON call_events(call_id, ts);
     `);
     // Migrations for existing tables
     await client.query(`
@@ -2630,182 +2642,91 @@ app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => 
   }
 });
 
-// ============ CO-PILOT MODE ============
-// Step-by-step task guidance for live task interviews (Excel, SQL, Tableau, etc.)
-const copilotMemory = new Map(); // sessionId → { steps: [], lastInstruction: '', context: '' }
-const COPILOT_MAX_STEPS = 30;
+// ============ MEETING CO-PILOT ============
+// Owner (3 Oct 2026): co-pilot is for WORK MEETINGS — others share a screen (table, notes, questions) and ask him
+// something; it listens, reads the shared screen and says what to say. Logic lives in lib/meeting-copilot.js; the call
+// log (call_events) is written only during a live call. Design: docs/superpowers/specs/2026-10-03-meeting-copilot-design.md
+const copilotDigests = new Map(); // callId → { text, lastAt, lastCount, running } (smart-mode compaction state)
+const copilotDocs = new Map();    // callId → last recorded reference text (a document is logged once per call)
 
-const COPILOT_PROMPT = `You are a LIVE TASK CO-PILOT. The candidate is in a live interview where they are being asked to perform tasks on screen — this could be any application, website, document, coding challenge, assessment platform, or tool. You see their screen and hear what the interviewer said.
-
-YOUR JOB: Give the candidate the EXACT next step to do. One step at a time. Short. Specific. Actionable.
-
-OUTPUT FORMAT — CRITICAL:
-Output ONLY the immediate next step(s) the candidate should take.
-Each step = one short line, 3-10 words, starting with the action.
-If a formula or code is needed, give the EXACT formula/code to type.
-Separate steps with blank lines.
-
-EXAMPLES OF GOOD CO-PILOT OUTPUT:
-
-Interviewer says: "Get distinct values from column B"
-Screen shows: Excel with data in column B
-
-Select cell C1
-
-Type: =UNIQUE(B2:B100)
-
-Press Enter
-
----
-
-Interviewer says: "Now filter to show only values above 500"
-Screen shows: Excel with data
-
-Select the data range
-
-Data tab → Filter
-
-Click column dropdown → Number Filters
-
-Greater Than → type 500 → OK
-
----
-
-Interviewer says: "Write a query to find duplicate emails"
-Screen shows: SQL editor
-
-Type this query:
-
-\`\`\`sql
-SELECT email, COUNT(*) as cnt
-FROM users
-GROUP BY email
-HAVING COUNT(*) > 1
-\`\`\`
-
-Run the query
-
----
-
-Interviewer says: "Can you find the average response time from that dataset?"
-Screen shows: A web-based assessment platform with a table of data
-
-Look at the data table — columns are: Request ID, Timestamp, Response Time (ms), Status
-
-Click the "Response Time (ms)" column header to sort
-
-Calculate average: sum visible values / count of rows
-
-If there's a formula bar or calculation tool, use it — otherwise state the answer verbally
-
-RULES:
-- ACTUALLY LOOK AT THE SCREEN IMAGE. Describe what you see FIRST (app name, data visible, current state) before giving steps
-- NEVER give generic advice like "Click the Code tab" — be specific to what is ACTUALLY visible on screen
-- NEVER explain WHY — just tell them WHAT to do
-- NEVER write paragraphs — only short action steps
-- Give EXACT formulas, functions, code — not descriptions
-- If you see they already did a step, skip it and give the next one
-- If the screen shows an error, tell them how to fix it
-- Be specific to what's on screen: reference actual cell values, column headers, button labels, menu items you SEE
-- For code/formulas: give the complete thing ready to type, wrapped in code blocks
-- Use the step history to know what's been done — NEVER repeat a completed step
-- If the screen image is blank, black, or you cannot see any application content, say "Screen capture unavailable — try clicking Capture again"
-- If no new instruction has been given and screen hasn't changed, output: "Waiting for next instruction..."
-
-STEP HISTORY:
-You will receive a history of steps already given. Use this to:
-1. Know what the candidate has already been told to do
-2. Never repeat those steps
-3. Understand the flow of the current task
-4. Build on previous steps logically`;
-
-function getCopilotMemory(sessionId) {
-  if (!copilotMemory.has(sessionId)) {
-    copilotMemory.set(sessionId, { steps: [], lastInstruction: '', context: '' });
-  }
-  return copilotMemory.get(sessionId);
+function liveWsForSession(sessionId) {
+  const clients = sessionClients.get(sessionId);
+  if (!clients) return null;
+  for (const c of clients) if (c._callId && c.readyState === WebSocket.OPEN) return c;
+  return null;
 }
 
-function addCopilotStep(sessionId, instruction, response) {
-  const mem = getCopilotMemory(sessionId);
-  mem.steps.push({ ts: Date.now(), instruction: instruction || '', response: response.substring(0, 500) });
-  if (mem.steps.length > COPILOT_MAX_STEPS) mem.steps = mem.steps.slice(-COPILOT_MAX_STEPS);
-  if (instruction) mem.lastInstruction = instruction;
+async function loadCallRows(callId) {
+  const r = await pool.query('SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 ORDER BY ts ASC LIMIT 400', [callId]);
+  return r.rows.map(x => ({ kind: x.kind, text: x.text, meta: x.meta || {}, ts: new Date(x.ts).getTime() }));
+}
+
+// Smart mode only: compact the call in the background on a budget (≤ 1 run per 3 min, only with new rows) — never on
+// the answer's clock. The digest row survives a server restart.
+function maybeCompactCall(sessionId, callId, rows, historyOn) {
+  const st = copilotDigests.get(callId) || { text: '', lastAt: 0, lastCount: 0, running: false };
+  copilotDigests.set(callId, st);
+  const material = rows.filter(r => r.kind !== 'digest');
+  if (st.running || !meetingCopilot.shouldCompact(st, { now: Date.now(), rowCount: material.length, historyOn })) return;
+  st.running = true;
+  const fresh = material.slice(st.lastCount).map(r => `[${r.kind}] ${r.text}`).join('\n');
+  const user = (st.text ? `CURRENT NOTES:\n${st.text}\n\n` : '') + `NEW LINES (newest last):\n${fresh}\n\nUPDATED NOTES:`;
+  const t0 = Date.now(), count = material.length;
+  callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU).then(out => {
+    st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count;
+    recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count });
+    console.log(`[Co-pilot] digest updated in ${Date.now() - t0}ms (${st.text.length} chars from ${count} rows)`);
+  }).catch(e => console.error('[Co-pilot] digest failed:', e.message)).finally(() => { st.running = false; });
 }
 
 app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   try {
-    const { image, transcript, mode, context } = req.body;
-    // mode: 'instruction' (new interviewer speech) or 'check' (manual capture to check progress)
-    if (!image && !transcript) return res.status(400).json({ error: 'Need image or transcript' });
-
     const sessionId = req.params.id;
-    const s = await pool.query('SELECT resume, jd, company, role FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
+    const { image, pressed, context } = req.body;
+    const ask = String(req.body.ask || req.body.transcript || '').trim(); // `transcript` = the older client field
+    const live = liveWsForSession(sessionId);
+    if (!live) return res.status(409).json({ error: 'Go Live first — co-pilot works during a live call' });
+    const callId = live._callId;
+    const s = await pool.query('SELECT company, role FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
     if (!s.rows.length) return res.status(404).json({ error: 'Session not found' });
+    screenActivity.set(sessionId, Date.now()); // co-pilot use is activity — keeps the live connection from idling out
 
-    const session = s.rows[0];
-    const mem = getCopilotMemory(sessionId);
-    screenActivity.set(sessionId, Date.now()); // co-pilot use is activity too — keep the live connection from idling out
+    const historyOn = !!live._copilotHistory;
+    const mode = historyOn ? 'smart' : 'regular';
+    const docs = String(context || '').trim();
+    if (docs && copilotDocs.get(callId) !== docs) { copilotDocs.set(callId, docs); recordCallEvent(sessionId, callId, 'document', docs, {}); }
+    const rows = await loadCallRows(callId);
+    let digest = (copilotDigests.get(callId) || {}).text;
+    if (!digest) { const d = rows.filter(r => r.kind === 'digest').pop(); if (d) digest = d.text; }
+    const hasImage = !!image;
+    const isPress = !!pressed || req.body.mode === 'check' || !ask;
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], docs, ask, pressed: isPress, screenChanged: hasImage });
+    const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
+    const cardId = 'copilot-' + Date.now();
+    console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
+    broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode });
 
-    // Build step history context
-    let stepHistory = '';
-    if (mem.steps.length > 0) {
-      stepHistory = '\n\nSTEP HISTORY (what has already been done — do NOT repeat these):\n' +
-        mem.steps.map((s, i) => {
-          let entry = 'Step ' + (i + 1) + ':';
-          if (s.instruction) entry += ' [Instruction: ' + s.instruction + ']';
-          entry += '\n' + s.response;
-          return entry;
-        }).join('\n\n');
-    }
-
-    let textPrompt = 'INTERVIEW FOR: ' + (session.role || 'this role') + ' at ' + (session.company || 'the company');
-
-    if (transcript && mode === 'typed') {
-      // Typed into the box by the candidate — their own instruction about the task, never the interviewer's words
-      textPrompt += '\n\nTHE CANDIDATE TYPED (their own note or instruction about this task):\n"' + transcript + '"';
-    } else if (transcript) {
-      textPrompt += '\n\nINTERVIEWER JUST SAID:\n"' + transcript + '"';
-    } else if (mode === 'check') {
-      textPrompt += '\n\nThe candidate clicked CAPTURE to check their progress. Look at the screen and tell them the next step based on what you see.';
-      if (mem.lastInstruction) {
-        textPrompt += '\nLast instruction was: "' + mem.lastInstruction + '"';
-      }
-    }
-
-    // Append user-uploaded reference materials and custom instructions
-    if (context && context.trim()) {
-      textPrompt += context;
-    }
-
-    textPrompt += stepHistory;
-    textPrompt += '\n\nLook at the screen. What should the candidate do RIGHT NOW? Give the exact next step(s).';
-
-    let answer;
-    if (image) {
+    let content = textPrompt;
+    if (hasImage) {
       const mediaMatch = image.match(/^data:image\/([\w+]+);base64,/);
       const mediaType = mediaMatch ? 'image/' + mediaMatch[1] : 'image/jpeg';
-      const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
-      console.log('[Co-pilot] Image size:', (base64Data.length / 1024).toFixed(0) + 'KB, mode:', mode || 'instruction');
-      answer = await callClaudeVision(COPILOT_PROMPT, base64Data, textPrompt, 1000, MODEL_HAIKU, mediaType);
-    } else {
-      // Audio-only (no screen capture) — just process the instruction
-      answer = await callClaude(COPILOT_PROMPT, textPrompt, 1000, MODEL_HAIKU);
+      content = [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: image.replace(/^data:image\/\w+;base64,/, '') } }, { type: 'text', text: textPrompt }];
     }
+    const t0 = Date.now(); let first = 0;
+    const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, 500, model, t => {
+      if (!first) first = Date.now() - t0;
+      broadcastToSession(sessionId, { type: 'copilot_delta', cardId, text: t });
+    }) || '').trim();
+    console.log(`[Co-pilot] answered in ${Date.now() - t0}ms (first words ${first}ms, ${answer.length} chars)`);
+    broadcastToSession(sessionId, { type: 'copilot_done', cardId, answer });
 
-    // Save to memory
-    addCopilotStep(sessionId, transcript || '', answer);
-    console.log('[Co-pilot] Steps in memory:', mem.steps.length, 'for session', sessionId);
-
-    // Broadcast to canvas clients
-    broadcastToSession(sessionId, {
-      type: 'copilot_step',
-      answer: answer,
-      instruction: transcript || '',
-      stepNumber: mem.steps.length
-    });
-
-    res.json({ answer, stepNumber: mem.steps.length });
+    // Log what was seen (the model's own "On screen" line) and what was said, then compact in the background
+    const writes = [];
+    if (hasImage) { const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; if (seen) writes.push(recordCallEvent(sessionId, callId, 'seen', seen, {})); }
+    writes.push(recordCallEvent(sessionId, callId, 'said', answer.slice(0, 600), { mode }));
+    await Promise.all(writes); // on record before we answer — the response never claims what isn't logged yet
+    maybeCompactCall(sessionId, callId, rows, historyOn);
+    res.json({ answer, cardId, mode });
   } catch (e) {
     console.error('[Co-pilot Error]', e.message, e.stack);
     res.status(500).json({ error: 'Co-pilot failed: ' + e.message });
@@ -2826,8 +2747,7 @@ app.post('/api/sessions/:id/copilot/extract', authMiddleware, upload.single('fil
 
 // Clear co-pilot memory when session ends
 app.post('/api/sessions/:id/copilot/reset', authMiddleware, (req, res) => {
-  copilotMemory.delete(req.params.id);
-  res.json({ ok: true });
+  res.json({ ok: true }); // kept for older clients; the call log is per call and needs no reset
 });
 
 // Standalone Smart Canvas page
@@ -3781,6 +3701,7 @@ wss.on('connection', (ws) => {
           [sessionId, userId, interviewerName, interviewerTitle, interviewStage]
         );
         transcriptId = tResult.rows[0].id;
+        ws._callId = transcriptId; // the call log (call_events) is keyed by this; cleared on stop/close
         transcript = [];
         // SESSION MEMORY: fresh notes for this call; load what was said in earlier calls of this session (background)
         ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = ''; ws._bridges = ''; ws._bridgesSeen = 0; ws._bridgesAt = 0; ws._bridgesRuns = 0; clearTimeout(ws._bridgeTimer); ws._bridgeTimer = null; ws._bankSnapshot = null;
@@ -3844,6 +3765,14 @@ wss.on('connection', (ws) => {
           // Post-filter: even after AI extraction, run isQuestion() to catch false positives
           if (!isQuestion(q)) {
             console.log('[AI Auto-Detect] Post-filter rejected:', q.substring(0, 60));
+            return;
+          }
+          // MEETING CO-PILOT MODE: the question goes to co-pilot (the client answers it with the shared screen) —
+          // no Q&A card, no bank match, no bridges. One question is paid once.
+          if (ws._copilotMode) {
+            console.log('[Co-pilot] question routed to co-pilot:', q.substring(0, 60));
+            const qd = { type: 'question_detected', text: q, source: 'copilot' };
+            ws.send(JSON.stringify(qd)); broadcastToSession(sessionId, qd, ws);
             return;
           }
 
@@ -4116,6 +4045,7 @@ wss.on('connection', (ws) => {
                 ws.send(JSON.stringify({ type: 'transcript', text: fullUtterance, isFinal: true, isEcho: isEcho }));
                 if (!isEcho) broadcastToSession(sessionId, { type: 'interviewer_final', text: fullUtterance }, ws);
                 transcript.push({ text: isEcho ? '[Echo] ' + fullUtterance : fullUtterance, ts: Date.now(), isEcho: isEcho });
+                if (!isEcho) recordCallEvent(sessionId, ws._callId, 'asker', fullUtterance, {});
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
                 maybeDigestCurrentCall(ws);
                 if (!isEcho) {
@@ -4231,6 +4161,7 @@ wss.on('connection', (ws) => {
                   const uLoud = userBufStartWall ? channelLoudness(userBufStartWall, userBufStartWall + 1500) : null;
                   const isBleed = (uLoud && uLoud.c1 > uLoud.c2 * 1.2) || transcript.some(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000 &&
                     stringSimilarity.compareTwoStrings(fullUtterance.toLowerCase(), (t.text || '').toLowerCase()) > 0.6);
+                  if (!isBleed) recordCallEvent(sessionId, ws._callId, 'you', fullUtterance, {});
                   if (!isBleed) ws._lastUserSpeechTs = Date.now();
                   userBufStartWall = null;
                   // Prune old entries (keep last 10 seconds worth)
@@ -4314,6 +4245,12 @@ wss.on('connection', (ws) => {
           const clients = sessionClients.get(sessionId);
           if (clients) clients.forEach(c => { c._followUpsOn = on; });
           ws._followUpsOn = on;
+        }
+        if (msg.copilot !== undefined || msg.copilotHistory !== undefined) { // meeting co-pilot mode + its History checkbox (all clients in the session)
+          const clients = sessionClients.get(sessionId) || new Set();
+          const apply = c => { if (msg.copilot !== undefined) c._copilotMode = !!msg.copilot; if (msg.copilotHistory !== undefined) c._copilotHistory = !!msg.copilotHistory; };
+          clients.forEach(apply); apply(ws);
+          console.log(`[Co-pilot] settings: mode=${ws._copilotMode ? 'on' : 'off'} history=${ws._copilotHistory ? 'on' : 'off'} for session ${sessionId}`);
         }
       }
 
@@ -4524,6 +4461,7 @@ wss.on('connection', (ws) => {
 
       else if (msg.type === 'stop') {
         clearTimeout(idleTimer);
+        ws._callId = null; // call over — the call log stops here; co-pilot refuses until the next Go Live
         // Close Deepgram streams
         if (interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
           interviewerDG.send(JSON.stringify({ type: 'CloseStream' }));
@@ -4564,6 +4502,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', async () => {
     clearTimeout(idleTimer);
+    ws._callId = null;
     // Remove from session clients map
     if (sessionId) removeSessionClient(sessionId, ws);
     // Remove from active live map if this is the current live connection for the user
