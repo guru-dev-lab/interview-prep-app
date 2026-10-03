@@ -242,3 +242,10 @@ console.log('ALL PASS (smart cap)');
 // ---- owner 3 Oct: "the question on page 7 should be answered and NEEDS TO ADD number of question and what asked"
 assert(/Question 1 — <what was asked>/.test(mc.MEETING_PROMPT) && /every question on the page/i.test(mc.MEETING_PROMPT), 'numbered questions: each block carries its number and what was asked, every question answered');
 console.log('ALL PASS (question number + wording in each block)');
+
+// ---- 3 Oct 10:07: Assist on the cover page answered page 8 only and ignored page 7's three questions
+{
+  const p = mc.buildCopilotPrompt({ mode: 'smart', rows: [], session: {}, ask: '', pressed: true, screenChanged: true, digest: '' });
+  assert(/every question found across the captured screens/i.test(p) && /Page 7 — Question 1 — <what was asked>/.test(p) && /already answered/i.test(p), 'a press with nothing typed answers every open question across the captured pages, grouped by page, numbered with its wording');
+  console.log('ALL PASS (press answers all open questions)');
+}
