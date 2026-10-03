@@ -145,6 +145,18 @@ async function initDB() {
         meta JSONB DEFAULT '{}'
       );
       CREATE INDEX IF NOT EXISTS idx_call_events_call ON call_events(call_id, ts);
+      CREATE TABLE IF NOT EXISTS call_screens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        call_id UUID NOT NULL,
+        key TEXT NOT NULL,
+        ts TIMESTAMPTZ DEFAULT NOW(),
+        media_type TEXT,
+        image BYTEA,
+        transcript TEXT,
+        meta JSONB DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_call_screens_call ON call_screens(call_id, ts);
     `);
     // Migrations for existing tables
     await client.query(`
@@ -2679,6 +2691,27 @@ function maybeCompactCall(sessionId, callId, rows, historyOn) {
   }).catch(e => console.error('[Co-pilot] digest failed:', e.message)).finally(() => { st.running = false; });
 }
 
+// At assist time: every stored screen of this call not yet read is read ONCE (Sonnet, thinking off, 4 at a time) and
+// becomes a `seen` row. Returns how many were read.
+async function readPendingScreens(sessionId, callId) {
+  const pend = (await pool.query('SELECT id, key, media_type, image, meta FROM call_screens WHERE call_id = $1 AND transcript IS NULL AND image IS NOT NULL ORDER BY ts ASC', [callId])).rows;
+  if (!pend.length) return 0;
+  const t0 = Date.now(); let done = 0;
+  const tModel = meetingCopilot.transcribeModelFor('smart') === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
+  const one = async p => {
+    try {
+      const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, p.image.toString('base64'), 'Transcribe the screen.', 900, tModel, p.media_type || 'image/jpeg', meetingCopilot.transcribeExtras()) || '').trim();
+      await pool.query('UPDATE call_screens SET transcript = $1 WHERE id = $2', [txt, p.id]);
+      await recordCallEvent(sessionId, callId, 'seen', txt, Object.assign({ key: p.key, full: true }, p.meta || {}));
+      done++;
+      console.log(`[Co-pilot] read ${p.key} (${txt.length} chars) :: ${txt.replace(/\s+/g, ' ').slice(0, 200)}`);
+    } catch (e) { console.error('[Co-pilot] read failed for', p.key, e.message); }
+  };
+  for (let i = 0; i < pend.length; i += 4) await Promise.all(pend.slice(i, i + 4).map(one));
+  console.log(`[Co-pilot] read ${done} pending screens at assist in ${Date.now() - t0}ms on ${tModel}`);
+  return done;
+}
+
 app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   try {
     const sessionId = req.params.id;
@@ -2698,7 +2731,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const mode = historyOn ? 'smart' : 'regular';
     const docs = String(context || '').trim();
     if (docs && copilotDocs.get(callId) !== docs) { copilotDocs.set(callId, docs); recordCallEvent(sessionId, callId, 'document', docs, {}); }
-    const rows = await loadCallRows(callId);
+    let rows = await loadCallRows(callId);
     let digest = (copilotDigests.get(callId) || {}).text;
     if (!digest) { const d = rows.filter(r => r.kind === 'digest').pop(); if (d) digest = d.text; }
     const hasImage = !!image;
@@ -2708,20 +2741,22 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       imgBlock = { type: 'image', source: { type: 'base64', media_type: sniffed.mediaType, data: sniffed.data } };
     }
     if (req.body.auto || req.body.capture) {
-      // CAPTURE ONLY: camera press (`capture`, any mode) or the History watcher (`auto`) — read the page into the call
-      // log; no answer, no card; the overlay gets copilot_captured (counter + toast)
+      // CAPTURE = DATA COLLECTION ONLY (owner, 3 Oct: "capturing, listening and all is data collection; time of assist is
+      // when you do it"). The frame is stored; it is read at the first Assist that needs it. No model call here.
       if (req.body.auto && !historyOn) return res.json({ ignored: true, reason: 'history off' });
-      if (!hasImage) return res.status(400).json({ error: 'auto capture needs an image' });
-      if (screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey)) return res.json({ unchanged: true, key: screenKey });
-      const t1 = Date.now();
-      const tModel = meetingCopilot.transcribeModelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
-      const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, imgBlock.source.data, 'Transcribe the screen.', 900, tModel, imgBlock.source.media_type, meetingCopilot.transcribeExtras()) || '').trim();
-      await recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true, auto: !!req.body.auto, camera: !!req.body.capture });
-      console.log(`[Co-pilot] ${req.body.auto ? 'auto-captured' : 'camera-captured'} page ${screenKey || '(no key)'} on ${tModel} in ${Date.now() - t1}ms (${txt.length} chars) :: ${txt.replace(/\s+/g, ' ').slice(0, 240)}`);
-      broadcastToSession(sessionId, { type: 'copilot_captured', key: screenKey, chars: txt.length });
-      maybeCompactCall(sessionId, callId, rows.concat([{ kind: 'seen', text: txt, meta: { key: screenKey }, ts: Date.now() }]), historyOn);
-      return res.json({ captured: true, key: screenKey, chars: txt.length });
+      if (!hasImage) return res.status(400).json({ error: 'capture needs an image' });
+      if (screenKey) {
+        const dup = await pool.query('SELECT 1 FROM call_screens WHERE call_id = $1 AND key = $2', [callId, screenKey]);
+        if (dup.rows.length) return res.json({ unchanged: true, key: screenKey });
+      }
+      await pool.query('INSERT INTO call_screens (session_id, call_id, key, media_type, image, meta) VALUES ($1, $2, $3, $4, $5, $6)',
+        [sessionId, callId, screenKey || ('scr-' + Date.now().toString(36)), imgBlock.source.media_type, Buffer.from(imgBlock.source.data, 'base64'), JSON.stringify({ auto: !!req.body.auto, camera: !!req.body.capture })]);
+      console.log(`[Co-pilot] ${req.body.auto ? 'auto-captured' : 'camera-captured'} page ${screenKey || '(no key)'} stored (${(imgBlock.source.data.length / 1024).toFixed(0)}KB) — read at assist`);
+      broadcastToSession(sessionId, { type: 'copilot_captured', key: screenKey });
+      return res.json({ captured: true, stored: true, key: screenKey });
     }
+    // ASSIST (or typed / heard question): now is when the stored pages get read — once each
+    if (historyOn) { if (await readPendingScreens(sessionId, callId)) rows = await loadCallRows(callId); }
     const isPress = !!pressed || req.body.mode === 'check' || !ask;
     const reusing = !hasImage && screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey);
     const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], docs, ask, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
@@ -4493,6 +4528,7 @@ wss.on('connection', (ws) => {
 
       else if (msg.type === 'stop') {
         clearTimeout(idleTimer);
+        if (ws._callId) pool.query('UPDATE call_screens SET image = NULL WHERE call_id = $1', [ws._callId]).catch(e => console.error('[Co-pilot] image cleanup failed:', e.message)); // frames are for the call only; transcripts stay
         ws._callId = null; // call over — the call log stops here; co-pilot refuses until the next Go Live
         // Close Deepgram streams
         if (interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
@@ -4534,6 +4570,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', async () => {
     clearTimeout(idleTimer);
+    if (ws._callId) pool.query('UPDATE call_screens SET image = NULL WHERE call_id = $1', [ws._callId]).catch(e => console.error('[Co-pilot] image cleanup failed:', e.message));
     ws._callId = null;
     // Remove from session clients map
     if (sessionId) removeSessionClient(sessionId, ws);
