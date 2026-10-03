@@ -51,4 +51,6 @@ ok(/copilotActive && copilotHistory && electronLive && !copilotAutoPaused/.test(
   ok(!/copilotNoteCapture\(/.test(cs), 'the counter counts collected pages only (camera + auto), never an Assist frame'); }
 ok(/paused: copilotAutoPaused/.test(src), 'the watcher reports paused in its health line');
 ok(/function styleCopilotCard\(/.test(src) && /cp-q/.test(src) && /cp-a/.test(src) && /styleCopilotCard\(c\.el\)/.test(src), 'co-pilot cards style the question line and the Answer line so he can scan and speak');
+ok(/cp-block/.test(src) && /function styleCopilotCard\([\s\S]{0,1800}cp-block/.test(src), 'each question + answer is wrapped in its own card inside the co-pilot answer');
+ok(/nextElementSibling/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 1800)), 'the line right after a question line is the result line (label or not)');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

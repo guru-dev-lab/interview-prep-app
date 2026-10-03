@@ -123,9 +123,10 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 /* Co-pilot tag */
 .sc-tag.copilot{background:rgba(99,102,241,.2);color:#A5B4FC}
 .sc-card.copilot-card{border-left-color:#818CF8}
-.copilot-card .cp-q{font-weight:700;color:#E0E7FF;margin-top:12px;padding-top:8px;border-top:1px solid rgba(99,102,241,.25);font-size:1.02em}
+.copilot-card .cp-block{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:10px;padding:10px 12px;margin:10px 0}
+.copilot-card .cp-q{font-weight:700;color:#E0E7FF;margin:0 0 6px;font-size:1.02em}
 .copilot-card .cp-q .hl-key{background:none;color:inherit;padding:0}
-.copilot-card .cp-a{font-weight:700;color:#34D399;font-size:1.06em;margin:4px 0 2px}
+.copilot-card .cp-a{font-weight:700;color:#34D399;font-size:1.1em;margin:0 0 6px;padding:4px 8px;background:rgba(52,211,153,.1);border-radius:6px;display:inline-block}
 .copilot-card .cp-sec{opacity:.75;font-size:.95em}
 .copilot-screen-chip{margin-left:auto;font:600 9px Inter,sans-serif;color:#A5B4FC;background:rgba(99,102,241,.14);border-radius:4px;padding:2px 6px;white-space:nowrap}
 .copilot-screen-chip.bad{color:#FCA5A5;background:rgba(248,113,113,.14)}
@@ -3084,18 +3085,33 @@ function copilotCardStart(cardId, ask, mode, screen, reason) {
 // Scan-and-speak styling (owner, 3 Oct): the question line stands out, the Answer line is the loud one, the working is quiet
 function styleCopilotCard(el) {
   var a = el && el.querySelector('.sc-card-a'); if (!a) return;
+  if (a.querySelector('.cp-block')) return; // already shaped (done after the stream)
   var nodes = a.querySelectorAll('p, div, li, span.hl-key');
   nodes.forEach(function (n) {
     var t = (n.textContent || '').trim();
     if (/^(Page \d+ — )?Question( \d+)?( — |:)/.test(t)) { var blk = n.closest('p, div, li') || n; blk.classList.add('cp-q'); }
-    else if (/^Answer:/.test(t)) { var blk2 = n.closest('p, div, li') || n; blk2.classList.add('cp-a'); }
     else if (/^(Asked|On screen|Say):/.test(t)) { var blk3 = n.closest('p, div, li') || n; blk3.classList.add('cp-sec'); }
+  });
+  // Each question + its answer = its own card (owner, 3 Oct): the question line is the title, the next line is the
+  // result (the shared formatter strips the "Answer:" label, so position decides), the rest is the working.
+  var qs = Array.prototype.slice.call(a.querySelectorAll('.cp-q'));
+  qs.forEach(function (q) {
+    if (q.parentNode !== a) return;
+    var block = document.createElement('div'); block.className = 'cp-block';
+    a.insertBefore(block, q);
+    var cur = q, first = true;
+    while (cur && !(cur !== q && cur.classList && cur.classList.contains('cp-q'))) {
+      var nxt = cur.nextElementSibling;
+      block.appendChild(cur);
+      if (first && nxt && !(nxt.classList && nxt.classList.contains('cp-q'))) { nxt.classList.add('cp-a'); }
+      first = false; cur = nxt;
+    }
   });
 }
 function copilotCardDelta(cardId, text) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
   c.text += text || '';
-  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); }
+  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); } // re-rendered per delta: the shape is rebuilt from fresh HTML each time
 }
 function copilotCardDone(cardId, answer) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
