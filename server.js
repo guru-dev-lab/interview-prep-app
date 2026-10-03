@@ -2796,6 +2796,16 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   }
 });
 
+// What has been captured on the live call — the owner checks this before pressing Assist ("not sure the captures is right")
+app.get('/api/sessions/:id/copilot/screens', authMiddleware, async (req, res) => {
+  try {
+    const live = liveWsForSession(req.params.id);
+    if (!live) return res.json({ screens: [], live: false });
+    const r = await pool.query('SELECT key, ts, meta, (transcript IS NOT NULL) AS read, left(regexp_replace(coalesce(transcript, \'\'), \'\\s+\', \' \', \'g\'), 120) AS head FROM call_screens WHERE call_id = $1 ORDER BY ts ASC', [live._callId]);
+    res.json({ live: true, screens: r.rows.map(x => ({ key: x.key, ts: x.ts, read: x.read, head: x.head || '', auto: !!(x.meta && x.meta.auto) })) });
+  } catch (e) { console.error('[Co-pilot] screens list failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // Extract text from uploaded file for co-pilot context
 app.post('/api/sessions/:id/copilot/extract', authMiddleware, upload.single('file'), async (req, res) => {
   try {
