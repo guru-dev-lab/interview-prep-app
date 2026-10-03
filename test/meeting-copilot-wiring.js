@@ -21,4 +21,5 @@ ok(/\.copilot-float[^\n]*-webkit-app-region:no-drag/.test(src) || /\.copilot-flo
 ok(!/^\.copilot-float\{[^\n]*blur\(60px\)/m.test(src), 'the pill is not a 60px blur glass (owner: blurry)');
 ok(/var held = [^\n]*e\.buttons/.test(src) && /var want = !solid && !held/.test(src), 'click-through never switches on while a mouse button is held (resize/drag stuck with the mouse, 3 Oct)');
 ok(/addEventListener\('mouseup', function\(e\) \{ lastEvt = e;/.test(src), 'mouse-up re-evaluates click-through so a finished drag releases cleanly');
+ok(src.indexOf('id="copilot-float"') > src.indexOf('class="feed-wrap"'), 'the pill comes AFTER the feed in the DOM (Electron drag regions win by DOM order; a pill before the feed gets its clicks eaten as a window drag)');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
