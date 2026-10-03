@@ -93,20 +93,20 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .config-float .hud-select:hover{background:rgba(255,255,255,.08);color:var(--text)}
 
 /* ===== FLOATING CO-PILOT PILL — vertical strip on right edge ===== */
-.copilot-float{position:fixed;top:50%;right:2px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none}
+.copilot-float{position:fixed;top:50%;right:2px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:8px;padding:10px 5px;background:rgba(12,16,25,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);-webkit-app-region:no-drag;border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none}
 .copilot-float.show{display:flex}
 @keyframes floatIn{from{opacity:0;transform:translateY(-50%) scale(.96)}to{opacity:1;transform:translateY(-50%) scale(1)}}
-.copilot-float-label{font:700 7px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.3px;writing-mode:vertical-rl;text-orientation:mixed}
+.copilot-float-label{font:700 8px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.3px;writing-mode:vertical-rl;text-orientation:mixed}
 .copilot-float .cpf-sep{height:1px;width:18px;background:linear-gradient(90deg,transparent,rgba(99,102,241,.2),transparent);flex-shrink:0}
-.copilot-capture-btn{width:26px;height:26px;padding:0;border:1px solid rgba(99,102,241,.2);border-radius:6px;background:rgba(99,102,241,.1);font:600 12px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:all .15s ease;display:flex;align-items:center;justify-content:center}
+.copilot-capture-btn{width:30px;height:30px;padding:0;border:1px solid rgba(99,102,241,.3);border-radius:7px;background:rgba(99,102,241,.16);font:600 14px Inter,sans-serif;color:#C7D2FE;cursor:pointer;transition:all .15s ease;display:flex;align-items:center;justify-content:center}
 .copilot-capture-btn:hover{background:rgba(99,102,241,.22);border-color:rgba(99,102,241,.4);transform:scale(1.08);box-shadow:0 0 12px rgba(99,102,241,.15)}
 .copilot-capture-btn:active{transform:scale(.93)}
 .copilot-capture-btn.loading{opacity:.5;pointer-events:none}
-.copilot-gear-btn{width:26px;height:26px;border:1px solid rgba(99,102,241,.15);border-radius:6px;background:transparent;color:#818CF8;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0}
+.copilot-gear-btn{width:30px;height:30px;border:1px solid rgba(99,102,241,.15);border-radius:6px;background:transparent;color:#818CF8;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0}
 .copilot-gear-btn:hover{background:rgba(99,102,241,.14);transform:scale(1.08)}
 .copilot-gear-btn:active{transform:scale(.94)}
 .copilot-history{display:flex;flex-direction:column;align-items:center;gap:2px;font:700 7px Inter,sans-serif;color:#818CF8;cursor:pointer;-webkit-app-region:no-drag}
-.copilot-history input{margin:0;width:12px;height:12px;accent-color:#818CF8;cursor:pointer}
+.copilot-history input{margin:0;width:14px;height:14px;accent-color:#818CF8;cursor:pointer}
 .copilot-gear-btn.has-data{border-color:rgba(52,211,153,.3);color:#34D399;box-shadow:0 0 8px rgba(52,211,153,.12)}
 .copilot-dot-live{width:6px;height:6px;border-radius:50%;background:#818CF8;box-shadow:0 0 8px rgba(129,140,248,.5);animation:copilot-blink 1.5s ease infinite;flex-shrink:0}
 @keyframes copilot-blink{0%,100%{opacity:1;box-shadow:0 0 8px rgba(129,140,248,.5)}50%{opacity:.3;box-shadow:0 0 3px rgba(129,140,248,.15)}}
@@ -532,7 +532,7 @@ body.light-mode .config-float-label{color:#7c3aed}
 body.light-mode .config-float .cfg-sep{background:linear-gradient(180deg,transparent,rgba(109,40,217,.1),transparent)}
 body.light-mode .config-float .hud-select{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.06);color:#374151}
 body.light-mode .config-float .hud-select:hover{background:rgba(0,0,0,.06);color:#111}
-body.light-mode .copilot-float{background:rgba(255,255,255,.92);border-color:rgba(99,102,241,.15);box-shadow:0 4px 20px rgba(0,0,0,.12),0 0 10px rgba(99,102,241,.05)}
+body.light-mode .copilot-float{background:rgba(255,255,255,.96);border-color:rgba(99,102,241,.15);box-shadow:0 4px 20px rgba(0,0,0,.12),0 0 10px rgba(99,102,241,.05)}
 body.light-mode .copilot-float-label{color:#6366f1}
 body.light-mode .copilot-capture-btn{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.15);color:#4338CA}
 body.light-mode .copilot-capture-btn:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3);color:#4338CA}
@@ -2353,7 +2353,7 @@ function applyRecordInterval(val) {
 (function clickThroughTransparentParts() {
   var api = window.electronAPI;
   if (!api || !api.setClickThrough) return;
-  var SOLID = '.toolbar, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle';
+  var SOLID = '.toolbar, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .copilot-float.show, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle'; // .copilot-float.show added 3 Oct: the pill was click-through (owner: "nothing on it is clickable")
   var through = null, pending = false, lastEvt = null;
   function apply() {
     pending = false;
