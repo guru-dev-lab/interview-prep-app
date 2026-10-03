@@ -224,3 +224,27 @@ console.log('ALL PASS (answer mirrors page structure)');
 // ---- owner 3 Oct: "if answer is code then use code editor.. exact and style" → always a fenced block with the language
 assert(/```/.test(mc.MEETING_PROMPT) && /fenced code block/i.test(mc.MEETING_PROMPT) && /language/i.test(mc.MEETING_PROMPT) && /ready to paste/i.test(mc.MEETING_PROMPT), 'code/formula/SQL answers come as a fenced block with the language, complete, ready to paste');
 console.log('ALL PASS (code answers fenced)');
+
+// ---- measured 3 Oct (page at 1/3 of the frame): page→page = 2.4–5% pixels moved over a region 11–34% of the frame;
+// hover row 2.2% / region 2.2%; tooltip 0.7% / 0.7%; popup 7.4% / 7.4%; cursor 0; scroll 14% / 35%.
+// New page = ≥1% moved AND the changed region ≥ 9% of the frame. Noise never re-captures a page.
+{
+  const W = fp.W, H = fp.H, base = new Array(W * H).fill(100);
+  const paint = (x0, y0, x1, y1, every) => base.map((v, i) => { const x = i % W, y = (i / W) | 0; return (x >= x0 && x < x1 && y >= y0 && y < y1 && (i % every === 0)) ? v + 60 : v; });
+  const hover = paint(2, 10, 60, 11, 1);              // one band across the content: 2.5% moved, region 2.5%
+  const popup = paint(50, 2, 64, 14, 1);              // 7.3% box fully changed
+  const page = paint(4, 4, 36, 24, 4);                // scattered changes over a 28% region, ~7% moved
+  const scroll = paint(4, 4, 60, 30, 2);              // big region, many moved
+  assert(!fp.isNewPage(base, hover), 'a hover band is the same page');
+  assert(!fp.isNewPage(base, popup), 'a popup is the same page');
+  assert(fp.isNewPage(base, page), 'changes spread over the content area = a new page');
+  assert(fp.isNewPage(base, scroll), 'a scroll = new content');
+  assert(fp.matchPrint([{ key: 'a', print: base }], hover) === 'a', 'the watcher treats a hovered page as the page already captured');
+  assert(fp.matchPrint([{ key: 'a', print: base }], page) === null, 'a different page matches nothing');
+  const r = fp.changedRegion(base, page); assert(r.share >= 0.01 && r.bbox >= 0.09, 'changedRegion reports share and bbox');
+  console.log('ALL PASS (same page under UI noise; new page on real change)');
+}
+
+// ---- owner 3 Oct: "the question on page 7 should be answered and NEEDS TO ADD number of question and what asked"
+assert(/Question 1 — <what was asked>/.test(mc.MEETING_PROMPT) && /every question on the page/i.test(mc.MEETING_PROMPT), 'numbered questions: each block carries its number and what was asked, every question answered');
+console.log('ALL PASS (question number + wording in each block)');
