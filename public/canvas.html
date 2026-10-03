@@ -109,6 +109,8 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .copilot-count{cursor:pointer;min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:11px;background:rgba(99,102,241,.16);color:#C7D2FE;font:700 11px Inter,sans-serif;transition:all .2s}
 .copilot-capture-list{position:fixed;right:52px;top:50%;transform:translateY(-50%);width:300px;max-height:70vh;overflow-y:auto;background:rgba(12,16,25,.97);border:1px solid rgba(99,102,241,.3);border-radius:10px;padding:8px;z-index:9001;-webkit-app-region:no-drag;box-shadow:0 8px 30px rgba(0,0,0,.5)}
 .copilot-capture-list h4{margin:2px 4px 8px;font:700 10px Inter,sans-serif;color:#A5B4FC;text-transform:uppercase;letter-spacing:.4px}
+.cap-preview{margin:0 4px 8px}
+.cap-preview canvas{width:100%;border:1px solid rgba(255,255,255,.15);border-radius:4px;display:block}
 .cap-row{display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:start;padding:6px 4px;border-top:1px solid rgba(255,255,255,.05)}
 .cap-row canvas{width:64px;height:36px;border:1px solid rgba(255,255,255,.1);border-radius:3px;image-rendering:pixelated;background:#000}
 .cap-meta{font:500 9px Inter,sans-serif;color:var(--text4);display:flex;gap:6px;align-items:center}
@@ -3065,6 +3067,8 @@ async function toggleCaptureList() {
   if (captureListOpen) { if (el) el.remove(); captureListOpen = false; return; }
   captureListOpen = true;
   var html = '<div class="copilot-capture-list" id="copilot-capture-list"><h4>Captured this call</h4>';
+  // a real preview of the last frame sent — what the model will see, overlay block included
+  if (lastCaptureCanvas) html += '<div class="cap-preview"><canvas id="cap-preview-canvas"></canvas><div class="cap-meta">last frame sent (what the model sees)</div></div>';
   var screens = [];
   try { var r = await fetch('/api/sessions/' + SESSION_ID + '/copilot/screens', { headers: { 'Authorization': 'Bearer ' + TOKEN } }); screens = (await r.json()).screens || []; } catch (e) { console.warn('[Co-pilot] list failed', e); }
   if (!captureListOpen) return;
@@ -3075,8 +3079,10 @@ async function toggleCaptureList() {
   });
   html += '</div>';
   document.body.insertAdjacentHTML('beforeend', html);
-  var rows = document.querySelectorAll('#copilot-capture-list canvas');
+  var rows = document.querySelectorAll('#copilot-capture-list canvas[data-key]');
   rows.forEach(function (cv) { var p = copilotPrints.filter(function (x) { return x.key === cv.getAttribute('data-key'); })[0]; captureThumb(cv, p && p.print); });
+  var pv = $('cap-preview-canvas');
+  if (pv && lastCaptureCanvas) { var pw = 284, ph = Math.round(lastCaptureCanvas.height * pw / lastCaptureCanvas.width); pv.width = pw; pv.height = ph; pv.getContext('2d').drawImage(lastCaptureCanvas, 0, 0, pw, ph); }
 }
 
 // × on a capture: gone from the call, the counter and the known-pages memory (so the page can be retaken)
