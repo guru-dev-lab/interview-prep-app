@@ -2809,31 +2809,6 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
   }
 });
 
-// CODE VIEW (owner, 3 Oct: "make the code part more visible… on the chrome to see it"): the overlay posts a code block,
-// gets a short-lived path, opens it in a browser window full size. In memory, 30 minutes, no DB, no model.
-const codeViews = new Map(); // id → { code, lang, at }
-app.post('/api/code-view', authMiddleware, (req, res) => {
-  const code = String(req.body.code || '').slice(0, 20000), lang = String(req.body.lang || '').slice(0, 20);
-  if (!code.trim()) return res.status(400).json({ error: 'no code' });
-  const id = require('crypto').randomBytes(12).toString('base64url');
-  codeViews.set(id, { code, lang, at: Date.now() });
-  for (const [k, v] of codeViews) if (Date.now() - v.at > 30 * 60 * 1000) codeViews.delete(k);
-  res.json({ path: '/code/' + id });
-});
-app.get('/code/:id', (req, res) => {
-  const v = codeViews.get(req.params.id);
-  if (!v) return res.status(404).send('This code view has expired.');
-  const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><title>Code${v.lang ? ' · ' + esc(v.lang) : ''} — xHire</title>
-<style>body{margin:0;background:#1E1E1E;color:#D4D4D4;font:15px/1.6 "SF Mono",Menlo,Consolas,monospace}
-.bar{display:flex;gap:12px;align-items:center;padding:10px 16px;background:#252526;border-bottom:1px solid #333;font:13px -apple-system,Helvetica,Arial,sans-serif;color:#9CDCFE;position:sticky;top:0}
-button{font:13px -apple-system,Helvetica,Arial,sans-serif;background:#0E639C;color:#fff;border:0;border-radius:4px;padding:6px 12px;cursor:pointer}button:hover{background:#1177BB}
-pre{margin:0;padding:18px 20px;white-space:pre-wrap;word-break:break-word;counter-reset:l}
-pre span.l{display:block}pre span.l::before{counter-increment:l;content:counter(l);display:inline-block;width:3ch;margin-right:16px;color:#858585;text-align:right}</style></head>
-<body><div class="bar"><span>${v.lang ? esc(v.lang.toUpperCase()) : 'CODE'} · from xHire co-pilot</span><button onclick="navigator.clipboard.writeText(document.getElementById('c').innerText).then(function(){this.textContent='Copied'}.bind(this))">Copy all</button></div>
-<pre id="c">${v.code.split('\n').map(l => '<span class="l">' + esc(l) + '</span>').join('')}</pre></body></html>`);
-});
-
 // What has been captured on the live call — the owner checks this before pressing Assist ("not sure the captures is right")
 app.get('/api/sessions/:id/copilot/screens', authMiddleware, async (req, res) => {
   try {

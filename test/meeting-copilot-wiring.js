@@ -73,5 +73,5 @@ ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mo
 { const sc = src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 3000);
   ok(/\^\(Result:\|RESULT\\b\)/.test(sc) && /insertBefore\(res, /.test(sc), 'the Result line is found even after the formatter turns "Result:" into its RESULT label chip, and lifted to the top (3 Oct: it stayed at the bottom)'); }
 ok(/\.sc-card-a pre\{background:#1E1E1E;/.test(src) && /font:400 12\.5px/.test(src.slice(src.indexOf('.sc-card-a pre{'), src.indexOf('.sc-card-a pre{') + 400)), 'code blocks: solid VS Code background, bigger monospace (owner: make the code part more visible)');
-ok(/code-open-btn/.test(src) && /function openCodeInBrowser/.test(src) && /\/api\/code-view/.test(src), 'each code block has an Open-in-browser button that posts the code and opens the full-size page');
+ok(!/code-open-btn/.test(src) && !/openCodeInBrowser/.test(src) && !/\/api\/code-view/.test(src), 'no Open-in-browser button (owner: "Not open in chrome", 3 Oct)');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

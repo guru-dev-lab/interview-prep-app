@@ -303,8 +303,6 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
 .sc-card-a pre{background:#1E1E1E;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px 16px 14px 16px;margin:8px 0;overflow-x:auto;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 12.5px/1.65 'Fira Code','JetBrains Mono',Consolas,'Courier New',monospace;color:#D4D4D4;position:relative;-webkit-font-smoothing:antialiased;box-shadow:0 2px 12px rgba(0,0,0,.35)} /* solid VS Code ground: the 60% glass faded over a page (owner, 3 Oct) */
-.code-open-btn{position:absolute;top:6px;right:36px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);cursor:pointer;font:600 10px Inter,sans-serif;padding:0 8px;z-index:1;opacity:0}
-.sc-card-a pre:hover .code-open-btn{opacity:1}.code-open-btn:hover{background:#0E639C;color:#fff;border-color:#0E639C}
 .sc-card-a pre::before{display:none}
 .code-copy-btn{position:absolute;top:6px;right:6px;width:24px;height:24px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0;z-index:1;opacity:0;backdrop-filter:blur(4px)}
 .sc-card-a pre:hover .code-copy-btn{opacity:1}
@@ -1443,21 +1441,11 @@ function highlightMetrics(text) {
 }
 
 // Detect and render STAR sections
-// Open a code block full size in the browser (owner, 3 Oct): post it, get a short-lived path, open it
-async function openCodeInBrowser(btn) {
-  var pre = btn.closest('pre'); if (!pre || !SESSION_ID || !TOKEN) return;
-  var code = Array.prototype.map.call(pre.querySelectorAll('.code-content'), function (c) { return c.textContent; }).join('\n');
-  try {
-    var r = await fetch('/api/code-view', { method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
-    var j = await r.json(); if (!j.path) throw new Error(j.error || 'no path');
-    window.open(location.origin + j.path, '_blank');
-  } catch (e) { showToast('Could not open: ' + (e.message || e), '', 3000); }
-}
 function buildCodeBlock(lines) {
   var numbered = lines.map(function(line, i) {
     return '<div class="code-line"><span class="code-ln">' + (i + 1) + '</span><span class="code-content">' + syntaxHL(line) + '</span></div>';
   }).join('');
-  return '<pre><button class="code-open-btn" onclick="openCodeInBrowser(this)" title="Open full size in your browser">Open ↗</button><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy code"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><code>' + numbered + '</code></pre>';
+  return '<pre><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy code"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><code>' + numbered + '</code></pre>';
 }
 
 function formatAnswer(text) {
