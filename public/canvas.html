@@ -106,7 +106,14 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .copilot-gear-btn:hover{background:rgba(99,102,241,.14);transform:scale(1.08)}
 .copilot-gear-btn:active{transform:scale(.94)}
 .copilot-history{display:flex;flex-direction:column;align-items:center;gap:2px;font:700 7px Inter,sans-serif;color:#818CF8;cursor:pointer;-webkit-app-region:no-drag}
-.copilot-count{min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:11px;background:rgba(99,102,241,.16);color:#C7D2FE;font:700 11px Inter,sans-serif;transition:all .2s}
+.copilot-count{cursor:pointer;min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:11px;background:rgba(99,102,241,.16);color:#C7D2FE;font:700 11px Inter,sans-serif;transition:all .2s}
+.copilot-capture-list{position:fixed;right:52px;top:50%;transform:translateY(-50%);width:300px;max-height:70vh;overflow-y:auto;background:rgba(12,16,25,.97);border:1px solid rgba(99,102,241,.3);border-radius:10px;padding:8px;z-index:9001;-webkit-app-region:no-drag;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.copilot-capture-list h4{margin:2px 4px 8px;font:700 10px Inter,sans-serif;color:#A5B4FC;text-transform:uppercase;letter-spacing:.4px}
+.cap-row{display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:start;padding:6px 4px;border-top:1px solid rgba(255,255,255,.05)}
+.cap-row canvas{width:64px;height:36px;border:1px solid rgba(255,255,255,.1);border-radius:3px;image-rendering:pixelated;background:#000}
+.cap-meta{font:500 9px Inter,sans-serif;color:var(--text4);display:flex;gap:6px;align-items:center}
+.cap-meta .ok{color:#34D399}.cap-meta .no{color:#FCA5A5}
+.cap-head{font:400 10px Inter,sans-serif;color:var(--text2);line-height:1.3;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .copilot-count.flash{background:#34D399;color:#052e1c;transform:scale(1.25);box-shadow:0 0 14px rgba(52,211,153,.6)}
 .copilot-history input{margin:0;width:14px;height:14px;accent-color:#818CF8;cursor:pointer}
 .copilot-gear-btn.has-data{border-color:rgba(52,211,153,.3);color:#34D399;box-shadow:0 0 8px rgba(52,211,153,.12)}
@@ -2354,7 +2361,7 @@ function applyRecordInterval(val) {
 (function clickThroughTransparentParts() {
   var api = window.electronAPI;
   if (!api || !api.setClickThrough) return;
-  var SOLID = '.toolbar, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .copilot-float.show, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle'; // .copilot-float.show added 3 Oct: the pill was click-through (owner: "nothing on it is clickable")
+  var SOLID = '.toolbar, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .copilot-float.show, .copilot-capture-list, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle'; // .copilot-float.show added 3 Oct: the pill was click-through (owner: "nothing on it is clickable")
   var through = null, pending = false, lastEvt = null;
   function apply() {
     pending = false;
@@ -2888,7 +2895,7 @@ function setCopilotHistory(on) {
 // ===== AUTO-CAPTURE (History on, Electron, live): a new page that has settled is read in the background — no card, a
 // short toast. Owner (3 Oct): "It should!!" — he clicked through pages 2–6 without the camera and co-pilot never saw them.
 var copilotWatchTimer = null, copilotWatchState = {}, copilotWatchBusy = false;
-var COPILOT_WATCH_MS = 1500;
+var COPILOT_WATCH_MS = 1000; // a page settles (two identical checks) in ~2 s
 var COPILOT_CAPTURE_W = 1568; // the most the model uses on the long edge; a page that is 1/3 of a Retina display needs every pixel
 function copilotWatchSync() {
   var want = !!(copilotActive && copilotHistory && electronLive);
@@ -3005,6 +3012,34 @@ function removeCard(id) {
 }
 
 // Streamed card: start → one card; deltas fill it; done fixes the final text
+// Capture list: click the counter → every captured page of this call (thumbnail from the local fingerprint, time,
+// read or not, first line). Owner (3 Oct): "not sure the captures is right" — now he can check before Assist.
+var captureListOpen = false;
+function captureThumb(cv, print) {
+  var W = CopilotFingerprint.W, H = CopilotFingerprint.H; cv.width = W; cv.height = H;
+  var ctx = cv.getContext('2d'), img = ctx.createImageData(W, H);
+  for (var i = 0; i < W * H; i++) { var v = print ? print[i] : 0; img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; }
+  ctx.putImageData(img, 0, 0);
+}
+async function toggleCaptureList() {
+  var el = $('copilot-capture-list');
+  if (captureListOpen) { if (el) el.remove(); captureListOpen = false; return; }
+  captureListOpen = true;
+  var html = '<div class="copilot-capture-list" id="copilot-capture-list"><h4>Captured this call</h4>';
+  var screens = [];
+  try { var r = await fetch('/api/sessions/' + SESSION_ID + '/copilot/screens', { headers: { 'Authorization': 'Bearer ' + TOKEN } }); screens = (await r.json()).screens || []; } catch (e) { console.warn('[Co-pilot] list failed', e); }
+  if (!captureListOpen) return;
+  if (!screens.length) html += '<div class="cap-head">Nothing captured yet on this call.</div>';
+  screens.forEach(function (sc, i) {
+    var t = new Date(sc.ts); var hh = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + ':' + ('0' + t.getSeconds()).slice(-2);
+    html += '<div class="cap-row"><canvas data-key="' + esc(sc.key) + '"></canvas><div><div class="cap-meta"><b>#' + (i + 1) + '</b> ' + hh + (sc.auto ? ' · auto' : ' · camera') + (sc.read ? ' <span class="ok">read</span>' : ' <span class="no">not read yet</span>') + '</div><div class="cap-head">' + (sc.head ? esc(sc.head) : 'read at Assist') + '</div></div></div>';
+  });
+  html += '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  var rows = document.querySelectorAll('#copilot-capture-list canvas');
+  rows.forEach(function (cv) { var p = copilotPrints.filter(function (x) { return x.key === cv.getAttribute('data-key'); })[0]; captureThumb(cv, p && p.print); });
+}
+
 // Capture counter on the pill: the owner must SEE a capture land before moving to the next page
 var copilotCaptures = 0;
 var copilotPendingKeys = new Set(); // keys grabbed and sent, read not yet confirmed — the count moves on the grab, not the read
@@ -3343,7 +3378,7 @@ startElapsedTimer();
   <div class="cpf-sep"></div>
   <label class="copilot-history" data-tip="History: use everything said and shown on this call"><input type="checkbox" id="copilot-history" onchange="setCopilotHistory(this.checked)"><span>Hist</span></label>
   <div class="cpf-sep"></div>
-  <span class="copilot-count" id="copilot-count" data-tip="Pages captured this call">0</span>
+  <span class="copilot-count" id="copilot-count" data-tip="Pages captured — click to see them" onclick="toggleCaptureList()">0</span>
 </div>
 </body>
 </html>

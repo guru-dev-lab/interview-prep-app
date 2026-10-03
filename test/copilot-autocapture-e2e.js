@@ -52,6 +52,10 @@ const logSince = m => fs.readFileSync(LOG, 'utf8').slice(m);
   check(sc.length === 2 && sc.every(x => x.has_text), 'transcripts now stored', JSON.stringify(sc));
   const seen = await seenRows();
   check(seen.length === 2 && seen.some(x => /4,?500/.test(x.text)) && seen.some(x => /\b60\b/.test(x.text)), 'seen rows carry the pages (minimums, volumes)', JSON.stringify(seen.map(x => x.text.slice(0, 80))));
+  // 2b. The capture list endpoint: every stored screen of this call, read state + first line
+  const lr = await fetch(BASE + '/api/sessions/' + s.id + '/copilot/screens', { headers: { Authorization: 'Bearer ' + token } });
+  const lj = await lr.json();
+  check(lr.ok && Array.isArray(lj.screens) && lj.screens.length === 2 && lj.screens.every(x => x.read && x.head && x.ts && x.key), 'capture list lists both screens as read with a first line', JSON.stringify(lj).slice(0, 300));
   // 3. A second assist reads nothing again
   mark = fs.readFileSync(LOG, 'utf8').length;
   r = await post({ ask: 'And the Dallas volume?', pressed: true });

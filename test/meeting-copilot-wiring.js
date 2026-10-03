@@ -34,10 +34,13 @@ ok(/id="copilot-count"/.test(src) && /function copilotNoteCapture/.test(src) && 
 { const cam = src.slice(src.indexOf('async function copilotCapture()'), src.indexOf('async function copilotCaptureNow('));
   ok(/copilotCaptureNow\(false\)/.test(cam) && !/copilotSend\(/.test(cam) && !/pressed: true/.test(cam) && /capture: !auto/.test(src), 'camera = capture only (never an answer); Assist/typed/heard question answer'); }
 ok(/type: 'copilot_watch'/.test(src) && /watchStats/.test(src), 'the auto-capture watcher reports its health to the server (ticks, stable, errors)');
-ok(/COPILOT_WATCH_MS = 1500/.test(src), 'watcher ticks every 1.5 s (owner: slow when changing pages)');
+ok(/COPILOT_WATCH_MS = 1000/.test(src), 'watcher ticks every second (a page settles in ~2 s)');
 ok(/function captureFrame\(stream, maxW\)/.test(src) && /captureFrame\(stream, COPILOT_CAPTURE_W\)/.test(src) && /COPILOT_CAPTURE_W = 1568/.test(src), 'co-pilot captures at 1568 wide (the most the model uses), other callers unchanged');
 { const cap = src.slice(src.indexOf('async function copilotCaptureNow('), src.indexOf('async function copilotCaptureNow(') + 2600);
   ok(/copilotPendingKeys/.test(cap) && cap.indexOf('copilotNoteCapture(') < cap.indexOf("fetch('/api/sessions/' + SESSION_ID + '/copilot'"), 'the counter moves the moment the frame is grabbed (owner leaves the page on seeing it), before the read');
   ok(/copilotPendingKeys\.delete\(/.test(cap) && /copilotUnnoteCapture\(\)/.test(cap), 'a refused/unchanged capture takes the count back'); }
 ok(/msg\.type === 'copilot_captured'[^\n]*copilotPendingKeys\.has\(msg\.key\)/.test(src), 'the read confirmation does not double-count the sender\'s own capture');
+ok(/id="copilot-count"[^>]*onclick="toggleCaptureList\(\)"/.test(src) && /function toggleCaptureList/.test(src), 'clicking the counter opens the list of captured pages');
+ok(/\/copilot\/screens/.test(src) && /copilot-capture-list/.test(src) && /not read yet/.test(src), 'the list shows each capture: thumbnail, time, read or not, first line');
+ok(/function captureThumb\(/.test(src) && /CopilotFingerprint\.W/.test(src), 'thumbnails are drawn from the local fingerprints (no image download)');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
