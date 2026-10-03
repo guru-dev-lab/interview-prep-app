@@ -3125,11 +3125,12 @@ function styleCopilotCard(el) {
     while (cur && !(cur !== q && cur.classList && cur.classList.contains('cp-q'))) {
       var nxt = cur.nextElementSibling;
       block.appendChild(cur);
-      if (cur !== q && /^Result:/.test((cur.textContent || '').trim())) res = cur;
+      // the shared formatter turns a "Result:" line into <span class="star-inline">RESULT</span> + text — match either
+      if (cur !== q && /^(Result:|RESULT\b)/.test((cur.textContent || '').trim())) res = cur;
       cur = nxt;
     }
     // the model writes the working first and "Result:" last; the owner reads the result first
-    if (res) { res.classList.add('cp-a'); res.innerHTML = res.innerHTML.replace(/^\s*Result:\s*/, ''); block.insertBefore(res, q.nextSibling); }
+    if (res) { res.classList.add('cp-a'); var chip = res.querySelector('.star-inline'); if (chip) chip.remove(); res.innerHTML = res.innerHTML.replace(/^\s*Result:\s*/, ''); block.insertBefore(res, q.nextSibling); }
   });
 }
 function copilotCardDelta(cardId, text) {

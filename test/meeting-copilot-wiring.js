@@ -71,5 +71,5 @@ ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mo
   ok(/setStealth\(true\)/.test(cap) && cap.indexOf('setStealth(true)') < cap.indexOf('captureFrame(stream, COPILOT_CAPTURE_W)'), 'the overlay is hidden from the frame before every capture (3 Oct: a 57 KB Part 3 capture had the panel over the table)');
   ok(/copilotPrints = copilotPrints\.filter/.test(cap), 'a refused or failed capture forgets the print so the page is retried (3 Oct: "Go Live first" refusals left pages marked known)'); }
 { const sc = src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 3000);
-  ok(/\^Result:/.test(sc) && /insertBefore\(res, /.test(sc), 'the Result line is styled and lifted to the top of its card, wherever the model wrote it'); }
+  ok(/\^\(Result:\|RESULT\\b\)/.test(sc) && /insertBefore\(res, /.test(sc), 'the Result line is found even after the formatter turns "Result:" into its RESULT label chip, and lifted to the top (3 Oct: it stayed at the bottom)'); }
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
