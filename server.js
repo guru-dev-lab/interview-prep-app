@@ -2680,15 +2680,22 @@ function maybeCompactCall(sessionId, callId, rows, historyOn) {
   copilotDigests.set(callId, st);
   const material = rows.filter(r => r.kind !== 'digest');
   if (st.running || !meetingCopilot.shouldCompact(st, { now: Date.now(), rowCount: material.length, historyOn })) return;
+  return compactCall(sessionId, callId, rows, st);
+}
+// Compact now (awaitable). At an Assist with no digest and more raw talk than fits word for word, the server waits for
+// this so the start of a long call is not dropped (3 Oct: the first 40 s of an update were stored but never handed over).
+function compactCall(sessionId, callId, rows, st) {
+  const material = rows.filter(r => r.kind !== 'digest');
   st.running = true;
   const fresh = material.slice(st.lastCount).map(r => `[${r.kind}] ${r.text}`).join('\n');
   const user = (st.text ? `CURRENT NOTES:\n${st.text}\n\n` : '') + `NEW LINES (newest last):\n${fresh}\n\nUPDATED NOTES:`;
   const t0 = Date.now(), count = material.length;
-  callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU).then(out => {
+  return callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU).then(out => {
     st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count;
     recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count });
     console.log(`[Co-pilot] digest updated in ${Date.now() - t0}ms (${st.text.length} chars from ${count} rows)`);
-  }).catch(e => console.error('[Co-pilot] digest failed:', e.message)).finally(() => { st.running = false; });
+    return st.text;
+  }).catch(e => { console.error('[Co-pilot] digest failed:', e.message); return st.text; }).finally(() => { st.running = false; });
 }
 
 // At assist time: every stored screen of this call not yet read is read ONCE (Sonnet, thinking off, 4 at a time) and
@@ -2734,6 +2741,12 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     let rows = await loadCallRows(callId);
     let digest = (copilotDigests.get(callId) || {}).text;
     if (!digest) { const d = rows.filter(r => r.kind === 'digest').pop(); if (d) digest = d.text; }
+    if (historyOn && !digest && !req.body.auto && !req.body.capture && meetingCopilot.rawCharsOf(rows) > meetingCopilot.SMART_RAW_CHARS) {
+      // more talk than fits word for word and nothing compacted yet: compact first, on the answer's clock, rather than drop the start
+      const st = copilotDigests.get(callId) || { text: '', lastAt: 0, lastCount: 0, running: false }; copilotDigests.set(callId, st);
+      console.log('[Co-pilot] compacting before the answer (raw ' + meetingCopilot.rawCharsOf(rows) + ' chars, no digest yet)');
+      digest = await compactCall(sessionId, callId, rows, st);
+    }
     const hasImage = !!image;
     let imgBlock = null;
     if (hasImage) {
