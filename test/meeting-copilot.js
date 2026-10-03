@@ -98,3 +98,39 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
   assert(/a press always gets a real answer/i.test(mc.MEETING_PROMPT), 'system prompt limits "nothing new" to un-pressed turns');
   console.log('ALL PASS (prompt slips: no-screen wording, press never "nothing new")');
 }
+
+// ---- camera press: a screen captured EARLIER in the call is reused (match any earlier print, not just the last)
+{
+  const a = new Array(32 * 18).fill(90), b = a.map((v, i) => (i % 32 > 16 ? 220 : v)), c = a.map((v, i) => (i < 200 ? 10 : v));
+  const prints = [{ key: 'scr-1', print: a }, { key: 'scr-2', print: b }];
+  assert(fp.matchPrint(prints, a.slice()) === 'scr-1', 'first page again → its key');
+  assert(fp.matchPrint(prints, b.map(v => v + 3)) === 'scr-2', 'second page with noise → its key');
+  assert(fp.matchPrint(prints, c) === null, 'a new page → null');
+  assert(fp.matchPrint([], a) === null, 'nothing captured yet → null');
+}
+
+// ---- prompt: a reused screen points at THAT capture's text; smart mode carries every screen shown in full
+{
+  const rows = [row('seen', 'PAGE 2: volumes table …', 1, { key: 'scr-1' }), row('seen', 'PAGE 3: rate card …', 2, { key: 'scr-2' }), row('asker', 'hi', 3)];
+  const p = mc.buildCopilotPrompt({ mode: 'regular', rows, session: {}, ask: 'dallas volume?', screenChanged: false, seenKey: 'scr-1' });
+  assert(/captured earlier on this call/i.test(p) && /PAGE 2: volumes table/.test(p), 'reused screen → that capture, named as earlier');
+  assert(!/use the latest "Screen shown earlier"/.test(p), 'not the generic latest-summary line');
+  const smart = mc.buildCopilotPrompt({ mode: 'smart', rows, session: {}, ask: 'q', screenChanged: false, digest: 'D' });
+  assert(/SCREENS SHOWN THIS CALL/.test(smart) && /PAGE 2: volumes table/.test(smart) && /PAGE 3: rate card/.test(smart), 'smart lists every screen shown');
+  const reg = mc.buildCopilotPrompt({ mode: 'regular', rows, session: {}, ask: 'q', screenChanged: false });
+  assert(!/SCREENS SHOWN THIS CALL/.test(reg), 'regular does not');
+  assert(typeof mc.TRANSCRIBE_PROMPT === 'string' && /table/i.test(mc.TRANSCRIBE_PROMPT), 'a transcription prompt exists for smart-mode screen notes');
+  console.log('ALL PASS (earlier-screen reuse + smart screens section)');
+}
+
+// ---- smartest mode rules (owner, 3 Oct): exact tool how-to, puzzles decoded literally, earlier slips corrected; room to finish
+{
+  const P = mc.MEETING_PROMPT;
+  assert(/exact function|exact formula/i.test(P) && /what it does/i.test(P), 'tool questions → the exact function/formula to type + one plain line on what it does');
+  assert(/no jargon/i.test(P), 'no jargon unless the jargon is the answer');
+  assert(/decode each picture literally/i.test(P) && /options given/i.test(P), 'puzzles: literal decode, matched against the options given');
+  assert(/earlier co-pilot answer/i.test(P) && /correct it/i.test(P), 'a wrong earlier co-pilot answer is corrected, not carried');
+  assert(mc.maxTokensFor('regular') >= 700 && mc.maxTokensFor('smart') >= 1200, 'room to finish a multi-step calculation (page 8 was cut off at 500)');
+  assert(mc.modelFor('smart') === 'sonnet' && typeof mc.requestExtrasFor === 'function', 'per-mode request extras (thinking/effort) come from one place');
+  console.log('ALL PASS (smartest-mode rules)');
+}

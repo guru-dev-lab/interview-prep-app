@@ -16,6 +16,12 @@
     return moved / next.length > CHANGED_SHARE;
   }
 
+  // Which earlier capture (if any) is this frame? prints = [{ key, print }]; returns the key or null.
+  function matchPrint(prints, print) {
+    for (var i = (prints || []).length - 1; i >= 0; i--) if (!fingerprintChanged(prints[i].print, print)) return prints[i].key;
+    return null;
+  }
+
   // Browser only: draw the video/canvas source into a 32×18 canvas and return its gray values.
   function fingerprintFrom(source) {
     var c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -25,5 +31,5 @@
     return out;
   }
 
-  return { fingerprintChanged: fingerprintChanged, fingerprintFrom: fingerprintFrom, W: W, H: H };
+  return { fingerprintChanged: fingerprintChanged, matchPrint: matchPrint, fingerprintFrom: fingerprintFrom, W: W, H: H };
 });

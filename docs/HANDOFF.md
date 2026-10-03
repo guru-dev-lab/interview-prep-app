@@ -1,5 +1,23 @@
 # Handoff
 
+## 3 Oct 2026 (later) — Co-pilot smartest mode (PR #31)
+- Owner: "this MUST be the smartest" (embarrassed on a call when asked which Excel function to use). Everything
+  co-pilot is ELECTRON ONLY (his words) — no web port, ever.
+- Camera press: a screen captured earlier in the call is reused, not re-sent (client keeps every fingerprint of the
+  stint, sends `screenKey`; server points the prompt at that capture — log "reusing earlier screen"). New screens get a key.
+- History mode: every captured page is transcribed in full in the background (Haiku, meta.full) and all screens ride
+  in the prompt ("SCREENS SHOWN THIS CALL", oldest dropped past 9k chars); answers on Sonnet with ADAPTIVE thinking at
+  medium effort (puzzle probe 6/6 correct; first words 0.6–4.2 s, the slow ones on dense table pages). Without any
+  thinking setting Sonnet thought on its own (4–8 s spikes) — the Q&A path disables it, co-pilot did not.
+- Prompt rules: tool questions → exact function/formula + one plain line; no jargon unless it is the answer; puzzles
+  decoded literally and matched to the options given; calculations finish every step; a wrong earlier card is
+  corrected, not carried. Token cap by mode (700 / 1200) — page 8 was cut off at 500.
+- Proof: test/meeting-pack-e2e.js 15/15 on the 8-page pack (test/fixtures/meeting-pack: tables, puzzle, chart, memos;
+  Q1 $14,426 Blue Arrow, Q2, Q3 168, page 8 Redline $4,860; page 2 reused); meeting e2e 18/18; npm test 10 suites.
+  One earlier pack run decoded the puzzle as Redline (bias from its own earlier cards) — hence the literal-decode +
+  self-correct rules; not seen again in 7 further decodes.
+- Hosted copy of the pack for his own call test: private artifact (link in project memory); delete after.
+
 ## 3 Oct 2026 — Meeting co-pilot (PR #30)
 - Owner: co-pilot is for his WORK MEETINGS, not assessments — others share a screen (table, notes, questions) and ask
   him something; it listens, reads the shared screen, says what to say. Must be cheap by default; a History checkbox
