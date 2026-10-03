@@ -212,3 +212,7 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
   assert(mc.transcribeExtras() && mc.transcribeExtras().thinking && mc.transcribeExtras().thinking.type === 'disabled', 'thinking off for transcription (speed)');
   console.log('ALL PASS (transcription model)');
 }
+
+// ---- transcripts are of the CONTENT, not the browser chrome (owner's live run: "Browser tab shows claude.ai, bookmarks bar…")
+assert(/ignore browser tabs|ignore the browser/i.test(mc.TRANSCRIBE_PROMPT) && /menu bar/i.test(mc.TRANSCRIBE_PROMPT), 'transcription skips tabs, bookmarks, menu bars, docks');
+console.log('ALL PASS (transcribe content only)');

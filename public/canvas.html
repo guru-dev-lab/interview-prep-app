@@ -1150,7 +1150,7 @@ function setMode(mode) {
     // Only show the pulsing dot when actually live
     if (electronLive) { cpDot.style.display = ''; }
     var cb = $('copilot-history'); if (cb) cb.checked = copilotHistory;
-    copilotPrints = []; copilotCaptures = 0; var cnt = $('copilot-count'); if (cnt) cnt.textContent = '0'; // fresh stint
+    copilotPrints = []; copilotCaptures = 0; copilotPendingKeys = new Set(); var cnt = $('copilot-count'); if (cnt) cnt.textContent = '0'; // fresh stint
   } else {
     copilotActive = false;
     qaBtn.className = 'mode-btn active';
@@ -1371,7 +1371,7 @@ function connect() {
     else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason); }
     else if (msg.type === 'copilot_delta') { copilotCardDelta(msg.cardId, msg.text); }
     else if (msg.type === 'copilot_done') { copilotCardDone(msg.cardId, msg.answer); }
-    else if (msg.type === 'copilot_captured') { copilotNoteCapture(); showToast('📸 Page captured — read in full', 'info', 1800); }
+    else if (msg.type === 'copilot_captured') { if (copilotPendingKeys.has(msg.key)) { copilotPendingKeys.delete(msg.key); var cel = $('copilot-count'); if (cel) { cel.classList.add('flash'); setTimeout(function () { cel.classList.remove('flash'); }, 600); } } else copilotNoteCapture(); showToast('📸 Page captured — read in full', 'info', 1500); }
     else if (msg.type === 'status') {
       // Server status message (e.g. "Canvas connected")
       console.log('[Server]', msg.message);
@@ -2937,11 +2937,17 @@ async function copilotCaptureNow(auto) {
   var key = 'scr-' + Date.now().toString(36);
   copilotPrints.push({ key: key, print: print });
   console.log('[Co-pilot] ' + (auto ? 'auto-' : '') + 'capturing new page (' + key + ')');
-  var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
-    method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ auto: !!auto, capture: !auto, image: image, screenChanged: true, screenKey: key, context: getCopilotContext() })
-  });
-  var data = await res.json();
+  // The frame is in hand: count it NOW so the owner can move on; the read confirms (copilot_captured) a few seconds later
+  copilotPendingKeys.add(key); copilotNoteCapture();
+  var data;
+  try {
+    var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto: !!auto, capture: !auto, image: image, screenChanged: true, screenKey: key, context: getCopilotContext() })
+    });
+    data = await res.json();
+  } catch (e) { copilotPendingKeys.delete(key); copilotUnnoteCapture(); throw e; }
+  if (!data.captured) { copilotPendingKeys.delete(key); copilotUnnoteCapture(); }
   if (data.error) { if (!auto) showToast('Capture refused: ' + data.error, '', 3500); return 'refused: ' + data.error; }
   return data.captured ? 'captured' : data.unchanged ? 'unchanged' : data.ignored ? 'ignored' : 'ok';
 }
@@ -3001,11 +3007,16 @@ function removeCard(id) {
 // Streamed card: start → one card; deltas fill it; done fixes the final text
 // Capture counter on the pill: the owner must SEE a capture land before moving to the next page
 var copilotCaptures = 0;
+var copilotPendingKeys = new Set(); // keys grabbed and sent, read not yet confirmed — the count moves on the grab, not the read
 function copilotNoteCapture() {
   copilotCaptures++;
   var el = $('copilot-count'); if (!el) return;
   el.textContent = String(copilotCaptures);
   el.classList.add('flash'); setTimeout(function () { el.classList.remove('flash'); }, 900);
+}
+function copilotUnnoteCapture() { // a grab the server did not keep (already captured / refused): take it back
+  if (copilotCaptures > 0) copilotCaptures--;
+  var el = $('copilot-count'); if (el) el.textContent = String(copilotCaptures);
 }
 
 function copilotCardStart(cardId, ask, mode, screen, reason) {
