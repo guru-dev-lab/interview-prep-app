@@ -74,4 +74,6 @@ ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mo
   ok(/\^\(Result:\|RESULT\\b\)/.test(sc) && /insertBefore\(res, /.test(sc), 'the Result line is found even after the formatter turns "Result:" into its RESULT label chip, and lifted to the top (3 Oct: it stayed at the bottom)'); }
 ok(/\.sc-card-a pre\{background:#1E1E1E;/.test(src) && /font:400 12\.5px/.test(src.slice(src.indexOf('.sc-card-a pre{'), src.indexOf('.sc-card-a pre{') + 400)), 'code blocks: solid VS Code background, bigger monospace (owner: make the code part more visible)');
 ok(!/code-open-btn/.test(src) && !/openCodeInBrowser/.test(src) && !/\/api\/code-view/.test(src), 'no Open-in-browser button (owner: "Not open in chrome", 3 Oct)');
+ok(!/\.sc-card-a pre code\{[^}]*font-size:11px/.test(src) && /\.code-content\{flex:1;color:#D4D4D4\}/.test(src) && /\.sh-kw\{color:#569CD6;font-weight:600\}/.test(src), 'code text: no 11px pin, VS Code base colour, bold keywords (owner: not the same colouring as the sample)');
+ok(/codeSz = Math\.max\(11, canvasFontSize\)/.test(src), 'code size follows the font setting one-to-one, never smaller');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

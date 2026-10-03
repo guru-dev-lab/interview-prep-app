@@ -310,11 +310,11 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .code-copy-btn.copied{color:#73daca;background:rgba(115,218,202,.08);border-color:rgba(115,218,202,.2);opacity:1}
 .code-line{display:flex;gap:0;min-height:18px}
 .code-ln{min-width:28px;padding-right:12px;text-align:right;color:rgba(255,255,255,.2);font:400 10px/1.65 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0}
-.code-content{flex:1;color:#C1C0C0}
-.sc-card-a pre code{background:none !important;padding:0;font-size:11px;color:inherit;border:none !important;display:block}
+.code-content{flex:1;color:#D4D4D4}
+.sc-card-a pre code{background:none !important;padding:0;color:inherit;border:none !important;display:block} /* no size pin: the pre's 12.5px (or the font setting) rules */
 .sc-card-a code{background:rgba(110,118,129,.2);padding:2px 6px;border-radius:5px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c9d1d9;border:none}
 /* VS Code Dark+ (owner, 3 Oct: the red Monokai keywords were straining) */
-.sh-kw{color:#569CD6}.sh-str{color:#CE9178}.sh-cmt{color:#6A9955;font-style:italic}.sh-num{color:#B5CEA8}.sh-fn{color:#DCDCAA}.sh-dec{color:#C586C0}.sh-op{color:#D4D4D4}.sh-br{color:#FFD700}.sh-tp{color:#4EC9B0}.sh-prop{color:#9CDCFE}.sh-call{color:#DCDCAA}.sh-cls{color:#4EC9B0}
+.sh-kw{color:#569CD6;font-weight:600}.sh-str{color:#CE9178}.sh-cmt{color:#6A9955;font-style:italic}.sh-num{color:#B5CEA8}.sh-fn{color:#DCDCAA}.sh-dec{color:#C586C0}.sh-op{color:#D4D4D4}.sh-br{color:#FFD700}.sh-tp{color:#4EC9B0}.sh-prop{color:#9CDCFE}.sh-call{color:#DCDCAA}.sh-cls{color:#4EC9B0}
 .sc-line{margin-bottom:0;padding:2px 4px;border-radius:0}
 .sc-blank{height:4px}
 /* Rich text lists */
@@ -2169,7 +2169,7 @@ document.head.appendChild(_fontStyleEl);
 function changeFontSize(delta) {
   canvasFontSize = Math.max(10, Math.min(24, canvasFontSize + delta));
   saveSetting('fontSize', canvasFontSize);
-  var codeSz = Math.max(10, canvasFontSize - 1);
+  var codeSz = Math.max(11, canvasFontSize); // code reads at the same size as the text (owner, 3 Oct)
   // Inject CSS rule that applies to existing AND future elements
   _fontStyleEl.textContent =
     '.sc-card-a, .sc-card-loading, .feed-wrap { font-size: ' + canvasFontSize + 'px !important; }' +
