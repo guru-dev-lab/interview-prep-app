@@ -280,3 +280,16 @@ console.log('ALL PASS (code runs as written)');
   assert(!/THIS PERSON/.test(q), 'no session line at all when the session has no role/company');
   console.log('ALL PASS (session is a hint)');
 }
+
+// ---- 3 Oct 11:41, owner: "it has to use session, sometimes it can be about the session" → résumé, JD and earlier-call
+// notes ride along, used only when the call is about that job
+{
+  const p = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: { role: 'Data Analyst', company: 'Acme', resume: 'RESUME TEXT HERE', jd: 'JD TEXT HERE' }, priorMemory: 'EARLIER CALLS NOTES', ask: 'x', screenChanged: true });
+  assert(/SESSION MATERIAL/.test(p) && /RESUME TEXT HERE/.test(p) && /JD TEXT HERE/.test(p) && /EARLIER CALLS NOTES/.test(p), 'résumé, JD and earlier-call notes ride along');
+  assert(/use (it|them|this) only if this call is clearly about that job/i.test(p), 'under the same rule: only when the call is about that job');
+  const big = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: { resume: 'r'.repeat(20000), jd: 'j'.repeat(20000) }, ask: 'x', screenChanged: true });
+  assert(big.length < 20000, 'session material is capped');
+  const none = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: 'x', screenChanged: true });
+  assert(!/SESSION MATERIAL/.test(none), 'no block when the session has nothing');
+  console.log('ALL PASS (session material rides along, gated)');
+}
