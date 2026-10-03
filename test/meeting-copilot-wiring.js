@@ -60,4 +60,11 @@ ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mo
   ['Page 7 — Question 1 — Dallas cost', 'Part 9 — Q1 — Why is INV-1043 disputed?', 'Question 2: best carrier', 'Q3 — Dallas pallets', 'Screen 8 — Question — cheapest carrier', 'Page 8 — Question — cheapest'].forEach(t => ok(QLINE.test(t), 'matches: ' + t));
   ['Quarterly numbers look fine', 'Answer: $14,426', '140 pallets × $92'].forEach(t => ok(!QLINE.test(t), 'does not match: ' + t));
   ok(/QLINE\.test\(t\)/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 900)), 'styleCopilotCard uses QLINE'); }
+{ // "Page # should not be part.. it can be a tag header" (3 Oct 11:48)
+  const m = src.match(/var QSPLIT = (\/.*?\/i);/); ok(!!m, 'QSPLIT regex declared once');
+  const QSPLIT = m ? eval(m[1]) : /$^/;
+  const r = 'Page 7 — Question 1 — Dallas cost'.match(QSPLIT); ok(!!r && /^Page 7$/i.test(r[1]) && /^Question 1 — Dallas cost$/.test(r[2]), 'page prefix splits off: tag "Page 7", title "Question 1 — Dallas cost"');
+  const r2 = 'Part 9 — Q1 — Why disputed?'.match(QSPLIT); ok(!!r2 && /^Part 9$/i.test(r2[1]) && /^Q1 — Why disputed\?$/.test(r2[2]), 'part prefix too');
+  ok(!('Question 2: best carrier'.match(QSPLIT)), 'no prefix → no split');
+  ok(/cp-tag/.test(src) && /class="cp-tag"/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 2500)), 'the card renders the page as a small tag'); }
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
