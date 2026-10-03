@@ -76,4 +76,7 @@ ok(/\.sc-card-a pre\{background:#1E1E1E;/.test(src) && /font:400 12\.5px/.test(s
 ok(!/code-open-btn/.test(src) && !/openCodeInBrowser/.test(src) && !/\/api\/code-view/.test(src), 'no Open-in-browser button (owner: "Not open in chrome", 3 Oct)');
 ok(!/\.sc-card-a pre code\{[^}]*font-size:11px/.test(src) && /\.code-content\{flex:1;color:#D4D4D4\}/.test(src) && /\.sh-kw\{color:#569CD6;font-weight:600\}/.test(src), 'code text: no 11px pin, VS Code base colour, bold keywords (owner: not the same colouring as the sample)');
 ok(/codeSz = Math\.max\(11, canvasFontSize\)/.test(src), 'code size follows the font setting one-to-one, never smaller');
+ok(/var copilotHistory = loadSetting\('copilotHistory'\) !== false;/.test(src), 'Hist defaults ON in co-pilot mode (owner, 3 Oct); a saved off stays off');
+ok(/sendCopilotSettings\(\);/.test(src.slice(src.indexOf("type: 'update_settings', maxLines: settingsMaxLines, followUps"), src.indexOf("type: 'update_settings', maxLines: settingsMaxLines, followUps") + 300)), 'co-pilot flags are re-sent on every live connect, so toggling before Go Live still works');
+ok(/electronLive = true; copilotWatchSync\(\);/.test(src), 'the watcher starts the moment the call goes live if co-pilot is already on');
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
