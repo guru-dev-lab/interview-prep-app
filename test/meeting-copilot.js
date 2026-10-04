@@ -362,3 +362,15 @@ console.log('ALL PASS (missing page is missing)');
   ok(/Asked: nothing new[^\n]*never[^\n]*(typed|TYPED)/i.test(mc.MEETING_PROMPT) || /never on a typed/i.test(mc.MEETING_PROMPT), '"nothing new" is forbidden on a typed instruction too');
   console.log('ALL PASS (typed = an order)');
 }
+
+// ---- a press never makes anything up (owner, 4 Oct: "never making up shit" — Assist with nothing open was called a
+// "continuation" and the finished SQL was re-written)
+{
+  const P = mc.MEETING_PROMPT;
+  ok(/Asked: nothing open/.test(P), 'a press with nothing open has its own honest status shape');
+  ok(/never invent a task/i.test(P) && /continuation/i.test(P) && /never redo an answer/i.test(P), 'the prompt forbids inventing a task, calling a press a continuation, or redoing a finished answer');
+  const pressed = mc.buildCopilotPrompt({ mode: 'smart', rows: [{ kind: 'said', text: 'Asked: write a SQL… Say: Here is the complete query … ORDER BY total_spend DESC;', ts: 1 }], session: {}, ask: '', pressed: true, screenChanged: false });
+  ok(/nothing open/i.test(pressed) && /last answer stands/i.test(pressed), 'the press instruction points to the status line when nothing is open');
+  ok(/never answer "nothing new"/i.test(pressed), 'the silent "nothing new" is still forbidden on a press (a press always gets a reply)');
+  console.log('ALL PASS (a press never invents)');
+}
