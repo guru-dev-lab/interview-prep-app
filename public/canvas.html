@@ -2393,19 +2393,41 @@ function applyRecordInterval(val) {
   if (!api || !api.setClickThrough) return;
   var SOLID = '.toolbar, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .copilot-float.show, .copilot-capture-list, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle'; // .copilot-float.show added 3 Oct: the pill was click-through (owner: "nothing on it is clickable")
   var through = null, pending = false, lastEvt = null;
-  function apply() {
-    pending = false;
-    var e = lastEvt; if (!e) return;
+  // "Sometimes not moveable" (owner, 4 Oct): the flip to solid used to wait for the next animation frame + one IPC round
+  // trip after the pointer reached the toolbar. A grab inside that gap went to the app behind and the drag never
+  // started. Two fixes: a margin around every solid part counts as solid (the window is solid BEFORE the pointer
+  // arrives), and the flip to solid happens right in the mousemove handler, never deferred.
+  var SOLID_MARGIN = 28;
+  function nearSolid(x, y) {
+    var els = document.querySelectorAll(SOLID);
+    for (var i = 0; i < els.length; i++) {
+      var r = els[i].getBoundingClientRect();
+      if (!r.width && !r.height) continue; // hidden
+      if (x >= r.left - SOLID_MARGIN && x <= r.right + SOLID_MARGIN && y >= r.top - SOLID_MARGIN && y <= r.bottom + SOLID_MARGIN) return true;
+    }
+    return false;
+  }
+  function wanted(e) {
     var el = document.elementFromPoint(e.clientX, e.clientY);
-    var solid = !!(el && el.closest && el.closest(SOLID));
+    var solid = !!(el && el.closest && el.closest(SOLID)) || nearSolid(e.clientX, e.clientY);
     // A drag in progress (corner resize, toolbar move) must never flip the window to click-through: the pointer outruns
     // the resizing window onto a see-through spot, the OS then sends the mouse-up to the app behind, and the resize
     // keeps following the mouse (owner, 3 Oct: "mouse won't release it"). Button held = stay solid until it is released.
     var held = (e.buttons || 0) !== 0;
-    var want = !solid && !held;
+    return !solid && !held;
+  }
+  function apply() {
+    pending = false;
+    var e = lastEvt; if (!e) return;
+    var want = wanted(e);
     if (want !== through) { through = want; api.setClickThrough(want); }
   }
-  document.addEventListener('mousemove', function(e) { lastEvt = e; if (!pending) { pending = true; requestAnimationFrame(apply); } }, true);
+  document.addEventListener('mousemove', function(e) {
+    lastEvt = e;
+    var want = wanted(e);
+    if (!want && through !== false) { through = false; api.setClickThrough(false); return; } // solid NOW — a grab may follow this very event
+    if (!pending) { pending = true; requestAnimationFrame(apply); } // going see-through can wait a frame
+  }, true);
   document.addEventListener('mouseup', function(e) { lastEvt = e; if (!pending) { pending = true; requestAnimationFrame(apply); } }, true); // a finished drag re-evaluates where the pointer is
   document.addEventListener('mouseleave', function() { if (through !== false) { through = false; api.setClickThrough(false); } }); // never stuck ignoring
 })();

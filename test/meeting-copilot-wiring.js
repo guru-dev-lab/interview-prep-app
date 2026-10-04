@@ -19,7 +19,7 @@ ok(/CopilotFingerprint\.matchPrint\(/.test(src) && /screenKey:/.test(src), 'came
 ok(/var SOLID = '[^']*\.copilot-float\.show/.test(src), 'the co-pilot pill is a SOLID element (clickable through the click-through overlay)');
 ok(/\.copilot-float[^\n]*-webkit-app-region:no-drag/.test(src) || /\.copilot-float,[^\n]*\{-webkit-app-region:no-drag/.test(src), 'the pill is no-drag (a click is a click, not a window drag)');
 ok(!/^\.copilot-float\{[^\n]*blur\(60px\)/m.test(src), 'the pill is not a 60px blur glass (owner: blurry)');
-ok(/var held = [^\n]*e\.buttons/.test(src) && /var want = !solid && !held/.test(src), 'click-through never switches on while a mouse button is held (resize/drag stuck with the mouse, 3 Oct)');
+ok(/var held = [^\n]*e\.buttons/.test(src) && /return !solid && !held/.test(src), 'click-through never switches on while a mouse button is held (resize/drag stuck with the mouse, 3 Oct)');
 ok(/addEventListener\('mouseup', function\(e\) \{ lastEvt = e;/.test(src), 'mouse-up re-evaluates click-through so a finished drag releases cleanly');
 ok(src.indexOf('id="copilot-float"') > src.indexOf('class="feed-wrap"'), 'the pill comes AFTER the feed in the DOM (Electron drag regions win by DOM order; a pill before the feed gets its clicks eaten as a window drag)');
 ok(/captureError:/.test(src) && /frame\.error/.test(src), 'a failed capture reports WHY to the server (never a silent no-image)');
@@ -122,5 +122,15 @@ ok(/90000/.test(sayF) && /scrollIntoView/.test(sayF), 'same ask already answered
 ok(/say: !!opts\.say/.test(src.slice(src.indexOf('async function copilotSend('), src.indexOf('async function copilotSend(') + 900)), 'request body carries say');
 ok(/copilotLastAsk = \{/.test(src.slice(src.indexOf('function copilotCardStart('), src.indexOf('function copilotCardStart(') + 1800)), 'the last co-pilot ask is remembered when its card starts');
 ok(/say \? ' · say'/.test(src.slice(src.indexOf('function copilotCardStart('), src.indexOf('function copilotCardStart(') + 1800)), 'a Say card is tagged as such');
+
+
+// ---- "sometimes not moveable" (owner, 4 Oct): the window flipped to solid one animation frame + one IPC after the pointer
+// reached the toolbar; a grab inside that gap went to the app behind. Now: near a solid part = solid, and the flip to solid
+// is immediate.
+const ct = src.slice(src.indexOf('function clickThroughTransparentParts()'), src.indexOf('function clickThroughTransparentParts()') + 3200);
+ok(/var SOLID_MARGIN = (2[4-9]|[3-9]\d);/.test(ct), 'a margin of 24px+ around every solid part counts as solid (window goes solid before the pointer arrives)');
+ok(/function nearSolid\(/.test(ct) && /getBoundingClientRect\(\)/.test(ct) && /SOLID_MARGIN/.test(ct.slice(ct.indexOf('function nearSolid('))), 'nearSolid measures the real boxes of the solid parts, grown by the margin');
+ok(/var solid = .*nearSolid\(/.test(ct), 'the solid decision uses the margin');
+ok(/if \(!want && through !== false\) \{ through = false; api\.setClickThrough\(false\); return; \}/.test(ct.slice(ct.indexOf("addEventListener('mousemove'"))), 'flip TO solid happens synchronously in the mousemove handler, never deferred to the next frame');
 
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
