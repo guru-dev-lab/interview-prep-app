@@ -72,7 +72,7 @@ ok(/\.sh-kw\{color:#569CD6/.test(src) && !/#FF6188/.test(src) && /body\.light-mo
   ok(/copilotPrints = copilotPrints\.filter/.test(cap), 'a refused or failed capture forgets the print so the page is retried (3 Oct: "Go Live first" refusals left pages marked known)'); }
 { const sc = src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 3000);
   ok(/star-inline/.test(sc) && /insertBefore\(res, /.test(sc) && !/RESULT\\b/.test(sc), 'the Result line is found by its RESULT chip element (the chip runs into the next word, so a word-boundary match never fired), and lifted to the top'); }
-ok(/\.sc-card-a pre\{background:#1E1E1E;/.test(src) && /font:400 12\.5px/.test(src.slice(src.indexOf('.sc-card-a pre{'), src.indexOf('.sc-card-a pre{') + 400)), 'code blocks: solid VS Code background, bigger monospace (owner: make the code part more visible)');
+ok(/\.sc-card-a pre\{background:#1E1E1E;/.test(src) && /font:400 13\.5px/.test(src.slice(src.indexOf('.sc-card-a pre{'), src.indexOf('.sc-card-a pre{') + 400)), 'code blocks: solid VS Code background, bigger monospace (owner: make the code part more visible; 13.5px since 4 Oct)');
 ok(!/code-open-btn/.test(src) && !/openCodeInBrowser/.test(src) && !/\/api\/code-view/.test(src), 'no Open-in-browser button (owner: "Not open in chrome", 3 Oct)');
 ok(!/\.sc-card-a pre code\{[^}]*font-size:11px/.test(src) && /\.code-content\{flex:1;color:#D4D4D4\}/.test(src) && /\.sh-kw\{color:#569CD6;font-weight:600\}/.test(src), 'code text: no 11px pin, VS Code base colour, bold keywords (owner: not the same colouring as the sample)');
 ok(/codeSz = Math\.max\(11, canvasFontSize\)/.test(src), 'code size follows the font setting one-to-one, never smaller');
@@ -132,5 +132,27 @@ ok(/var SOLID_MARGIN = (2[4-9]|[3-9]\d);/.test(ct), 'a margin of 24px+ around ev
 ok(/function nearSolid\(/.test(ct) && /getBoundingClientRect\(\)/.test(ct) && /SOLID_MARGIN/.test(ct.slice(ct.indexOf('function nearSolid('))), 'nearSolid measures the real boxes of the solid parts, grown by the margin');
 ok(/var solid = .*nearSolid\(/.test(ct), 'the solid decision uses the margin');
 ok(/if \(!want && through !== false\) \{ through = false; api\.setClickThrough\(false\); return; \}/.test(ct.slice(ct.indexOf("addEventListener('mousemove'"))), 'flip TO solid happens synchronously in the mousemove handler, never deferred to the next frame');
+
+
+// ---- text in a fence is read, not coded (owner, 4 Oct: a CFO prompt rendered as 12.5px SQL-coloured code, "hard to read and small")
+const fenceRe = src.slice(src.indexOf('for (var i = 0; i < lines.length; i++) {', src.indexOf('function formatAnswer(')), src.indexOf('function formatAnswer(') + 6000);
+ok(/var fence = line\.trim\(\)\.match\(\/\^```\\s\*\(\[\\w\+#\.-\]\*\)\/\)/.test(fenceRe), 'the fence language tag is captured (it used to be thrown away)');
+ok(/buildCodeBlock\(codeLines, codeLang\)/.test(fenceRe), 'the block builder is told the language');
+ok(/var TEXT_LANGS = /.test(src) && /'text'/.test(src.slice(src.indexOf('var TEXT_LANGS = '), src.indexOf('var TEXT_LANGS = ') + 200)) && /'prompt'/.test(src.slice(src.indexOf('var TEXT_LANGS = '), src.indexOf('var TEXT_LANGS = ') + 200)), 'text/prompt/email/markdown fences are text, not code');
+const lp = src.slice(src.indexOf('function looksLikeProse('), src.indexOf('function looksLikeProse(') + 1600);
+ok(lp.length > 100, 'a prose detector exists for untagged fences');
+const looksLikeProse = new Function(lp.slice(0, lp.indexOf('\n}\n') + 3) + '\nreturn looksLikeProse;')();
+ok(looksLikeProse(["Our same-store sales growth really dropped off in the back half compared to the first half, and the board is going to want to know why and what we're doing about it. Can you dig into the POS data, promotions calendar, staffing schedules, and whatever competitor openings we have on file, and tell me where we should focus our corrective action going into next quarter?"]) === true, 'the CFO prompt from the screenshot is prose');
+ok(looksLikeProse(["SELECT carrier, invoice_id, billed_amt - contracted_amt AS overage", "FROM carrier_invoices", "WHERE billed_amt > contracted_amt;"]) === false, 'SQL is code');
+ok(looksLikeProse(["def overage(rows):", "    return [r for r in rows if r['billed'] > r['contracted']]"]) === false, 'Python is code');
+ok(looksLikeProse(["=XLOOKUP(A2, Sheet2!A:A, Sheet2!C:C)"]) === false, 'a formula is code');
+ok(looksLikeProse(["Hi Priya, thanks for flagging T-9012. We breached the four-hour rule, so I've paged the on-call manager and I'll have the availability sheet to you by Wednesday noon."]) === true, 'an email is prose');
+const bcb = src.slice(src.indexOf('function buildCodeBlock('), src.indexOf('function buildCodeBlock(') + 1500);
+ok(/TEXT_LANGS/.test(bcb) && /looksLikeProse\(lines\)/.test(bcb) && /buildTextBlock\(lines\)/.test(bcb), 'tagged text, or untagged prose, is rendered as a text block');
+ok(/<pre class="text-block">/.test(src) && /TEXT TO USE/.test(src) && /<code class="text-content">/.test(src), 'the text block keeps the copy button (copy reads the <code> inside the <pre>)');
+ok(/\.sc-card-a pre\{[^}]*font:400 13\.5px\/1\.7/.test(src), 'code is 13.5px (was 12.5)');
+ok(/\.code-ln\{[^}]*font:400 11px/.test(src), 'line numbers 11px (was 10)');
+ok(/\.sc-card-a pre\.text-block\{[^}]*font:400 13\.5px\/1\.7 -apple-system/.test(src) && /border-left:3px solid/.test(src.slice(src.indexOf('.sc-card-a pre.text-block{'), src.indexOf('.sc-card-a pre.text-block{') + 500)), 'text block: reading font, 13.5px, accent rail');
+ok(/body\.light-mode \.sc-card-a pre\.text-block\{/.test(src), 'text block has a light-mode style');
 
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

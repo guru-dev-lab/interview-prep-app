@@ -341,3 +341,12 @@ console.log('ALL PASS (missing page is missing)');
   ok(mc.maxTokensFor('smart', true) === mc.maxTokensFor('smart'), 'smart cap unchanged by say');
 }
 
+
+// ---- prose is never fenced as code (owner, 4 Oct): text to paste is tagged ```text; what is said aloud is never fenced
+{
+  const P = mc.MEETING_PROMPT;
+  ok(/```text/.test(P), 'the prompt names the ```text fence for prose to paste (a prompt, an email, a memo)');
+  ok(/never (put|fence) .*(spoken|said out loud|Say lines)/i.test(P) || /Say lines are never fenced/i.test(P), 'spoken lines are never fenced');
+  ok(/code fence (always )?carries its language/i.test(P) || /with the language/i.test(P), 'a code fence carries its language');
+  console.log('ALL PASS (prose fenced as text, never as code)');
+}
