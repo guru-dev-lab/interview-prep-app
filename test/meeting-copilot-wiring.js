@@ -170,4 +170,25 @@ ok(/const questionText = noItem \? 'Screen' : \(instruction \|\| question\)/.tes
 ok(/THE CANDIDATE TYPED \(this IS the question to answer; the screen is context[^']*never answer QUESTION: NONE/.test(sa), 'the screen prompt is told the typed text is the question');
 ok(/if \(instruction && !suggestion\) suggestion = String\(reply \|\| ''\)\.trim\(\)/.test(sa), 'a typed question never gets an empty answer (the raw reply stands in)');
 
+
+// ---- every screen capture is overlay-free (owner, 4 Oct: the Q&A screen reader read the overlay's OWN card as the question
+// on screen, and the co-pilot described the Q&A card's SQL as "on screen"). Only the co-pilot camera used the app capture.
+const gs = src.slice(src.indexOf('async function grabScreen('), src.indexOf('async function grabScreen(') + 1400);
+ok(gs.length > 100 && /electronAPI\.captureDisplay\(/.test(gs) && /frameFromShot\(shot\)/.test(gs) && /captureFrame\(stream, maxW, opts\)/.test(gs), 'one door: grabScreen prefers the app capture (no overlay, honours the eye) and falls back to the page stream');
+const direct = (src.match(/captureFrame\((screenStream|stream)\)/g) || []).length;
+ok(direct === 0, 'no caller grabs the raw page stream any more (found ' + direct + ')');
+ok(/grabScreen\(1280\)\.then\(function\(b64\) \{ return sendScreenCapture\(b64, \{ instruction: text \}\); \}\)/.test(src), 'typed-with-screen (Q&A) uses grabScreen');
+ok((src.match(/await grabScreen\(1280, \{ stream: stream \}\)/g) || []).length >= 2 && /await grabScreen\(1280, \{ stream: screenStream \}\)/.test(src), 'Assist button, Record first shot and Record loop use grabScreen');
+ok(/await grabScreen\(COPILOT_CAPTURE_W, \{ stream: stream \}\)/.test(src.slice(src.indexOf('async function copilotFrame('), src.indexOf('async function copilotFrame(') + 900)), 'co-pilot Assist frame uses grabScreen');
+// ---- a typed Q&A question is the candidate's own order (owner, 4 Oct: "I can't write an essay. That question doesn't match…")
+const srv3 = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+const cq = srv3.slice(srv3.indexOf("msg.type === 'canvas_question'"), srv3.indexOf("msg.type === 'canvas_question'") + 1500);
+ok(/rebuildIdx, true, true, \{ typed: true \}\)/.test(cq), 'the typed question is flagged typed on its way to the writer');
+ok(/^async function fastMatchAndRespond\(.*skipClean, extraOpts\)/m.test(srv3), 'fastMatchAndRespond carries extra writer options');
+const fm = srv3.slice(srv3.indexOf('async function fastMatchAndRespond('), srv3.indexOf('async function fastMatchAndRespond(') + 9000);
+ok((fm.match(/generateLiveAnswer\([^)]*Object\.assign\(\{\}, extraOpts/g) || []).length >= 3, 'every writer call inside it passes the flag through (bank, fresh, regen)');
+const gl = srv3.slice(srv3.indexOf('async function generateLiveAnswer('), srv3.indexOf('async function generateLiveAnswer(') + 12000);
+ok(/const typedBlock = opts\.typed \? /.test(gl) && /TYPED BY THE CANDIDATE/.test(gl) && /never declined/i.test(gl), 'the writer is told a typed line is an order: do it in full, never decline or redirect');
+ok(/opts\.typed \? 'QUESTION \(typed by the candidate — do exactly this\):' : 'QUESTION \(detected from speech/.test(gl), 'the question label says typed, not "detected from speech"');
+
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

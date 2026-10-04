@@ -3331,7 +3331,7 @@ async function verifyMatch(utterance, candidates, sessionContext, timeoutMs = 25
 }
 
 // Match + verify + respond — async with Haiku AI verification
-async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter, forceNavigate, skipClean) {
+async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userId, ws, lastMatchedQId, recentMatchedIds, questionIndex, onIndexRebuild, skipFilter, forceNavigate, skipClean, extraOpts) {
   const startMs = Date.now();
   const tClean = Date.now();
   const q = skipClean ? utterance.trim() : await aiCleanQuestion(utterance.trim());
@@ -3393,7 +3393,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
         // Matched a bank question whose answer isn't prepared yet (e.g. a must-have still being prepared) — answer it
         // now; generateLiveAnswer streams onto this card and fills the bank row. Never leave an empty card.
         console.log('[FastMatch] Matched bank question has no answer yet — generating it now');
-        generateLiveAnswer(verified.question.text, sessionId, userId, ws, verified.question.id, !!forceNavigate)
+        generateLiveAnswer(verified.question.text, sessionId, userId, ws, verified.question.id, !!forceNavigate, Object.assign({}, extraOpts || {}))
           .catch(e => console.error('[FastMatch] answer for empty bank question failed:', e.message));
       }
       if (verified.question.answer) {
@@ -3402,7 +3402,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
         // version adapted to what was said onto the SAME card (the bank itself is never changed).
         if (hasConversation(ws)) {
           console.log('[Memory] Checking prepared answer against the conversation');
-          generateLiveAnswer(verified.question.text, sessionId, userId, ws, verified.question.id, !!forceNavigate, { bankAnswer: verified.question.answer })
+          generateLiveAnswer(verified.question.text, sessionId, userId, ws, verified.question.id, !!forceNavigate, Object.assign({}, extraOpts || {}, { bankAnswer: verified.question.answer }))
             .catch(e => console.error('[Memory] adapt failed:', e.message));
         }
       }
@@ -3453,7 +3453,7 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       rlq.text = betterText;
       pool.query('UPDATE questions SET text = $1 WHERE id = $2', [betterText, rlq.id]).catch(e => console.error('[Dedup update error]', e.message));
       // Regenerate answer with the fuller question
-      generateLiveAnswer(betterText, sessionId, userId, ws, rlq.id, !!forceNavigate).catch(e => console.error('[Dedup regen error]', e.message));
+      generateLiveAnswer(betterText, sessionId, userId, ws, rlq.id, !!forceNavigate, Object.assign({}, extraOpts || {})).catch(e => console.error('[Dedup regen error]', e.message));
       return lastMatchedQId;
     }
   }
@@ -4384,7 +4384,7 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify(qdMsg3));
         broadcastToSession(sessionId, qdMsg3, ws);
         const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
-        fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, true, true).then(newLastId => {
+        fastMatchAndRespond(text, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, true, true, { typed: true }).then(newLastId => { // typed = his own order (owner, 4 Oct)
           if (newLastId) lastMatchedQId = newLastId;
         }).catch(e => {
           console.error('[Canvas] Manual question failed:', e.message);
@@ -5410,7 +5410,11 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // The writer may NOT skip a detected question any more (it dropped real questions twice on 26 Sep — a case question
     // phrased with "they", and one aimed at a video's other candidate). Detection rules decide what is a question.
     const refuseLine = '';
-    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}${avoidBlock}\n\nQUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
+    // Typed in the box = the candidate's own order (owner, 4 Oct: "write an essay about anything" came back "I can't write an
+    // essay. That question doesn't match what we're discussing"). A typed line is done in full, never judged or redirected.
+    const typedBlock = opts.typed ? '\n\nTYPED BY THE CANDIDATE (not heard on the call — their own instruction to you): do exactly what it says, in full, in the candidate\'s voice — an essay is written out, a query is written out, a message is drafted. It is never declined, never redirected to "what we are discussing", never answered with a question back.' : '';
+    const qLabel = opts.typed ? 'QUESTION (typed by the candidate — do exactly this):' : 'QUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):';
+    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}${avoidBlock}${typedBlock}\n\n${qLabel}\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
     // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
