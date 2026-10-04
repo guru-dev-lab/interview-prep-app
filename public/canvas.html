@@ -1885,7 +1885,7 @@ function sendQuestion() {
   // question ("I don't see a question", 2 Oct)
   if (screenStream && screenStream.active) {
     pendingManualScroll = true;
-    captureFrame(screenStream).then(function(b64) { return sendScreenCapture(b64, { instruction: text }); })
+    grabScreen(1280).then(function(b64) { return sendScreenCapture(b64, { instruction: text }); })
       .catch(function() { showToast('Screen capture failed — press Assist', '', 2500); });
     return;
   }
@@ -2103,7 +2103,7 @@ async function screenAssist() {
   try {
     var stream = await getScreenStream();
     if (!stream) { btn.classList.remove('loading'); btn.innerHTML = assistDefaultHTML; return; }
-    var base64 = await captureFrame(stream);
+    var base64 = await grabScreen(1280, { stream: stream });
     // Don't stop stream — user might want to record next
     await sendScreenCapture(base64);
   } catch(e) {
@@ -2131,13 +2131,13 @@ async function startRecording() {
   btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor"/></svg> Stop';
   // Capture immediately, then every 8s
   try {
-    var base64 = await captureFrame(stream);
+    var base64 = await grabScreen(1280, { stream: stream });
     await sendScreenCapture(base64);
   } catch(e) { console.warn('Initial capture failed:', e); }
   recordingInterval = setInterval(async function() {
     if (!screenStream || !screenStream.active) { stopRecording(); return; }
     try {
-      var base64 = await captureFrame(screenStream);
+      var base64 = await grabScreen(1280, { stream: screenStream });
       await sendScreenCapture(base64, { auto: true });
     } catch(e) { console.warn('Recording capture failed:', e); stopRecording(); }
   }, RECORD_INTERVAL_MS);
@@ -2664,7 +2664,7 @@ async function captureParticipantNames() {
     var isElectron = window.electronAPI && window.electronAPI.isElectron;
     var stream = isElectron ? await getScreenStream() : (screenStream && screenStream.active ? screenStream : null);
     if (!stream) return; // don't trigger a picker just for names
-    var base64 = await captureFrame(stream);
+    var base64 = await grabScreen(1280, { stream: stream });
     if (!base64) return;
     fetch('/api/sessions/' + SESSION_ID + '/detect-participants', {
       method: 'POST',
@@ -3037,6 +3037,23 @@ function frameFromShot(shot) {
   });
 }
 
+// ONE capture door (owner, 4 Oct: Q&A Assist read the overlay's OWN card as "the question on screen"; the co-pilot
+// described the Q&A card's SQL as "on screen"). getDisplayMedia shows this window even with content protection on; the
+// app's screenshot backend (v1.1.4+) does not. Every capture goes through here; older apps fall back to the page stream.
+async function grabScreen(maxW, opts) {
+  opts = opts || {};
+  if (window.electronAPI && window.electronAPI.captureDisplay) {
+    try {
+      var shot = await window.electronAPI.captureDisplay(maxW || 1280);
+      if (shot && shot.jpeg) return frameFromShot(shot);
+      console.warn('[Capture] app capture returned nothing — falling back to the page stream');
+    } catch (e) { console.warn('[Capture] app capture failed — falling back:', e); }
+  }
+  var stream = opts.stream || ((screenStream && screenStream.active) ? screenStream : await getScreenStream());
+  if (!stream) throw new Error('no screen stream');
+  return captureFrame(stream, maxW, opts);
+}
+
 async function copilotCaptureNow(auto) {
   if (!SESSION_ID || !TOKEN) return 'no-session';
   // v1.1.4+: the app captures the display through the screenshot backend (honours the eye, no overlay in the frame,
@@ -3105,7 +3122,7 @@ async function copilotFrame() {
     var stream = (screenStream && screenStream.active) ? screenStream : await getScreenStream();
     if (!stream) return { image: null, changed: false, error: 'stream: no screen stream (permission or no display)' };
     stage = 'capture';
-    var image = await captureFrame(stream);
+    var image = await grabScreen(COPILOT_CAPTURE_W, { stream: stream });
     if (!image) return { image: null, changed: false, error: 'capture: captureFrame returned nothing (video not ready?)' };
     stage = 'fingerprint';
     if (typeof CopilotFingerprint === 'undefined') return { image: image, changed: true, key: 'scr-' + Date.now().toString(36), error: 'fingerprint: CopilotFingerprint not loaded — sending the frame anyway' };
