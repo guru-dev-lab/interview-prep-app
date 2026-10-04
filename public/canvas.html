@@ -1879,7 +1879,7 @@ function sendQuestion() {
   input.value = '';
 
   // Co-pilot mode: what he types is an instruction for the task on screen — goes to the co-pilot (it keeps the steps)
-  if (copilotActive) { pendingManualScroll = true; copilotSend({ ask: text }); return; }
+  if (copilotActive) { pendingManualScroll = true; copilotSend({ ask: text, typed: true }); return; } // typed = his own instruction, not a heard question
 
   // Screen shared (assessment) — what he types is about the item on screen; it used to be answered blind as an interview
   // question ("I don't see a question", 2 Oct)
@@ -3132,7 +3132,7 @@ async function copilotSend(opts) {
     var res = await fetch('/api/sessions/' + SESSION_ID + '/copilot', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, say: !!opts.say, image: frame.image, screenChanged: frame.changed, screenKey: frame.key || '', captureError: frame.error || '', context: getCopilotContext() })
+      body: JSON.stringify({ ask: opts.ask || '', pressed: !!opts.pressed, say: !!opts.say, typed: !!opts.typed, image: frame.image, screenChanged: frame.changed, screenKey: frame.key || '', captureError: frame.error || '', context: getCopilotContext() })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
