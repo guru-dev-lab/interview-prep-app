@@ -306,15 +306,20 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .sc-card-a{padding:8px 12px;font:400 13px/1.75 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#ffffff;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 .sc-card-a p,.sc-card-a .sc-line+.sc-line{margin-top:1px}
 .sc-card-a strong,.sc-card-a b{color:#ffffff;font-weight:600}
-.sc-card-a pre{background:#1E1E1E;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px 16px 14px 16px;margin:8px 0;overflow-x:auto;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 12.5px/1.65 'Fira Code','JetBrains Mono',Consolas,'Courier New',monospace;color:#D4D4D4;position:relative;-webkit-font-smoothing:antialiased;box-shadow:0 2px 12px rgba(0,0,0,.35)} /* solid VS Code ground: the 60% glass faded over a page (owner, 3 Oct) */
+.sc-card-a pre{background:#1E1E1E;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px 16px 14px 16px;margin:8px 0;overflow-x:auto;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font:400 13.5px/1.7 'Fira Code','JetBrains Mono',Consolas,'Courier New',monospace;color:#D4D4D4;position:relative;-webkit-font-smoothing:antialiased;box-shadow:0 2px 12px rgba(0,0,0,.35)} /* solid VS Code ground: the 60% glass faded over a page (owner, 3 Oct) */
 .sc-card-a pre::before{display:none}
 .code-copy-btn{position:absolute;top:6px;right:6px;width:24px;height:24px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;padding:0;z-index:1;opacity:0;backdrop-filter:blur(4px)}
 .sc-card-a pre:hover .code-copy-btn{opacity:1}
 .code-copy-btn:hover{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.15)}
 .code-copy-btn.copied{color:#73daca;background:rgba(115,218,202,.08);border-color:rgba(115,218,202,.2);opacity:1}
 .code-line{display:flex;gap:0;min-height:18px}
-.code-ln{min-width:28px;padding-right:12px;text-align:right;color:rgba(255,255,255,.2);font:400 10px/1.65 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0}
+.code-ln{min-width:28px;padding-right:12px;text-align:right;color:rgba(255,255,255,.28);font:400 11px/1.7 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0}
 .code-content{flex:1;color:#D4D4D4}
+/* Text block: prose the model fenced (a prompt, an email, a memo) — read it, don't code it (owner, 4 Oct) */
+.sc-card-a pre.text-block{background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.25);border-left:3px solid #34D399;padding:10px 44px 12px 14px;font:400 13.5px/1.7 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#F3F4F6}
+.text-tag{display:block;font:700 9px/1.4 Inter,sans-serif;letter-spacing:.8px;color:#34D399;margin-bottom:4px}
+.text-content{display:block;white-space:pre-wrap;font:inherit;color:inherit}
+body.light-mode .sc-card-a pre.text-block{background:rgba(16,185,129,.07);color:#0f172a;border-color:rgba(16,185,129,.35);border-left-color:#10b981}
 .sc-card-a pre code{background:none !important;padding:0;color:inherit;border:none !important;display:block} /* no size pin: the pre's 12.5px (or the font setting) rules */
 .sc-card-a code{background:rgba(110,118,129,.2);padding:2px 6px;border-radius:5px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c9d1d9;border:none}
 /* VS Code Dark+ (owner, 3 Oct: the red Monokai keywords were straining) */
@@ -1446,11 +1451,32 @@ function highlightMetrics(text) {
 }
 
 // Detect and render STAR sections
-function buildCodeBlock(lines) {
+// Text in a fence is read, not coded (owner, 4 Oct: a CFO's prompt came out as 12.5px SQL-coloured monospace — "hard to
+// read and small"). A fence tagged text/prompt/email/markdown, or an untagged fence that reads as prose, becomes a text
+// block: reading font, no line numbers, no colouring, copy button kept (copy reads the <code> inside the <pre>).
+var TEXT_LANGS = ['text', 'txt', 'plain', 'plaintext', 'prompt', 'email', 'md', 'markdown', 'message', 'memo'];
+function looksLikeProse(lines) {
+  var t = (lines || []).join('\n').trim();
+  if (!t) return false;
+  var words = (t.match(/[A-Za-z']+/g) || []).length;
+  if (words < 8) return false;
+  var sym = (t.match(/[;{}()\[\]=<>|\\$]/g) || []).length;
+  var codeStart = /^\s*(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|ALTER|def |class |import |from |const |let |var |function|return|if\s*\(|for\s*\(|while|#include|<\?|<[a-zA-Z]|=|\$|@|\/\/|#!)/im.test(t);
+  var lineEndsCode = /[;{}]\s*$/m.test(t);
+  var sentences = (t.match(/[.!?](\s|$)/g) || []).length;
+  return !codeStart && !lineEndsCode && sentences >= 1 && sym / words < 0.08;
+}
+var COPY_BTN_HTML = '<button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy code"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
+function buildTextBlock(lines) {
+  return '<pre class="text-block"><span class="text-tag">TEXT TO USE</span>' + COPY_BTN_HTML + '<code class="text-content">' + esc(lines.join('\n').trim()) + '</code></pre>';
+}
+function buildCodeBlock(lines, lang) {
+  var l = String(lang || '').toLowerCase();
+  if (TEXT_LANGS.indexOf(l) >= 0 || (!l && looksLikeProse(lines))) return buildTextBlock(lines);
   var numbered = lines.map(function(line, i) {
     return '<div class="code-line"><span class="code-ln">' + (i + 1) + '</span><span class="code-content">' + syntaxHL(line) + '</span></div>';
   }).join('');
-  return '<pre><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="Copy code"><svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><code>' + numbered + '</code></pre>';
+  return '<pre>' + COPY_BTN_HTML + '<code>' + numbered + '</code></pre>';
 }
 
 function formatAnswer(text) {
@@ -1473,6 +1499,7 @@ function formatAnswer(text) {
   var html = '';
   var inCode = false;
   var codeLines = [];
+  var codeLang = ''; // the fence tag: ```sql, ```text … (owner, 4 Oct: a CFO prompt was rendered as SQL-coloured code)
   var inList = false; // track if we're inside a <ul> or <ol>
   var listType = ''; // 'ul' or 'ol'
   var lines = text.split('\n');
@@ -1495,10 +1522,11 @@ function formatAnswer(text) {
 
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
-    if (/^```/.test(line.trim())) {
+    var fence = line.trim().match(/^```\s*([\w+#.-]*)/);
+    if (fence) {
       closeList();
-      if (!inCode) { inCode = true; codeLines = []; }
-      else { html += buildCodeBlock(codeLines); inCode = false; codeLines = []; }
+      if (!inCode) { inCode = true; codeLines = []; codeLang = fence[1] || ''; }
+      else { html += buildCodeBlock(codeLines, codeLang); inCode = false; codeLines = []; codeLang = ''; }
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
