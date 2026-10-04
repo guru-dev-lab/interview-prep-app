@@ -2624,13 +2624,14 @@ app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => 
     const textPrompt = 'ASSESSMENT FOR: ' + role + ' at ' + company +
       '\n\nCANDIDATE RESUME:\n' + (session.resume || 'N/A') +
       memoryContext +
-      (instruction ? '\n\nTHE CANDIDATE TYPED (follow it for the item on screen): "' + String(instruction).slice(0, 500) + '"' : '') +
+      (instruction ? '\n\nTHE CANDIDATE TYPED (this IS the question to answer; the screen is context for it, and if the screen shows nothing related, answer the typed text from the résumé and the role — never answer QUESTION: NONE when the candidate typed): "' + String(instruction).slice(0, 500) + '"' : '') +
       '\n\nGive your suggestion for the item on screen now, following the output contract.';
 
     const reply = await callClaudeVision(SCREEN_ASSIST_PROMPT, base64Data, textPrompt, 3000, MODEL_SONNET, mediaType); // room for a full coding solution
-    const { question, suggestion } = parseScreenReply(reply);
+    let { question, suggestion } = parseScreenReply(reply);
+    if (instruction && !suggestion) suggestion = String(reply || '').trim(); // what he typed never gets an empty answer (owner, 4 Oct: "No question on screen yet" to a typed question)
     const prev = screenLastQuestion.get(sessionId);
-    const noItem = question === 'NONE' || !suggestion;
+    const noItem = !instruction && (question === 'NONE' || !suggestion);
     const sameItem = !noItem && prev && sameScreenQuestion(prev, question);
 
     if (!noItem || !prev) addScreenMemory(sessionId, ('Item: ' + question + '\n' + suggestion).substring(0, 600));
@@ -2641,7 +2642,7 @@ app.post('/api/sessions/:id/screen-assist', authMiddleware, async (req, res) => 
     }
     if (!noItem) screenLastQuestion.set(sessionId, question);
     const answer = noItem ? 'No question on screen yet — capture again when one is showing.' : suggestion;
-    const questionText = noItem ? 'Screen' : question;
+    const questionText = noItem ? 'Screen' : (instruction || question);
     console.log('[Screen Assist] suggestion | q="' + questionText.slice(0, 80) + '" chars=' + answer.length);
 
     // Screen items are NOT saved to the question bank: they were feeding screen output back in as prepared answers
@@ -2728,6 +2729,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     if (captureError) console.warn('[Co-pilot] capture problem on the client:', captureError); // client's id for this screen: new capture → tags the seen row; repeat → reuse that row
     const ask = String(req.body.ask || req.body.transcript || '').trim(); // `transcript` = the older client field
     const say = !!req.body.say; // the Say button: answer what they just asked of this person (owner, 3 Oct)
+    const typed = !!req.body.typed; // typed in the box: his own instruction — do it, never judge it (owner, 4 Oct)
     const live = liveWsForSession(sessionId);
     if (!live) return res.status(409).json({ error: 'Go Live first — co-pilot works during a live call' });
     const callId = live._callId;
@@ -2776,7 +2778,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     // Q&A bank = his real answers about himself; it rides with the résumé so "tell me about yourself" on a work call is true to him
     const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
     const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);

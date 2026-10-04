@@ -155,4 +155,19 @@ ok(/\.code-ln\{[^}]*font:400 11px/.test(src), 'line numbers 11px (was 10)');
 ok(/\.sc-card-a pre\.text-block\{[^}]*font:400 13\.5px\/1\.7 -apple-system/.test(src) && /border-left:3px solid/.test(src.slice(src.indexOf('.sc-card-a pre.text-block{'), src.indexOf('.sc-card-a pre.text-block{') + 500)), 'text block: reading font, 13.5px, accent rail');
 ok(/body\.light-mode \.sc-card-a pre\.text-block\{/.test(src), 'text block has a light-mode style');
 
+
+// ---- what he TYPES is an order, never something to judge (owner, 4 Oct: Q&A typed question answered "No question on screen
+// yet"; co-pilot typed ask answered "that's just test text, not a real question")
+const sq = src.slice(src.indexOf('function sendQuestion()'), src.indexOf('function sendQuestion()') + 1600);
+ok(/copilotSend\(\{ ask: text, typed: true \}\)/.test(sq), 'a typed ask reaches the co-pilot flagged as typed');
+ok(/typed: !!opts\.typed/.test(src.slice(src.indexOf('async function copilotSend('), src.indexOf('async function copilotSend(') + 900)), 'request body carries typed');
+const srv2 = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+const ep2 = srv2.slice(srv2.indexOf("app.post('/api/sessions/:id/copilot'"), srv2.indexOf("app.post('/api/sessions/:id/copilot'") + 9000);
+ok(/const typed = !!req\.body\.typed/.test(ep2) && /typed,/.test(ep2.slice(ep2.indexOf('buildCopilotPrompt('), ep2.indexOf('buildCopilotPrompt(') + 400)), 'endpoint passes typed into the prompt');
+const sa = srv2.slice(srv2.indexOf("const { image, auto, instruction } = req.body;"), srv2.indexOf("const { image, auto, instruction } = req.body;") + 4000);
+ok(/const noItem = !instruction && \(question === 'NONE' \|\| !suggestion\)/.test(sa), 'screen assist: a typed instruction can never come back as "no question on screen"');
+ok(/const questionText = noItem \? 'Screen' : \(instruction \|\| question\)/.test(sa) || /questionText = instruction \|\|/.test(sa), 'the card is titled with what he typed');
+ok(/THE CANDIDATE TYPED \(this IS the question to answer; the screen is context[^']*never answer QUESTION: NONE/.test(sa), 'the screen prompt is told the typed text is the question');
+ok(/if \(instruction && !suggestion\) suggestion = String\(reply \|\| ''\)\.trim\(\)/.test(sa), 'a typed question never gets an empty answer (the raw reply stands in)');
+
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');

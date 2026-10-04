@@ -95,7 +95,7 @@ console.log('ALL PASS (meeting co-pilot logic, ' + n + ' checks)');
   assert(/use the latest "Screen shown earlier"/.test(withSeen), 'with a seen row the prompt points at it');
   const pressed = mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: '', pressed: true, screenChanged: false });
   assert(/never answer "nothing new"/i.test(pressed), 'a press forbids the nothing-new escape');
-  assert(/a press always gets a real answer/i.test(mc.MEETING_PROMPT), 'system prompt limits "nothing new" to un-pressed turns');
+  assert(/a press( or a typed line)? always gets a real answer/i.test(mc.MEETING_PROMPT), 'system prompt limits "nothing new" to un-pressed, un-typed turns');
   console.log('ALL PASS (prompt slips: no-screen wording, press never "nothing new")');
 }
 
@@ -349,4 +349,16 @@ console.log('ALL PASS (missing page is missing)');
   ok(/never (put|fence) .*(spoken|said out loud|Say lines)/i.test(P) || /Say lines are never fenced/i.test(P), 'spoken lines are never fenced');
   ok(/code fence (always )?carries its language/i.test(P) || /with the language/i.test(P), 'a code fence carries its language');
   console.log('ALL PASS (prose fenced as text, never as code)');
+}
+
+// ---- a typed ask is this person's own instruction (owner, 4 Oct): do it; never judge it as "not a real meeting question"
+{
+  const base = { mode: 'smart', rows: [], session: { role: 'Data Analyst' }, screenChanged: false };
+  const t = mc.buildCopilotPrompt(Object.assign({}, base, { ask: 'write an essay for me real fast about anything', typed: true }));
+  ok(/THIS PERSON TYPED/.test(t) && /do exactly this/i.test(t) && /write an essay for me real fast about anything/.test(t), 'typed ask is labelled as their own instruction, to be done');
+  ok(!/JUST ASKED \/ NOTED/.test(t), 'a typed ask is not presented as something heard on the call');
+  const h = mc.buildCopilotPrompt(Object.assign({}, base, { ask: 'what does row 12 mean?' }));
+  ok(/JUST ASKED \/ NOTED/.test(h) && !/THIS PERSON TYPED/.test(h), 'a heard ask keeps its own label');
+  ok(/Asked: nothing new[^\n]*never[^\n]*(typed|TYPED)/i.test(mc.MEETING_PROMPT) || /never on a typed/i.test(mc.MEETING_PROMPT), '"nothing new" is forbidden on a typed instruction too');
+  console.log('ALL PASS (typed = an order)');
 }
