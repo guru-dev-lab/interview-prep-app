@@ -2681,21 +2681,22 @@ async function loadCallRows(callId) {
 function maybeCompactCall(sessionId, callId, rows, historyOn) {
   const st = copilotDigests.get(callId) || { text: '', lastAt: 0, lastCount: 0, running: false };
   copilotDigests.set(callId, st);
-  const material = rows.filter(r => r.kind !== 'digest');
-  if (st.running || !meetingCopilot.shouldCompact(st, { now: Date.now(), rowCount: material.length, historyOn })) return;
+  // Counted by time, not by position: the row window holds the newest 400, so positions shift on a long call
+  const newer = rows.filter(r => r.kind !== 'digest' && r.ts > (st.lastTs || 0)).length;
+  if (st.running || !meetingCopilot.shouldCompact(st, { now: Date.now(), rowCount: (st.lastCount || 0) + newer, historyOn })) return;
   return compactCall(sessionId, callId, rows, st);
 }
 // Compact now (awaitable). At an Assist with no digest and more raw talk than fits word for word, the server waits for
 // this so the start of a long call is not dropped (3 Oct: the first 40 s of an update were stored but never handed over).
 function compactCall(sessionId, callId, rows, st) {
-  const material = rows.filter(r => r.kind !== 'digest');
+  const freshRows = rows.filter(r => r.kind !== 'digest' && r.ts > (st.lastTs || 0));
   st.running = true;
-  const fresh = material.slice(st.lastCount).map(r => `[${r.kind}] ${r.text}`).join('\n');
+  const fresh = freshRows.map(r => `[${r.kind}] ${r.text}`).join('\n');
   const user = (st.text ? `CURRENT NOTES:\n${st.text}\n\n` : '') + `NEW LINES (newest last):\n${fresh}\n\nUPDATED NOTES:`;
-  const t0 = Date.now(), count = material.length;
+  const t0 = Date.now(), count = (st.lastCount || 0) + freshRows.length, upTo = freshRows.length ? freshRows[freshRows.length - 1].ts : (st.lastTs || 0);
   return callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU).then(out => {
-    st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count;
-    recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count });
+    st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count; st.lastTs = upTo;
+    recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count, upTo });
     console.log(`[Co-pilot] digest updated in ${Date.now() - t0}ms (${st.text.length} chars from ${count} rows)`);
     return st.text;
   }).catch(e => { console.error('[Co-pilot] digest failed:', e.message); return st.text; }).finally(() => { st.running = false; });
@@ -2780,8 +2781,8 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     // Q&A bank = his real answers about himself; it rides with the résumé so "tell me about yourself" on a work call is true to him
     const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
     const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
-    const digestRows = ((copilotDigests.get(callId) || {}).lastCount) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).rows || 0;
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, digestRows, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const digestUpTo = ((copilotDigests.get(callId) || {}).lastTs) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).upTo || 0;
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
