@@ -1393,6 +1393,7 @@ function connect() {
       }
     }
     else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason, msg.say); }
+    else if (msg.type === 'copilot_dup') { var dEl = document.getElementById('card-' + msg.cardId); if (dEl) { dEl.scrollIntoView({ behavior: 'smooth', block: 'end' }); dEl.classList.add('flash'); setTimeout(function () { dEl.classList.remove('flash'); }, 900); showToast('Asked again — already answered here', 'info', 1500); } } // heard the same question again: the existing card, no new answer
     else if (msg.type === 'copilot_say') { copilotSay(msg.text); } // Say pressed in co-pilot mode: the server caught what they just asked
     else if (msg.type === 'copilot_delta') { copilotCardDelta(msg.cardId, msg.text); }
     else if (msg.type === 'copilot_done') { copilotCardDone(msg.cardId, msg.answer); }

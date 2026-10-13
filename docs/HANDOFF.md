@@ -1,5 +1,24 @@
 # Handoff
 
+## 13 Oct 2026 — co-pilot: answers only real asks, never the same question twice, compact non-questions
+- Evidence (Railway logs, his 12 Oct 21:40 CDT assessment): 3 unasked cards came from the voice route — a training video's
+  voice-over: 2 statements ("Motion properties, which covers…", "When building options, ensure…") and a cut fragment
+  ("Do you have at least"). His other 15 cards were his own presses (Assist / Cmd+Enter after a camera capture).
+  9 Oct call: the co-pilot branch skipped the de-dup → the same question carded twice 0.5 s apart and again a minute later.
+  `said` rows were cut at 600 chars → a 2,000-char press lost its later blocks and the next press answered them again.
+- Fix (lib/meeting-copilot.js + server.js `routeHeardToCopilot`, the one door for heard lines in co-pilot mode):
+  gate = a FINISHED ask (ends "?" or an explicit ask to him) → repeat check against every answered ask/block title on the
+  call + in-flight asks → repeat = `copilot_dup` (overlay flashes the earlier card, no new answer) → Haiku judge (ASK/NOT:
+  voice-over, checklist read out, rhetorical) with a 3 s deadline, fails open. Every skip logs `[Co-pilot] heard, not answered (reason)`.
+  Said rows carry meta {cardId, ask, answered[]} (whole ledger); prompts get ALREADY ANSWERED ON THIS CALL.
+  Transcriber tags TYPE: QUESTION/DATA/INFO and [CUT OFF]; press skips cut-off questions (says scroll) and repeats.
+  Older INFO pages ride as first lines only; talk the digest covers is not repeated raw (6-line overlap).
+- Proof: npm test (new test/copilot-ask-gate.js 28 checks on his real lines, wiring +5); judge 9/9 on Haiku with his real
+  lines; one Sonnet press: Q3 already answered → not redone, cut-off Q4 → "scroll", not guessed; meeting-copilot-e2e 18/18
+  real audio on local server (judge ASK in 785 ms, card served).
+- Cost of the change: +~0.8 s before a heard question's card (judge). Typed / pressed / Say are never gated.
+- Rollback: tag known-good-2026-10-13-before-copilot-gate.
+
 ## 3 Oct 2026 (night) — desktop v1.1.4, capture via the screenshot backend
 - Found: the OS content-protection flag (the eye) hides xHire from other apps and from Cmd+Shift+3, NOT from the app's
   own getDisplayMedia stream — every co-pilot frame had the panel in it (obscured tables, panel text read as content,

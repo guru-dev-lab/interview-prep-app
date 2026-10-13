@@ -2778,7 +2778,8 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     // Q&A bank = his real answers about himself; it rides with the résumé so "tell me about yourself" on a work call is true to him
     const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
     const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const digestRows = ((copilotDigests.get(callId) || {}).lastCount) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).rows || 0;
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, digestRows, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
@@ -2805,7 +2806,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
         .then(txt => { console.log(`[Co-pilot] screen transcribed in ${Date.now() - t1}ms (${String(txt).length} chars) :: ${String(txt).replace(/\s+/g, ' ').slice(0, 240)}`); return recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true }); })
         .catch(e => { console.error('[Co-pilot] transcription failed:', e.message); const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; return seen ? recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey }) : false; }));
     } else if (hasImage) { const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; if (seen) writes.push(recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey })); }
-    writes.push(recordCallEvent(sessionId, callId, 'said', answer.slice(0, 600), { mode }));
+    writes.push(recordCallEvent(sessionId, callId, 'said', answer.slice(0, 600), { mode, cardId, ask: typed ? '' : ask.slice(0, 300), answered: meetingCopilot.answeredItems(answer) })); // the ledger keeps every block title — the text is cut at 600
     await Promise.all(writes); // on record before we answer — the response never claims what isn't logged yet
     maybeCompactCall(sessionId, callId, rows, historyOn);
     res.json({ answer, cardId, mode });
@@ -3861,6 +3862,42 @@ wss.on('connection', (ws) => {
           }
         }
 
+        // CO-PILOT DOOR for a heard line (owner, 13 Oct: no card unless someone actually asked, never the same question twice).
+        // 1) finished ask aimed at him (gate)  2) not already answered / in flight on this call → jump to that card
+        // 3) Haiku: a person asking him now, not a video's voice-over or a checklist read out. Every skip logs its reason.
+        async function routeHeardToCopilot(q, via) {
+          const gate = meetingCopilot.heardAskGate(q);
+          if (!gate.ok) { console.log(`[Co-pilot] heard, not answered (${gate.reason}): ${q.substring(0, 80)}`); return; }
+          const now = Date.now();
+          ws._copilotHeard = (ws._copilotHeard || []).filter(a => now - a.ts < 10 * 60 * 1000);
+          let rows = [];
+          try { rows = ws._callId ? await loadCallRows(ws._callId) : []; } catch (e) { console.error('[Co-pilot] call rows failed (dedupe runs on in-flight asks only):', e.message); }
+          const asked = ws._copilotHeard.map(a => ({ text: a.text, cardId: a.cardId }));
+          for (const r of rows) if (r.kind === 'said' && r.meta) for (const x of [r.meta.ask].concat(r.meta.answered || [])) if (x) asked.push({ text: x, cardId: r.meta.cardId || '' });
+          const dup = meetingCopilot.findAnsweredAsk(q, asked);
+          if (dup) {
+            console.log(`[Co-pilot] heard again, already answered${dup.cardId ? ' (card ' + dup.cardId + ')' : ' (in flight)'}: ${q.substring(0, 80)}`);
+            if (dup.cardId) { const m = { type: 'copilot_dup', cardId: dup.cardId, text: q }; ws.send(JSON.stringify(m)); broadcastToSession(sessionId, m, ws); }
+            return;
+          }
+          const entry = { text: q, ts: now, cardId: '' };
+          ws._copilotHeard.push(entry); // claims it now: a second route firing the same line 0.5 s later is a duplicate
+          const t0 = Date.now();
+          const verdict = await Promise.race([
+            callClaude(meetingCopilot.HEARD_ASK_JUDGE, meetingCopilot.buildHeardAskJudgeInput(q, rows), 30, MODEL_HAIKU).catch(e => 'ASK (judge failed: ' + e.message + ')'),
+            new Promise(r => setTimeout(() => r('ASK (judge timed out)'), 3000)),
+          ]);
+          if (!meetingCopilot.judgeSaysAsk(verdict)) {
+            ws._copilotHeard = ws._copilotHeard.filter(a => a !== entry);
+            console.log(`[Co-pilot] heard, not answered (${String(verdict).trim().slice(0, 80)}) in ${Date.now() - t0}ms: ${q.substring(0, 80)}`);
+            return;
+          }
+          console.log(`[Co-pilot] question routed to co-pilot (${via}, judge ${String(verdict).trim().slice(0, 40)} in ${Date.now() - t0}ms):`, q.substring(0, 60));
+          ws._copilotAskTs = Date.now(); // "just asked" for a later Say press starts after this
+          const qd = { type: 'question_detected', text: q, source: 'copilot' };
+          ws.send(JSON.stringify(qd)); broadcastToSession(sessionId, qd, ws);
+        }
+
         // ONE door for an auto-detected question (both the fast route and the AI route): quality filter, continuation →
         // grow, stay-silent, de-dup, cooldown, then match/answer. Only ever called with INTERVIEWER speech.
         async function fireDetectedQuestion(q, via) {
@@ -3874,13 +3911,7 @@ wss.on('connection', (ws) => {
           }
           // MEETING CO-PILOT MODE: the question goes to co-pilot (the client answers it with the shared screen) —
           // no Q&A card, no bank match, no bridges. One question is paid once.
-          if (ws._copilotMode) {
-            console.log('[Co-pilot] question routed to co-pilot:', q.substring(0, 60));
-            ws._copilotAskTs = Date.now(); // "just asked" for a later Say press starts after this
-            const qd = { type: 'question_detected', text: q, source: 'copilot' };
-            ws.send(JSON.stringify(qd)); broadcastToSession(sessionId, qd, ws);
-            return;
-          }
+          if (ws._copilotMode) return routeHeardToCopilot(q, via);
 
           // CONTINUATION: the interviewer is elaborating on the SAME question we're already
           // answering → grow that answer in place (append), instead of a new card. This

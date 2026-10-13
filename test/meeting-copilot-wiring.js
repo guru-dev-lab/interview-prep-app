@@ -192,3 +192,17 @@ ok(/const typedBlock = opts\.typed \? /.test(gl) && /TYPED BY THE CANDIDATE/.tes
 ok(/opts\.typed \? 'QUESTION \(typed by the candidate — do exactly this\):' : 'QUESTION \(detected from speech/.test(gl), 'the question label says typed, not "detected from speech"');
 
 console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
+
+// ---- 13 Oct: a heard line in co-pilot mode goes through ONE door (gate → repeat check → judge) before any card
+{
+  const src = srv;
+  const fdq = src.slice(src.indexOf('async function fireDetectedQuestion'), src.indexOf('async function fireDetectedQuestion') + 900);
+  ok(/if \(ws\._copilotMode\) return routeHeardToCopilot\(q, via\)/.test(fdq), 'co-pilot branch of fireDetectedQuestion goes through routeHeardToCopilot');
+  const door = src.slice(src.indexOf('async function routeHeardToCopilot'), src.indexOf('async function fireDetectedQuestion'));
+  ok(/heardAskGate/.test(door) && /findAnsweredAsk/.test(door) && /HEARD_ASK_JUDGE/.test(door), 'the door gates, checks repeats and judges');
+  ok(door.indexOf("type: 'question_detected'") > door.indexOf('judgeSaysAsk'), 'question_detected is sent only after the judge');
+  ok(/answered: meetingCopilot\.answeredItems\(answer\)/.test(src) && /cardId, ask:/.test(src), 'said rows carry the whole ledger and their card id');
+  const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'canvas.html'), 'utf8');
+  ok(/msg\.type === 'copilot_dup'/.test(html), 'overlay shows the earlier card on a repeat');
+}
+console.log('wiring: heard-ask door checks pass');
