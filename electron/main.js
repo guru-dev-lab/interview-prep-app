@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences, dialog, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, desktopCapturer, systemPreferences, dialog, shell, globalShortcut } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
+const { createGlobalShortcut } = require('./global-shortcut');
 
 // Safe logging — prevents EIO crash when stdout pipe is broken
 const _log = (...args) => { try { console.log(...args); } catch(e) {} };
@@ -168,6 +169,12 @@ app.on('before-quit', () => {
   app.isQuitting = true;
 });
 
+// Global Shortcut Mode: hand the keys back to the system on quit
+app.on('will-quit', () => {
+  globalCmdEnter.disable('quit');
+  globalShortcut.unregisterAll();
+});
+
 app.on('window-all-closed', (e) => {
   e.preventDefault(); // Keep app alive via tray
 });
@@ -329,6 +336,14 @@ function createOverlay() {
     }, 100);
   });
 
+  // Global Shortcut Mode: a new page (launcher ↔ canvas, reload) drops the shortcut; the canvas asks for it again
+  // from its saved setting, so the keys are never held while no Screen Assist is there to answer them
+  mainWindow.webContents.on('did-start-navigation', (details, url, isInPlace, isMainFrame) => {
+    const mainFrame = details && details.isMainFrame !== undefined ? details.isMainFrame : isMainFrame;
+    const sameDoc = details && details.isSameDocument !== undefined ? details.isSameDocument : isInPlace;
+    if (mainFrame && !sameDoc) globalCmdEnter.disable('page load');
+  });
+
   // Force re-render when window becomes visible again (prevents stale low-DPI paint)
   mainWindow.on('show', () => {
     if (mainWindow) mainWindow.webContents.invalidate();
@@ -472,6 +487,15 @@ ipcMain.handle('set-stealth', (_, on) => {
     _log('[Xhire] Content protection:', on ? 'ON' : 'OFF');
   }
 });
+
+// Global Shortcut Mode — Cmd+Enter from any app runs the page's own Screen Assist. Sends a message only:
+// no show(), no focus(), no app.focus(), so the app you are in keeps the keyboard.
+const globalCmdEnter = createGlobalShortcut({
+  globalShortcut,
+  log: _log,
+  onFire: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('global-shortcut', 'screen-assist'); }
+});
+ipcMain.handle('set-global-shortcut', (_, on) => globalCmdEnter.set(!!on));
 
 // Window dragging support — on Windows, CSS -webkit-app-region:drag can be
 // unreliable with transparent frameless windows. This IPC call lets the
