@@ -488,12 +488,12 @@ ipcMain.handle('set-stealth', (_, on) => {
   }
 });
 
-// Global Shortcut Mode — Cmd+Enter from any app runs the page's own Screen Assist. Sends a message only:
-// no show(), no focus(), no app.focus(), so the app you are in keeps the keyboard.
+// Global Shortcut Mode — Cmd+Enter (Screen Assist) and Cmd+Option+Enter (Snap) from any app run the page's own
+// actions. Sends a message only: no show(), no focus(), no app.focus(), so the app you are in keeps the keyboard.
 const globalCmdEnter = createGlobalShortcut({
   globalShortcut,
   log: _log,
-  onFire: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('global-shortcut', 'screen-assist'); }
+  onFire: (action) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('global-shortcut', action); }
 });
 ipcMain.handle('set-global-shortcut', (_, on) => globalCmdEnter.set(!!on));
 
