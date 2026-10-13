@@ -72,17 +72,29 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 .as-last{width:100%;max-width:340px;padding:14px;border:1px solid rgba(251,191,36,.45);border-radius:12px;background:rgba(251,191,36,.08);text-align:left;cursor:pointer;transition:all .2s ease}
 .as-last:hover{background:rgba(251,191,36,.14);transform:translateY(-1px)}
 .as-last .as-k{font:700 9px Inter,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#F59E0B}
-.as-last .as-t{font:600 14px Inter,sans-serif;color:#f1f5f9;margin-top:4px;line-height:1.35}
+.as-last .as-t{font:600 14px Inter,sans-serif;color:#f1f5f9;margin-top:4px;line-height:1.35;padding-right:22px}
 .as-last .as-d{font:400 11px Inter,sans-serif;color:#94a3b8;margin-top:4px}
 .as-new{width:100%;max-width:340px;padding:11px;border:1px dashed rgba(255,255,255,.18);border-radius:10px;background:transparent;font:600 12px Inter,sans-serif;color:#cbd5e1;cursor:pointer;transition:.15s}
 .as-new:hover{border-color:rgba(251,191,36,.5);color:#fcd34d}
 .as-hist-h{width:100%;max-width:340px;font:700 9px Inter,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#475569;text-align:left;margin-top:2px}
 .as-hist{width:100%;max-width:340px;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto}
-.as-row{padding:9px 12px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.025);text-align:left;cursor:pointer;display:flex;align-items:baseline;gap:10px;transition:.15s}
+.as-row{padding:9px 12px 9px 9px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.025);text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s}
 .as-row:hover{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)}
 .as-row .as-t{flex:1;min-width:0;font:500 12px Inter,sans-serif;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .as-row .as-d{font:400 10px Inter,sans-serif;color:#64748b;flex-shrink:0}
 .as-pending{color:#94a3b8;font-style:italic}
+.as-last{position:relative}
+.as-x{flex-shrink:0;width:20px;height:20px;border:none;border-radius:6px;background:rgba(255,255,255,.05);color:#64748b;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;align-self:center}
+.as-x:hover{background:rgba(248,113,113,.15);color:#F87171}
+.as-x-corner{position:absolute;top:10px;right:10px}
+.as-confirm{border-color:rgba(248,113,113,.45)!important;background:rgba(248,113,113,.07)!important;cursor:default;flex-direction:column;align-items:stretch;gap:8px}
+.as-confirm .as-t{white-space:normal;font:500 12px Inter,sans-serif;color:#fecaca;line-height:1.4}
+.as-confirm .as-t b{color:#fff;font-weight:600}
+.as-btns{display:flex;gap:8px}
+.as-btns button{flex:1;padding:7px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#cbd5e1;font:600 11px Inter,sans-serif;cursor:pointer}
+.as-btns .as-yes{background:#DC2626;border-color:#DC2626;color:#fff}
+.as-btns .as-yes:disabled{opacity:.6}
+.as-row .as-x{align-self:center}
 .s-avatar-img{width:100%;height:100%;object-fit:contain;border-radius:8px;padding:4px}
 .s-avatar-letter{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 
@@ -339,22 +351,49 @@ async function renderAssessmentCard() {
 async function openAssessment() {
   try { var data = await fetchAssessments(); assessments = data.items || []; } catch (e) { asError('Could not load assessments'); return; }
   if (!assessments.length) return startNewAssessment();    // first time: straight in
+  renderAssessmentStep();
+  showStep('step-assessment');
+}
+var AS_X = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+function renderAssessmentStep() {
   var last = assessments[0];
   var el = document.getElementById('as-last');
-  el.innerHTML = '<div class="as-k">Continue last</div><div class="as-t">' + asTitle(last) + '</div>'
+  el.innerHTML = '<button class="as-x as-x-corner" title="Remove this assessment">' + AS_X + '</button>'
+    + '<div class="as-k">Continue last</div><div class="as-t">' + asTitle(last) + '</div>'
     + '<div class="as-d">Started ' + esc(fmtWhen(last.started)) + (last.sittings > 1 ? ' · ' + last.sittings + ' sittings' : '') + (last.carried ? ' · progress saved' : '') + '</div>';
   el.onclick = function () { connectToAssessment(last.id, false); };
+  el.querySelector('.as-x').onclick = function (e) { e.stopPropagation(); askRemove(el, last); };
   var rest = assessments.slice(1), hist = document.getElementById('as-hist');
   hist.innerHTML = '';
   rest.forEach(function (a) {
     var row = document.createElement('div'); row.className = 'as-row';
-    row.innerHTML = '<div class="as-t">' + asTitle(a) + '</div><div class="as-d">' + esc(fmtWhen(a.started)) + '</div>';
+    row.innerHTML = '<button class="as-x" title="Remove this assessment">' + AS_X + '</button><div class="as-t">' + asTitle(a) + '</div><div class="as-d">' + esc(fmtWhen(a.started)) + '</div>';
     row.onclick = function () { connectToAssessment(a.id, false); };
+    row.querySelector('.as-x').onclick = function (e) { e.stopPropagation(); askRemove(row, a); };
     hist.appendChild(row);
   });
   document.getElementById('as-hist-h').style.display = rest.length ? '' : 'none';
   hist.style.display = rest.length ? '' : 'none';
-  showStep('step-assessment');
+}
+// × → the row itself asks (no browser dialog — it would freeze the overlay); Remove deletes it completely, Keep puts it back
+function askRemove(el, a) {
+  var open = el.onclick; el.onclick = null; el.classList.add('as-confirm');
+  el.innerHTML = '<div class="as-t">Remove <b>' + (a.title ? esc(a.title) : 'this untitled assessment') + '</b> and everything in it?</div>'
+    + '<div class="as-btns"><button class="as-yes">Remove</button><button class="as-no">Keep</button></div>';
+  el.querySelector('.as-no').onclick = function (e) { e.stopPropagation(); el.classList.remove('as-confirm'); el.onclick = open; renderAssessmentStep(); };
+  el.querySelector('.as-yes').onclick = async function (e) {
+    e.stopPropagation();
+    this.disabled = true; this.textContent = 'Removing…';
+    try {
+      var res = await fetch(SERVER + '/api/assessments/' + encodeURIComponent(a.id), { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + authToken } });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.removed) { asError(data.error || 'Could not remove it'); renderAssessmentStep(); return; }
+      assessments = assessments.filter(function (x) { return x.id !== a.id; }); // removed only after the server confirmed it
+      renderAssessmentCard();                                                   // the card's "Last:" line follows
+      if (!assessments.length) { showStep('step-sessions'); return; }
+      renderAssessmentStep();
+    } catch (err) { asError('Could not remove it'); renderAssessmentStep(); }
+  };
 }
 async function startNewAssessment() {
   try {
