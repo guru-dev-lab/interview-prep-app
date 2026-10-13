@@ -7,7 +7,11 @@ let n = 0; const ok = (c, m) => { n++; assert(c, m); };
 const row = (kind, text, ts, meta) => ({ kind, text, ts, meta: meta || {} });
 
 // ---- who sees it: everyone for now; ASSESSMENT_PLANS narrows it in one place
-ok(as.canUseAssessment({ plan: 'free' }, {}), 'everyone for now');
+ok(!as.canUseAssessment({ plan: 'free' }, {}) && !as.canUseAssessment({ plan: 'pro' }, {}), 'default: free and pro do not see it');
+ok(['admin', 'premium', 'test'].every(p => as.canUseAssessment({ plan: p }, {})), 'default: Admin, Premium, UAT Tester (test) see it');
+ok(as.canUseAssessment({ plan: 'free', is_admin: true }, {}), 'an admin account always sees it');
+ok(as.canUseAssessment({ plan: 'free' }, { ASSESSMENT_PLANS: 'all' }), '"all" opens it to everyone');
+ok(!as.canUseAssessment({}, {}), 'no plan → not shown');
 ok(!as.canUseAssessment({ plan: 'free' }, { ASSESSMENT_PLANS: 'pro, team' }), 'plan list narrows it');
 ok(as.canUseAssessment({ plan: 'Pro' }, { ASSESSMENT_PLANS: 'pro,team' }), 'plan match ignores case');
 ok(as.canUseAssessment({ plan: 'free', is_admin: true }, { ASSESSMENT_PLANS: 'pro' }), 'admins always');

@@ -1,5 +1,13 @@
 # Handoff
 
+## 13 Oct 2026 (night, last) — Assessment: who sees it
+- Owner's call: Admin, Premium, UAT Tester (plan 'test'). Default lives in lib/assessment.js ASSESSMENT_DEFAULT_PLANS;
+  is_admin accounts always; env ASSESSMENT_PLANS overrides without a deploy ("all" = everyone). Free/Pro: no card, POST 403.
+- Also shipped tonight: card text "Help with any online test"; smaller assessment page text (PR #88).
+- OPEN (owner not yet answered): co-pilot answers have NO plan limit (free plan's 10-answer cap is Q&A only).
+- Proof: assessment unit checks; assessment-e2e 25/25 local (pro + free refused).
+- Rollback: known-good-2026-10-13-before-assessment-plans.
+
 ## 13 Oct 2026 (night) — Assessment never auto-starts recording; co-pilot side bar follows the panel
 - Opening an assessment sets co-pilot + history only; he presses Go Live himself (toast says so).
 - Panel closed → body.board-closed hides .copilot-float (📸, files, Hist, pause, count) + its capture list; auto-capture
