@@ -95,6 +95,9 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 /* ===== FLOATING CO-PILOT PILL — vertical strip on right edge ===== */
 .copilot-float{position:fixed;top:50%;right:2px;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:8px;padding:10px 5px;background:rgba(12,16,25,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);-webkit-app-region:no-drag;border:1px solid rgba(99,102,241,.2);border-radius:10px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.05);animation:floatIn .25s cubic-bezier(.22,1,.36,1);user-select:none;-webkit-user-select:none}
 .copilot-float.show{display:flex}
+/* Panel closed → the co-pilot side bar and its capture list are hidden too (owner, 13 Oct). Auto-capture keeps running;
+   hidden parts measure 0×0, so the click-through rule lets clicks pass to the app behind. */
+body.board-closed .copilot-float,body.board-closed .copilot-capture-list{display:none !important}
 @keyframes floatIn{from{opacity:0;transform:translateY(-50%) scale(.96)}to{opacity:1;transform:translateY(-50%) scale(1)}}
 .copilot-float-label{font:700 8px Inter,sans-serif;color:#818CF8;text-transform:uppercase;letter-spacing:.3px;writing-mode:vertical-rl;text-orientation:mixed}
 .copilot-float .cpf-sep{height:1px;width:18px;background:linear-gradient(90deg,transparent,rgba(99,102,241,.2),transparent);flex-shrink:0}
@@ -588,7 +591,7 @@ body.light-mode .resize-handle:hover{color:#6d28d9}
 </style>
 <script src="/copilot-fingerprint.js"></script>
 </head>
-<body style="background:transparent !important">
+<body class="board-closed" style="background:transparent !important">
 <!-- Corner resize grabs — Electron only, hidden in web -->
 <div class="corner-resize se" id="cr-se"></div>
 <div class="corner-resize sw" id="cr-sw"></div>
@@ -945,14 +948,14 @@ if (isElectronMode) {
 }
 
 // ASSESSMENT (desktop, 13 Oct): opened from the launcher's Assessment entry (?assessment=new|continue) — co-pilot with
-// history on (the carry and the no-repeat ledger live there), live at once. History-on here is not saved as his preference.
+// history on (the carry and the no-repeat ledger live there). History-on here is not saved as his preference.
+// Never goes live by itself (owner, 13 Oct: "it should not auto start recording") — he presses Go Live when ready.
 var ASSESSMENT = params.get('assessment');
 if (ASSESSMENT && isElectronMode) {
   setTimeout(function () {
     copilotHistory = true;
     setMode('copilot');
-    showToast(ASSESSMENT === 'continue' ? 'Assessment — continuing where you left off' : 'Assessment — new', 'info', 2500);
-    if (!electronLive) toggleElectronLive();
+    showToast((ASSESSMENT === 'continue' ? 'Assessment — continuing where you left off' : 'Assessment — new') + '. Press Go Live when ready.', 'info', 3000);
   }, 600);
 }
 
@@ -2271,6 +2274,7 @@ function toggleBoard() {
   var pill = $('board-toggle-pill');
   if (!panel) return;
   boardVisible = !boardVisible;
+  document.body.classList.toggle('board-closed', !boardVisible); // the co-pilot side bar goes with the panel
   if (boardVisible) {
     panel.classList.remove('board-hidden');
     if (pill) pill.classList.remove('flipped');
