@@ -2812,7 +2812,20 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
     const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
     const digestUpTo = ((copilotDigests.get(callId) || {}).lastTs) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).upTo || 0;
-    const parts = meetingCopilot.buildCopilotBlocks({ mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    // Smarter pull-back (13 Oct): the free rules (page numbers, "the chart", shared names/numbers) run inside the builder;
+    // when they find nothing and an earlier page sits as an index line, Haiku picks from the index lines (1.5 s deadline).
+    let pullIdx = [];
+    const plan = meetingCopilot.planPull({ mode, rows, ask, seenKey: reusing ? screenKey : '' });
+    if (plan && plan.needRouter) {
+      const tP = Date.now();
+      const pick = await Promise.race([
+        callClaude(meetingCopilot.PULL_ROUTER_PROMPT, plan.routerInput, 30, MODEL_HAIKU, { __tag: 'copilot-pull' }).catch(e => 'PAGES: none (router failed: ' + e.message + ')'),
+        new Promise(r => setTimeout(() => r('PAGES: none (router timed out)'), 1500)),
+      ]);
+      pullIdx = meetingCopilot.parseRouterPick(pick);
+      console.log(`[Co-pilot] pull router in ${Date.now() - tP}ms → ${String(pick).trim().slice(0, 80)}`);
+    }
+    const parts = meetingCopilot.buildCopilotBlocks({ pullIdx, mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);

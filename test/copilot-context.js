@@ -60,4 +60,31 @@ ok(x.screens.slice(0, -1).every((t, i) => z.screens[i] === t), 'a new page appen
 ok(!/first ask/.test(x.stable.concat(x.screens).join('')), 'volatile text never in the cached part');
 ok(mc.buildCopilotPrompt({ mode: 'smart', rows: r1, session: {}, ask: 'q?' }).includes('q?'), 'string form still has everything');
 
+// ---- smarter pull-back (13 Oct): a long sitting pushes the pack's pages to index lines; vague asks still find them
+const CHART = 'TYPE: DATA\nPage 6 of 8\nOn-time delivery, Q4 (% of shipments)\nChart (bar chart):\n- Blue Arrow: 96%\n- Redline: 91%\n- Summit: 88%';
+const RATES = 'TYPE: DATA\nPage 3 of 8\nRate card — $ per pallet (linehaul)\nChicago → Denver, Blue Arrow: 104, Redline: 110, Summit: 99';
+const long = [seen('p3', RATES, 1), seen('p6', CHART, 2)];
+for (let i = 0; i < 30; i++) long.push(seen('f' + i, 'TYPE: DATA\nFiller sheet ' + i + '\n' + [0, 1, 2, 3, 4, 5, 6, 7].map(k => word(i * 11 + k + 300)).join(' ') + ' ' + 'qty 5 '.repeat(250), 10 + i));
+long.push(seen('cur', 'TYPE: QUESTION\nPage 9 of 9\nFinal check', 99));
+const vol = ask => mc.buildCopilotBlocks({ mode: 'smart', rows: long, session: {}, ask }).volatile.join('\n');
+ok(/\[p6\] — older page/.test(mc.buildCopilotBlocks({ mode: 'smart', rows: long, session: {}, pressed: true }).screens.join('\n')), 'long sitting: the chart page became an index line');
+ok(/PULLED IN FULL[\s\S]*Blue Arrow: 96%/.test(vol('what was the best on-time on that chart earlier?')), '"that chart" pulls the chart page back');
+ok(/PULLED IN FULL[\s\S]*Summit: 99/.test(vol('on the rate card, what did they charge?')), '"the rate card" pulls the rates page back');
+const prev = [seen('a', 'TYPE: DATA\nPage 4 of 9\n' + 'Gamma figures 77 '.repeat(2000), 1), seen('b', 'TYPE: QUESTION\nPage 5 of 9\nNow answer it', 2)];
+ok(/PULLED IN FULL[\s\S]*Gamma figures/.test(mc.buildCopilotBlocks({ mode: 'smart', rows: prev, session: {}, ask: 'use the previous page for this' }).volatile.join('\n')), '"previous page" pulls page 4 back');
+// router: only when the free rules find nothing and a non-bare page is an index line
+let plan = mc.planPull({ mode: 'smart', rows: long, ask: 'and how did that compare with what we saw before?' });
+ok(plan.needRouter && /SCREEN 2 \[p6\]/.test(plan.routerInput) && /QUESTION:/.test(plan.routerInput), 'vague ask with no free match → router gets the index lines');
+plan = mc.planPull({ mode: 'smart', rows: long, ask: 'what was the best on-time on that chart?' });
+ok(!plan.needRouter, 'free rules found it → no router call');
+ok(!mc.planPull({ mode: 'smart', rows: long, pressed: true }).needRouter, 'a bare press never calls the router');
+ok(mc.planPull({ mode: 'regular', rows: long, ask: 'x?' }) === null, 'regular mode never calls the router');
+ok(JSON.stringify(mc.parseRouterPick('PAGES: 2, 5')) === '[1,4]' && mc.parseRouterPick('PAGES: none').length === 0 && mc.parseRouterPick('garbage').length === 0, 'router reply parsed (screen number → index)');
+ok(/PULLED IN FULL[\s\S]*Blue Arrow: 96%/.test(mc.buildCopilotBlocks({ mode: 'smart', rows: long, session: {}, ask: 'and how did that compare?', pullIdx: [1] }).volatile.join('\n')), 'router pick is pulled in full');
+
+const tpl = []; for (let i = 0; i < 20; i++) tpl.push(seen('t' + i, 'TYPE: DATA\nNorthwind Logistics — Q4 Freight Review pack\nSheet ' + [0, 1, 2].map(k => word(i * 5 + k + 600)).join(' ') + '\n' + 'warehouse shelf bin '.repeat(120), i));
+const tb = mc.buildCopilotBlocks({ mode: 'smart', rows: tpl, session: {}, ask: 'what is our plan for next quarter?' });
+ok(!/PULLED IN FULL/.test(tb.volatile.join('\n')), 'look-alike template pages are not pulled by their shared header');
+ok(/also: [^\n]*liftgate/.test(mc.planPull({ mode: 'smart', rows: [seen('r', RATES + '\nCarrier: Blue Arrow, Accessorial (liftgate): $35 / stop', 1)].concat(long.slice(2)), ask: 'the extra fee for help unloading?' }).routerInput), 'index line carries words from the whole page (liftgate)');
+
 console.log(`copilot-context: ${n} checks\nALL PASS (nothing dropped, rules kept, answered pages indexed, pulled back on demand, cache order)`);
