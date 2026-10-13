@@ -1,5 +1,19 @@
 # Handoff
 
+## 13 Oct 2026 (18:00) — Global Shortcut Mode (PR #93, desktop v1.1.5)
+- Owner's ask: Settings → Live Mode → Global Shortcut Mode (desktop only, default OFF). ON = Cmd+Enter (Ctrl+Enter on
+  Windows) runs Screen Assist from any app; the overlay is not raised or focused. He uses it in meetings (incl. Assessment).
+- electron/global-shortcut.js (pure) + main.js `set-global-shortcut` IPC; a press only sends `global-shortcut:
+  screen-assist`; the page runs the same screenAssist(). Released on OFF, on every page load, on quit; the canvas re-applies
+  its saved setting (`xhire_set_globalShortcut`) on load. Status line: on / off / "could not turn on: … taken by another
+  app" / "needs the latest desktop app" (builds ≤1.1.4).
+- Proof: npm test (test/global-shortcut.js 24 checks); real Electron harness with real preload + canvas: real Cmd+Enter
+  with Finder frontmost → Screen Assist ran once, Finder stayed frontmost, overlay not focused; OFF → ignored; relaunch →
+  ON restored. electron-builder --mac --dir packs global-shortcut.js. Live canvas serves the toggle.
+- Do NOT run electron/main.js from source for tests: clearOldPrivacyEntriesOnNewVersion() runs tccutil reset on
+  com.xhire.overlay — the INSTALLED app's mic/screen permissions. Use a harness like scratchpad gs-proof.
+- Rollback: known-good-2026-10-13-before-global-shortcut (Railway one-click to the #92 deployment).
+
 ## 13 Oct 2026 (03:00) — overlay "not moveable, esp when live": hold-off + diagnostics
 - Code path (inference, not yet measured): live + co-pilot history runs a full-display grab (desktopCapturer + toJPEG)
   every 0.7 s on the Electron MAIN process — the same thread that must flip setIgnoreMouseEvents(false) as the pointer
