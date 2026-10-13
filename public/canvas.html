@@ -2431,6 +2431,29 @@ function applyRecordInterval(val) {
   ['settings-overlay', 'copilot-gear-overlay'].forEach(function(id) { var el = document.getElementById(id); if (el) document.body.appendChild(el); });
 })();
 
+// OVERLAY DIAGNOSTICS (13 Oct: "still not moveable, esp when live" — the overlay keeps no log, so it reports to the
+// server every 10 s while live): page main-thread stalls, desktop main-process round trip (get-bounds ping), screen-grab
+// time, solid flips, presses (all / on the toolbar), auto-captures held off because the pointer was on the overlay.
+var overlayDiag = { lagMax: 0, pingMax: 0, pingAvg: 0, pingN: 0, grabMax: 0, grabN: 0, flips: 0, presses: 0, toolbarPresses: 0, heldOff: 0 };
+(function overlayDiagnostics() {
+  if (!window.electronAPI) return;
+  var last = performance.now();
+  setInterval(function () { var now = performance.now(), lag = now - last - 100; last = now; if (lag > overlayDiag.lagMax) overlayDiag.lagMax = Math.round(lag); }, 100);
+  setInterval(async function () {
+    if (!electronLive || !window.electronAPI.getBounds) return;
+    var t = performance.now();
+    try { await window.electronAPI.getBounds(); } catch (e) { return; }
+    var d = performance.now() - t; overlayDiag.pingN++; overlayDiag.pingAvg += (d - overlayDiag.pingAvg) / overlayDiag.pingN;
+    if (d > overlayDiag.pingMax) overlayDiag.pingMax = Math.round(d);
+  }, 500);
+  setInterval(function () {
+    if (!electronLive || !ws || ws.readyState !== WebSocket.OPEN) return;
+    var o = overlayDiag; o.pingAvg = Math.round(o.pingAvg);
+    ws.send(JSON.stringify({ type: 'overlay_diag', stats: Object.assign({ copilot: copilotActive, watching: !!copilotWatchTimer }, o) }));
+    overlayDiag = { lagMax: 0, pingMax: 0, pingAvg: 0, pingN: 0, grabMax: 0, grabN: 0, flips: 0, presses: 0, toolbarPresses: 0, heldOff: 0 };
+  }, 10000);
+})();
+
 // Desktop app: only the visible app catches clicks. Anywhere the window is transparent (beside the toolbar, below a
 // collapsed panel, the corners) clicks go to whatever is behind it on the screen. Older desktop builds lack the API.
 (function clickThroughTransparentParts() {
@@ -2470,11 +2493,14 @@ function applyRecordInterval(val) {
   document.addEventListener('mousemove', function(e) {
     lastEvt = e;
     var want = wanted(e);
-    if (!want && through !== false) { through = false; api.setClickThrough(false); return; } // solid NOW — a grab may follow this very event
+    if (!want) window.__overlayPointerAt = Date.now(); // pointer on/near the overlay: auto-capture holds off (13 Oct drag fix)
+    if (!want && through !== false) { through = false; api.setClickThrough(false); overlayDiag.flips++; return; } // solid NOW — a grab may follow this very event
     if (!pending) { pending = true; requestAnimationFrame(apply); } // going see-through can wait a frame
   }, true);
   document.addEventListener('mouseup', function(e) { lastEvt = e; if (!pending) { pending = true; requestAnimationFrame(apply); } }, true); // a finished drag re-evaluates where the pointer is
   document.addEventListener('mouseleave', function() { if (through !== false) { through = false; api.setClickThrough(false); } }); // never stuck ignoring
+  // every press on the overlay is counted (a press that never arrives here went to the app behind — compare with flips)
+  document.addEventListener('mousedown', function(e) { overlayDiag.presses++; if (e.target && e.target.closest && e.target.closest('.toolbar')) overlayDiag.toolbarPresses++; }, true);
 })();
 
 // Re-apply saved settings on launch (after every setter above exists)
@@ -3015,6 +3041,9 @@ function copilotWatchReport(force) {
 }
 async function copilotWatchTick() {
   if (!(copilotActive && copilotHistory && electronLive && !copilotAutoPaused) || copilotWatchBusy || !SESSION_ID || !TOKEN) return;
+  // Pointer on or near the overlay (or released there < 2 s ago): no grab now. A full-display grab + JPEG runs on the
+  // desktop main process, the same thread that must make the window grabbable as the pointer arrives (13 Oct drag fix).
+  if (Date.now() - (window.__overlayPointerAt || 0) < 2000) { overlayDiag.heldOff++; return; }
   copilotWatchBusy = true; watchStats.ticks++;
   try {
     var out = await copilotCaptureNow(true);
@@ -3077,7 +3106,9 @@ async function copilotCaptureNow(auto) {
   // true bounds). Older apps fall through to the page's own stream + mask.
   if (window.electronAPI && window.electronAPI.captureDisplay) {
     try {
+      var tg = performance.now();
       var shot = await window.electronAPI.captureDisplay(COPILOT_CAPTURE_W);
+      var gd = Math.round(performance.now() - tg); overlayDiag.grabN++; if (gd > overlayDiag.grabMax) overlayDiag.grabMax = gd;
       if (shot && shot.jpeg) { var appImage = await frameFromShot(shot); return copilotSendFrame(auto, appImage); }
       console.warn('[Co-pilot] app capture returned nothing — falling back to the page stream');
     } catch (e) { console.warn('[Co-pilot] app capture failed — falling back:', e); }

@@ -131,7 +131,7 @@ const ct = src.slice(src.indexOf('function clickThroughTransparentParts()'), src
 ok(/var SOLID_MARGIN = (2[4-9]|[3-9]\d);/.test(ct), 'a margin of 24px+ around every solid part counts as solid (window goes solid before the pointer arrives)');
 ok(/function nearSolid\(/.test(ct) && /getBoundingClientRect\(\)/.test(ct) && /SOLID_MARGIN/.test(ct.slice(ct.indexOf('function nearSolid('))), 'nearSolid measures the real boxes of the solid parts, grown by the margin');
 ok(/var solid = .*nearSolid\(/.test(ct), 'the solid decision uses the margin');
-ok(/if \(!want && through !== false\) \{ through = false; api\.setClickThrough\(false\); return; \}/.test(ct.slice(ct.indexOf("addEventListener('mousemove'"))), 'flip TO solid happens synchronously in the mousemove handler, never deferred to the next frame');
+ok(/if \(!want && through !== false\) \{ through = false; api\.setClickThrough\(false\);( overlayDiag\.flips\+\+;)? return; \}/.test(ct.slice(ct.indexOf("addEventListener('mousemove'"))), 'flip TO solid happens synchronously in the mousemove handler, never deferred to the next frame');
 
 
 // ---- text in a fence is read, not coded (owner, 4 Oct: a CFO prompt rendered as 12.5px SQL-coloured code, "hard to read and small")
@@ -206,3 +206,16 @@ console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
   ok(/msg\.type === 'copilot_dup'/.test(html), 'overlay shows the earlier card on a repeat');
 }
 console.log('wiring: heard-ask door checks pass');
+
+// ---- 13 Oct: overlay drag while live — diagnostics report + auto-capture holds off while the pointer is on the overlay
+{
+  const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'canvas.html'), 'utf8');
+  const srvD = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+  const tick = html.slice(html.indexOf('async function copilotWatchTick'), html.indexOf('async function copilotWatchTick') + 700);
+  ok(/__overlayPointerAt \|\| 0\) < 2000\) \{ overlayDiag\.heldOff\+\+; return; \}/.test(tick), 'auto-capture holds off while the pointer is on/near the overlay');
+  ok(/if \(!want\) window\.__overlayPointerAt = Date\.now\(\)/.test(html), 'the click-through handler stamps the pointer time');
+  ok(/type: 'overlay_diag'/.test(html) && /msg\.type === 'overlay_diag'/.test(srvD), 'overlay reports its responsiveness to the server log while live');
+  ok(/overlayDiag\.grabN\+\+/.test(html) && /getBounds\(\)/.test(html.slice(html.indexOf('function overlayDiagnostics'))), 'screen-grab time and desktop round trip are measured');
+  ok(html.indexOf('var overlayDiag') < html.indexOf('(function clickThroughTransparentParts'), 'diagnostics exist before the click-through handler uses them');
+}
+console.log('wiring: overlay drag checks pass');

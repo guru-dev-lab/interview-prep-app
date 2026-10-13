@@ -1,5 +1,19 @@
 # Handoff
 
+## 13 Oct 2026 (03:00) — overlay "not moveable, esp when live": hold-off + diagnostics
+- Code path (inference, not yet measured): live + co-pilot history runs a full-display grab (desktopCapturer + toJPEG)
+  every 0.7 s on the Electron MAIN process — the same thread that must flip setIgnoreMouseEvents(false) as the pointer
+  reaches the toolbar. Fix (page only, no rebuild): auto-capture holds off while the pointer is on/near the overlay and
+  for 2 s after (window.__overlayPointerAt from the click-through handler). Camera button unaffected.
+- Diagnostics: overlay sends `overlay_diag` every 10 s while live → server log `[Overlay] diag:` lagMax (page stall ms),
+  pingMax/pingAvg (get-bounds round trip = main-process busy), grabMax/grabN, flips, presses, toolbarPresses, heldOff.
+  READ THESE after his next live drag complaint before changing anything else.
+- Proof: npm test (wiring +5); real canvas page with stand-in bridge: held off with pointer near, grabbed when away, no
+  page errors; diag line reached the server log.
+- 17 junk rows (session 3cf29ca5): owner said delete. Blocked on Railway SSH key — owner to run
+  `railway ssh keys add -k ~/.ssh/id_ed25519.pub -n claude-code-rba-mac`; then read → back up → delete by id → verify.
+- Rollback: known-good-2026-10-13-before-drag-live.
+
 ## 13 Oct 2026 (02:30) — smarter pull-back
 - pullIndexes (free): page numbers incl. "previous/first page"; kinds ("the chart", "rate card", "memo", "puzzle",
   "rules", "code"); shared words only when RARE across the call's pages (df ≤ 30%), ask words ×2 — a template header on

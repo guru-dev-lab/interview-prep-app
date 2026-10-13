@@ -4552,6 +4552,9 @@ wss.on('connection', (ws) => {
         }
       }
 
+      else if (msg.type === 'overlay_diag') { // overlay responsiveness while live (13 Oct drag investigation)
+        console.log('[Overlay] diag:', JSON.stringify(msg.stats || {}).slice(0, 400));
+      }
       else if (msg.type === 'copilot_watch') { // overlay watcher health (its console is out of reach)
         console.log('[Co-pilot] watch:', JSON.stringify(msg.stats || {}).slice(0, 400));
       }
