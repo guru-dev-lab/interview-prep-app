@@ -1,5 +1,13 @@
 # Handoff
 
+## 13 Oct 2026 (night) — Assessment never auto-starts recording; co-pilot side bar follows the panel
+- Opening an assessment sets co-pilot + history only; he presses Go Live himself (toast says so).
+- Panel closed → body.board-closed hides .copilot-float (📸, files, Hist, pause, count) + its capture list; auto-capture
+  keeps running; hidden parts are 0×0 so clicks pass through. Body starts board-closed (panel starts closed).
+- Proof: npm test (assessment 44 checks); real page in Playwright: open → copilot on, live false, side bar none;
+  panel open → flex; closed → none.
+- Rollback: known-good-2026-10-13-before-pill-fix.
+
 ## 13 Oct 2026 (latest) — × remove on assessments
 - × in front of every History row and on the Continue card → inline "Remove <title> and everything in it? Remove / Keep"
   (no browser dialog). DELETE /api/assessments/:id: only kind='assessment' rows of this user (a company session → 404),

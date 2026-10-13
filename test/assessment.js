@@ -79,4 +79,11 @@ ok(/e\.stopPropagation\(\)/.test(rm) && /method: 'DELETE'/.test(rm), '× does no
 ok(rm.indexOf('assessments = assessments.filter') > rm.indexOf('data.removed'), 'the list drops it only after the server confirmed');
 ok((html.match(/askRemove\(/g) || []).length >= 3, '× on the Continue card and on every history row');
 
+// ---- 13 Oct: never goes live by itself; the co-pilot side bar follows the panel
+const asBlock = canvas.slice(canvas.indexOf('var ASSESSMENT'), canvas.indexOf('var ASSESSMENT') + 700);
+ok(!/toggleElectronLive|goLiveElectron/.test(asBlock), 'opening an assessment never starts recording');
+ok(/<body class="board-closed"/.test(canvas), 'panel starts closed → side bar starts hidden');
+ok(/body\.board-closed \.copilot-float,body\.board-closed \.copilot-capture-list\{display:none !important\}/.test(canvas), 'closed panel hides the side bar + capture list');
+ok(/document\.body\.classList\.toggle\('board-closed', !boardVisible\)/.test(canvas), 'the panel toggle moves the side bar with it');
+
 console.log(`assessment: ${n} checks\nALL PASS (desktop-only entry, continue from carry, title locked once)`);
