@@ -80,8 +80,9 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 .as-hist{width:100%;max-width:340px;display:flex;flex-direction:column;gap:5px;max-height:190px;overflow-y:auto}
 .as-row{padding:6px 10px 6px 7px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.025);text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s}
 .as-row:hover{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)}
-.as-row .as-t{flex:1;min-width:0;font:500 11px Inter,sans-serif;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.as-row .as-d{font:400 9.5px Inter,sans-serif;color:#64748b;flex-shrink:0}
+/* history rows use the Continue-last card's fonts (owner, 13 Oct: "they need to be same font") */
+.as-row .as-t{flex:1;min-width:0;font:600 12px Inter,sans-serif;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-row .as-d{font:400 10px Inter,sans-serif;color:#94a3b8;flex-shrink:0}
 .as-pending{color:#94a3b8;font-style:italic}
 #step-assessment.active{gap:10px}
 .as-last{position:relative}
