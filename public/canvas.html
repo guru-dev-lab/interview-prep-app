@@ -1215,14 +1215,28 @@ function setMode(mode) {
   copilotWatchSync();
 }
 
-// ===== SMART SCROLL — auto-scroll to new answers unless user scrolled up =====
+// ===== SMART SCROLL — follow the newest answer unless he scrolled up to older ones =====
+// AUTO-FOLLOW (owner, 13 Oct: "auto focus to new answer so i dont have to scroll, goal is to not touch it at all"):
+// ONE door for bringing an answer into view. The newest answer's FIRST line goes to the top of the list (a short one is
+// simply shown whole); while it streams the list keeps following until that first line reaches the top, never past it
+// and never back up. Scrolling the page's own list does not focus or raise the window.
+// "Scrolled up" = he is reading ABOVE the newest answer — reading down through a long answer is not scrolled up.
+var lastRevealTop = 0;
+function revealAnswer(el) {
+  var feed = $('feed'); if (!feed || !el || !el.isConnected) return;
+  var top = feed.scrollTop + el.getBoundingClientRect().top - feed.getBoundingClientRect().top - 8;
+  lastRevealTop = Math.max(0, top);
+  var target = Math.min(lastRevealTop, feed.scrollHeight - feed.clientHeight);
+  // instant, overriding the list's CSS scroll-behavior:smooth — a smooth scroll's in-between positions read as "scrolled up"
+  if (target > feed.scrollTop + 1) feed.scrollTo({ top: target, behavior: 'instant' });
+}
 (function() {
   var feed = $('feed');
   if (feed) {
     feed.addEventListener('scroll', function() {
       // User is "at bottom" if within 80px of the bottom
       var atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
-      userScrolledUp = !atBottom;
+      userScrolledUp = !settingsAutoScroll || (!atBottom && feed.scrollTop < lastRevealTop - 80);
     });
   }
 })();
@@ -1310,7 +1324,7 @@ function connect() {
           if (maEl && msg.answer) maEl.innerHTML = formatAnswer(msg.answer);
           var mtEl = mel.querySelector('.card-time');
           if (mtEl) mtEl.textContent = 'Updated';
-          if (scroll && !userScrolledUp) setTimeout(function() { mel.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+          if (scroll && !userScrolledUp) setTimeout(function() { revealAnswer(mel); }, 100);
         }
       } else {
         addCard(msg.questionId, msg.questionText, msg.answer || '', 'matched', msg.similarity, false, scroll);
@@ -1338,7 +1352,7 @@ function connect() {
           if (nqEl && msg.questionText.length > nqEl.textContent.length) nqEl.textContent = msg.questionText;
           var ntEl = nel.querySelector('.card-time');
           if (ntEl) ntEl.textContent = 'Updated';
-          if (scroll && !userScrolledUp) setTimeout(function() { nel.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+          if (scroll && !userScrolledUp) setTimeout(function() { revealAnswer(nel); }, 100);
         }
       } else {
         addCard(msg.questionId, msg.questionText, '', 'new', 0, !!msg.generated, scroll);
@@ -1371,7 +1385,7 @@ function connect() {
           if (qEl && msg.questionText.length > qEl.textContent.length) qEl.textContent = msg.questionText;
           var timeEl = el.querySelector('.card-time');
           if (timeEl) timeEl.textContent = 'Updated';
-          if (!userScrolledUp) setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+          if (!userScrolledUp) setTimeout(function() { revealAnswer(el); }, 100);
         }
       } else {
         addCard(msg.questionId, msg.questionText, msg.answer, msg.isNew ? 'new' : 'matched', 0, msg.isNew, false);
@@ -1398,6 +1412,7 @@ function connect() {
       if (dEl) {
         var daEl = dEl.querySelector('.sc-card-a');
         if (daEl) daEl.innerHTML = formatAnswer(dbuf);
+        if (!userScrolledUp) revealAnswer(dEl); // keep following while it streams
         var dc = cards.find(function(c){ return c.id === msg.questionId; });
         if (dc) dc.answer = dbuf;
       } else {
@@ -1681,7 +1696,7 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
       if (timeEl) timeEl.textContent = 'Just now';
       // Scroll to updated card if user hasn't scrolled up
       if (!userScrolledUp) {
-        setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+        setTimeout(function() { revealAnswer(el); }, 100);
       }
     }
     return;
@@ -1765,7 +1780,7 @@ function addCard(id, question, answer, source, similarity, isGenerated, shouldSc
   // Auto-scroll to new card unless user has scrolled up to read older content
   // Always scroll for manual actions (What should I say, typed question)
   if (shouldScroll || !userScrolledUp) {
-    setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+    setTimeout(function() { revealAnswer(card); }, 100);
   }
 
   // Auto-cleanup matched/bank cards after 3 minutes — generated cards persist
@@ -3358,7 +3373,7 @@ function copilotCardStart(cardId, ask, mode, screen, reason, say) {
   var el = document.getElementById('card-' + cardId);
   copilotCards[cardId] = { el: el, text: '' };
   cards.push({ id: cardId, question: ask || 'Co-pilot', answer: '', source: 'copilot', ts: Date.now() });
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  if (el) revealAnswer(el);
 }
 // Scan-and-speak styling (owner, 3 Oct): the question line stands out, the Answer line is the loud one, the working is quiet
 // One matcher for a question line, whatever the model wrote: "Page 7 — Question 1 —", "Part 9 — Q1 —", "Question 2:", "Q3 —"
@@ -3402,11 +3417,13 @@ function copilotCardDelta(cardId, text) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
   c.text += text || '';
   var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); } // re-rendered per delta: the shape is rebuilt from fresh HTML each time
+  if (!userScrolledUp) revealAnswer(c.el); // keep following while it streams
 }
 function copilotCardDone(cardId, answer) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
   c.text = answer || c.text;
   var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); }
+  if (!userScrolledUp) revealAnswer(c.el);
   for (var i = 0; i < cards.length; i++) if (cards[i].id === cardId) cards[i].answer = c.text;
 }
 
@@ -3642,7 +3659,7 @@ function showFollowUpQuestionsCard(questionsText, questionCount) {
     + '<div class="recap-body">' + formatAnswer(questionsText) + '</div>';
 
   feed.appendChild(card);
-  setTimeout(function() { card.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, 100);
+  setTimeout(function() { revealAnswer(card); }, 100);
 
   // Reset button
   var btn = $('btn-followup');
