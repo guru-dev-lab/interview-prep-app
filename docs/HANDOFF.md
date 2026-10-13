@@ -1,5 +1,16 @@
 # Handoff
 
+## 13 Oct 2026 (02:30) — smarter pull-back
+- pullIndexes (free): page numbers incl. "previous/first page"; kinds ("the chart", "rate card", "memo", "puzzle",
+  "rules", "code"); shared words only when RARE across the call's pages (df ≤ 30%), ask words ×2 — a template header on
+  every page no longer pulls look-alikes. A page bigger than the 12k pull room comes in cut, never skipped.
+- planPull → Haiku router (copilot-pull, 1.5 s deadline, fails to "none") ONLY when the ask is real, a non-bare page is an
+  index line, and the free rules found nothing. Index lines now carry distinctive words from the whole page ("also: …").
+- Proof: test/long-sitting-e2e.js 5/5 (pack pages pushed to index lines by 30 filler pages; "that chart" 96%, "rate card"
+  $99, growth 168 free; "extra fee for help unloading" → router PAGES: 2 in 0.9 s → liftgate fees); pack 15/15;
+  meeting-copilot-e2e 18/18; npm test (copilot-context 30 checks). Router ran once across all runs.
+- Rollback: known-good-2026-10-13-before-smart-pull.
+
 ## 13 Oct 2026 (02:00) — co-pilot context: tiers + prompt caching + usage logs; INFO-page regression fixed
 - REGRESSION FOUND + FIXED: PR #84 compacted every page the reader tagged INFO; the pack's page 5 (12%/8% surcharge, 20%
   growth) was tagged INFO → rules vanished → 3/15 pack checks failed on live main. Now isBareInfo(): an INFO page with any
