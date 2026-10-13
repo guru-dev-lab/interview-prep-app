@@ -1,5 +1,14 @@
 # Handoff
 
+## 13 Oct 2026 (latest) — × remove on assessments
+- × in front of every History row and on the Continue card → inline "Remove <title> and everything in it? Remove / Keep"
+  (no browser dialog). DELETE /api/assessments/:id: only kind='assessment' rows of this user (a company session → 404),
+  refused while open in the overlay (409); FK cascade removes sittings, call log, screens, carry. List updates only after
+  the server confirms; empty list → back to sessions, card's "Last:" line follows.
+- Proof: test/assessment.js 40 checks; assessment-e2e 23/23 local (incl. 404/409/cascade-to-zero/twice→404);
+  meeting-copilot-e2e 18/18 rerun (existing co-pilot unbroken); screenshots of × and confirm.
+- Rollback: known-good-2026-10-13-before-assessment-remove.
+
 ## 13 Oct 2026 (later) — desktop ASSESSMENT entry + two co-pilot row-window fixes
 - Assessment (Electron only; launcher card hidden in a browser): not tied to a company — sessions.kind='assessment',
   hidden from /api/sessions. Open → no history: starts at once; history: "Continue last" (title + start time + sittings)

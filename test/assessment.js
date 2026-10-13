@@ -68,4 +68,15 @@ ok(/if \(!assessments\.length\) return startNewAssessment\(\)/.test(html), 'no h
 ok(/Continue last/.test(html) && /Start a new assessment/.test(html) && /id="as-hist"/.test(html), 'history → continue / new / list');
 ok(/var ASSESSMENT = params\.get\('assessment'\)/.test(canvas) && /setMode\('copilot'\)/.test(canvas.slice(canvas.indexOf('var ASSESSMENT'), canvas.indexOf('var ASSESSMENT') + 600)), 'overlay opens in co-pilot');
 
+// ---- × remove (13 Oct): own assessments only, never live, inline confirm (a browser dialog freezes the overlay)
+const del = srv.slice(srv.indexOf("app.delete('/api/assessments/:id'"), srv.indexOf("app.delete('/api/assessments/:id'") + 900);
+ok(/WHERE id = \$1 AND user_id = \$2 AND kind = 'assessment'/.test(del), 'remove touches only his own assessments, never a company session');
+ok(/liveWsForSession\(req\.params\.id\)\) return res\.status\(409\)/.test(del), 'an assessment open in the overlay is never removed');
+ok(/REFERENCES sessions\(id\) ON DELETE CASCADE/.test(srv), 'sittings, call log and screens go with it (cascade)');
+const rm = html.slice(html.indexOf('function askRemove'), html.indexOf('function askRemove') + 2200);
+ok(!/\bconfirm\(|\balert\(/.test(html), 'no browser dialogs in the launcher');
+ok(/e\.stopPropagation\(\)/.test(rm) && /method: 'DELETE'/.test(rm), '× does not open the assessment; Remove calls DELETE');
+ok(rm.indexOf('assessments = assessments.filter') > rm.indexOf('data.removed'), 'the list drops it only after the server confirmed');
+ok((html.match(/askRemove\(/g) || []).length >= 3, '× on the Continue card and on every history row');
+
 console.log(`assessment: ${n} checks\nALL PASS (desktop-only entry, continue from carry, title locked once)`);

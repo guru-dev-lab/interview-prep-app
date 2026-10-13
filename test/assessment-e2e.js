@@ -92,6 +92,21 @@ const img = f => fs.readFileSync(path.join(__dirname, 'fixtures/screens', f)).to
   const t2 = (await pool.query('SELECT title FROM sessions WHERE id=$1', [a1.id])).rows[0].title;
   check(t2 === t1, 'title stays locked', t1 + ' → ' + t2);
 
+  // 5. × remove: refused while live, then removes the assessment and everything under it; never a company session
+  const ivId = (await pool.query("SELECT id FROM sessions WHERE user_id=$1 AND coalesce(kind,'interview')<>'assessment' LIMIT 1", [u.id])).rows[0].id;
+  check((await api('DELETE', '/api/assessments/' + ivId)).r.status === 404, 'remove refuses a company session (404)');
+  check(!!(await pool.query('SELECT 1 FROM sessions WHERE id=$1', [ivId])).rows.length, 'the company session is untouched');
+  ws = await live(a1.id);
+  check((await api('DELETE', '/api/assessments/' + a1.id)).r.status === 409, 'remove refuses while it is open in the overlay (409)');
+  ws.send(JSON.stringify({ type: 'stop' })); ws.close(); await sleep(1500);
+  const rm = await api('DELETE', '/api/assessments/' + a1.id);
+  check(rm.r.status === 200 && rm.j.removed, 'remove after stop', JSON.stringify(rm.j));
+  const left = (await pool.query(`SELECT (SELECT count(*) FROM sessions WHERE id=$1) s, (SELECT count(*) FROM live_transcripts WHERE session_id=$1) t,
+    (SELECT count(*) FROM call_events WHERE session_id=$1) e, (SELECT count(*) FROM call_screens WHERE session_id=$1) c`, [a1.id])).rows[0];
+  check(Object.values(left).every(v => +v === 0), 'removed completely (session, sittings, call log, screens)', JSON.stringify(left));
+  check(!((await api('GET', '/api/assessments')).j.items || []).some(x => x.id === a1.id), 'gone from the history list');
+  check((await api('DELETE', '/api/assessments/' + a1.id)).r.status === 404, 'removing twice → 404, nothing else touched');
+
   console.log(`\n${fail ? 'FAILED' : 'ALL PASS'} (${pass} pass, ${fail} fail)`);
   await pool.end(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

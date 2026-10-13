@@ -2931,6 +2931,19 @@ app.get('/api/assessments', authMiddleware, async (req, res) => {
   } catch (e) { console.error('[Assessment] list failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// × on an assessment (owner, 13 Oct: "remove it completely"): the assessment and everything under it (sittings, call log,
+// screens, carry) — the FKs cascade. Only kind='assessment' rows of this user; never one that is live right now.
+app.delete('/api/assessments/:id', authMiddleware, async (req, res) => {
+  try {
+    if (!isValidUUID(req.params.id)) return res.status(400).json({ error: 'Invalid assessment' });
+    if (liveWsForSession(req.params.id)) return res.status(409).json({ error: 'This assessment is open in the overlay — stop it first' });
+    const d = await pool.query("DELETE FROM sessions WHERE id = $1 AND user_id = $2 AND kind = 'assessment' RETURNING title", [req.params.id, req.userId]);
+    if (!d.rowCount) return res.status(404).json({ error: 'Assessment not found' });
+    console.log(`[Assessment] removed ${req.params.id} ("${d.rows[0].title || 'untitled'}") for user ${req.userId}`);
+    res.json({ removed: true, id: req.params.id });
+  } catch (e) { console.error('[Assessment] remove failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // Start a new assessment. An earlier one that was opened but never got any content is reused (no pile of blanks).
 // His résumé rides along from his latest interview session — a personality/behavioural section asks about him.
 app.post('/api/assessments', authMiddleware, async (req, res) => {
