@@ -52,7 +52,7 @@ ok(/\[CUT OFF\]/.test(p) && /scroll so the whole question shows/.test(p), 'press
 const info = 'TYPE: INFO\n' + 'Welcome to Project Vantage onboarding. '.repeat(40);
 const rows2 = [row('seen', info, 1, { key: 'i1' }), row('seen', 'TYPE: DATA\nRegion | Sales\nAtlanta | 60', 2, { key: 'd1' }), row('seen', 'TYPE: QUESTION\nQ5 pick one', 3, { key: 'q1' })];
 const p2 = mc.buildCopilotPrompt({ mode: 'smart', rows: rows2, session: {}, pressed: true });
-ok(/\(info page, nothing to answer/.test(p2) && p2.split('Welcome to Project Vantage').length < 10, 'older info page compacted');
+ok(/— info page, nothing to answer \(index line/.test(p2) && p2.split('Welcome to Project Vantage').length < 10, 'older info page compacted');
 ok(/Atlanta \| 60/.test(p2) && /Q5 pick one/.test(p2), 'data and question pages whole');
 ok(mc.screenType('no type line here') === 'DATA', 'old transcripts count as data (kept whole)');
 // talk the digest covers is not repeated word for word

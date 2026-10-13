@@ -110,8 +110,8 @@ const sayH = srv.slice(srv.indexOf("msg.type === 'what_should_i_say'"), srv.inde
 ok(/if \(ws\._copilotMode\)/.test(sayH) && /type: 'copilot_say'/.test(sayH), 'Say in co-pilot mode routes to the co-pilot (copilot_say), never the QA jump/bank path');
 ok(/_copilotAskTs/.test(sayH) && /_copilotAskTs/.test(srv.slice(srv.indexOf('question routed to co-pilot'), srv.indexOf('question routed to co-pilot') + 400)), 'what counts as "just asked" starts after the last co-pilot ask (heard or say)');
 const ep = srv.slice(srv.indexOf("app.post('/api/sessions/:id/copilot'"), srv.indexOf("app.post('/api/sessions/:id/copilot'") + 9000);
-ok(/const say = !!req\.body\.say/.test(ep) && /say,/.test(ep.slice(ep.indexOf('buildCopilotPrompt('), ep.indexOf('buildCopilotPrompt(') + 400)), 'endpoint passes say into the prompt');
-ok(/FROM questions WHERE session_id = \$1 AND answer != ''/.test(ep) && /bank,/.test(ep.slice(ep.indexOf('buildCopilotPrompt('), ep.indexOf('buildCopilotPrompt(') + 400)), 'endpoint loads the Q&A bank and passes it to the prompt');
+ok(/const say = !!req\.body\.say/.test(ep) && /say,/.test(ep.slice(ep.indexOf('buildCopilotBlocks('), ep.indexOf('buildCopilotBlocks(') + 400)), 'endpoint passes say into the prompt');
+ok(/FROM questions WHERE session_id = \$1 AND answer != ''/.test(ep) && /bank,/.test(ep.slice(ep.indexOf('buildCopilotBlocks('), ep.indexOf('buildCopilotBlocks(') + 400)), 'endpoint loads the Q&A bank and passes it to the prompt');
 ok(/maxTokensFor\(mode, say\)/.test(ep), 'say gets the larger token room in regular mode');
 ok(/type: 'copilot_start', cardId, ask, mode, say,/.test(ep), 'copilot_start tells the overlay this card is a Say');
 const sayC = src.slice(src.indexOf("msg.type === 'copilot_say'"), src.indexOf("msg.type === 'copilot_say'") + 300);
@@ -163,7 +163,7 @@ ok(/copilotSend\(\{ ask: text, typed: true \}\)/.test(sq), 'a typed ask reaches 
 ok(/typed: !!opts\.typed/.test(src.slice(src.indexOf('async function copilotSend('), src.indexOf('async function copilotSend(') + 900)), 'request body carries typed');
 const srv2 = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
 const ep2 = srv2.slice(srv2.indexOf("app.post('/api/sessions/:id/copilot'"), srv2.indexOf("app.post('/api/sessions/:id/copilot'") + 9000);
-ok(/const typed = !!req\.body\.typed/.test(ep2) && /typed,/.test(ep2.slice(ep2.indexOf('buildCopilotPrompt('), ep2.indexOf('buildCopilotPrompt(') + 400)), 'endpoint passes typed into the prompt');
+ok(/const typed = !!req\.body\.typed/.test(ep2) && /typed,/.test(ep2.slice(ep2.indexOf('buildCopilotBlocks('), ep2.indexOf('buildCopilotBlocks(') + 400)), 'endpoint passes typed into the prompt');
 const sa = srv2.slice(srv2.indexOf("const { image, auto, instruction } = req.body;"), srv2.indexOf("const { image, auto, instruction } = req.body;") + 4000);
 ok(/const noItem = !instruction && \(question === 'NONE' \|\| !suggestion\)/.test(sa), 'screen assist: a typed instruction can never come back as "no question on screen"');
 ok(/const questionText = noItem \? 'Screen' : \(instruction \|\| question\)/.test(sa) || /questionText = instruction \|\|/.test(sa), 'the card is titled with what he typed');

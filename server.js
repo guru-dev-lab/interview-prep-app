@@ -428,7 +428,14 @@ function logEvent(type, data) {
   } catch (e) {}
 }
 
+// Token usage per tagged call (extras.__tag — stripped before sending). Tells us what each feature really spends.
+function splitTag(extras) { if (!extras || !extras.__tag) return { tag: '', ex: extras }; const ex = Object.assign({}, extras); const tag = ex.__tag; delete ex.__tag; return { tag, ex }; }
+function logUsage(tag, model, u) {
+  if (!tag || !u) return;
+  console.log(`[Usage] ${tag} ${model} in=${u.input_tokens || 0} read=${u.cache_read_input_tokens || 0} write=${u.cache_creation_input_tokens || 0} out=${u.output_tokens || 0}`);
+}
 function _callClaudeOnce(system, user, maxTokens, model, extras) {
+  const { tag, ex } = splitTag(extras); extras = ex;
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(Object.assign({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }, extras || {}));
     const req = https.request({
@@ -439,7 +446,7 @@ function _callClaudeOnce(system, user, maxTokens, model, extras) {
       let d = ''; res.on('data', c => d += c);
       // Take the reply's TEXT blocks wherever they are — Sonnet 5 may put a thinking block first, and reading only
       // content[0] threw real answers away as "API error" (26 Sep: must-have answers, and any Sonnet caller).
-      res.on('end', () => { try { const p = JSON.parse(d); const txt = (p.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      res.on('end', () => { try { const p = JSON.parse(d); const txt = (p.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); logUsage(tag, model, p.usage);
         if (Array.isArray(system) && p.usage) console.log(`[Cache] ${model} input=${p.usage.input_tokens} cached_read=${p.usage.cache_read_input_tokens || 0} cache_write=${p.usage.cache_creation_input_tokens || 0}`); // same check as the streaming path
         if (txt) return resolve(txt);
         console.log(`[Claude] ${model} returned no leading text — status=${res.statusCode} stop=${p.stop_reason} blocks=[${(p.content || []).map(b => b.type).join(',')}] err=${p.error?.type || ''}:${(p.error?.message || '').slice(0, 80)}`);
@@ -474,6 +481,8 @@ async function callClaude(system, user, maxTokens = 1500, model = MODEL_SONNET, 
 // SAFETY: on ANY error this rejects, and the caller falls back to buffered callClaude,
 // so behavior can never be worse than the non-streaming path.
 function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta, extras) {
+  const { tag, ex } = splitTag(extras); extras = ex;
+  const usage = {};
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(Object.assign({ model, max_tokens: maxTokens, system, stream: true, messages: [{ role: 'user', content: user }] }, extras || {}));
     const req = https.request({
@@ -512,7 +521,11 @@ function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta, extras) 
               seenBlocks.push(evt.content_block?.type || '?');
             } else if (evt.type === 'message_delta' && evt.delta?.stop_reason) {
               stopReason = evt.delta.stop_reason;
+              if (evt.usage) Object.assign(usage, { output_tokens: evt.usage.output_tokens });
+            } else if (evt.type === 'message_start' && !Array.isArray(system)) {
+              Object.assign(usage, evt.message?.usage || {});
             } else if (evt.type === 'message_start' && Array.isArray(system)) {
+              Object.assign(usage, evt.message?.usage || {});
               // Prompt caching check (live answers send system as blocks with a cache marker)
               const u = evt.message?.usage || {};
               console.log(`[Cache] ${model} input=${u.input_tokens} cached_read=${u.cache_read_input_tokens || 0} cache_write=${u.cache_creation_input_tokens || 0}`);
@@ -523,6 +536,7 @@ function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta, extras) 
         }
       });
       res.on('end', () => {
+        logUsage(tag, model, usage);
         if (!full) console.log(`[Stream] ${model} ended with NO text — stop_reason=${stopReason || 'none'} blocks=[${seenBlocks.join(',')}]`);
         else if (Array.isArray(system)) console.log(`[Stream] ${model} blocks=[${seenBlocks.join(',')}] stop=${stopReason}`);
         resolve(full);
@@ -554,6 +568,7 @@ async function callClaudeStream(system, user, maxTokens = 600, model = MODEL_SON
 
 // Vision API — sends image + text to Claude for screen analysis
 function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, model = MODEL_HAIKU, imgMediaType = 'image/jpeg', extras) {
+  const { tag, ex } = splitTag(extras); extras = ex;
   return new Promise((resolve, reject) => {
     const bodyObj = Object.assign({}, extras || {}, {
       model, max_tokens: maxTokens, system,
@@ -582,6 +597,7 @@ function callClaudeVision(system, imageBase64, textPrompt, maxTokens = 1500, mod
       res.on('end', () => {
         try {
           const p = JSON.parse(d);
+          logUsage(tag, model, p.usage);
           const txt = (p.content || []).filter(b => b.type === 'text').map(b => b.text).join(''); // text blocks anywhere (thinking may come first)
           if (txt) { resolve(txt); }
           else {
@@ -2680,7 +2696,13 @@ function liveWsForSession(sessionId) {
 async function loadCallRows(callId) {
   // The NEWEST 400 rows, in time order. (Was the oldest 400: on 9 Oct a long call sat at rows=400 from 18:24 on — every
   // later screen, answer and digest was invisible to the co-pilot.) The digest row carries the compacted start.
-  const r = await pool.query('SELECT kind, text, meta, ts FROM (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 ORDER BY ts DESC LIMIT 400) t ORDER BY ts ASC', [callId]);
+  // Pages, answers and documents ALWAYS load (an all-day call keeps every page reachable); talk = the newest 400 lines;
+  // the digest = the newest one (it already folds in everything before it).
+  const r = await pool.query(`SELECT kind, text, meta, ts FROM (
+      (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 AND kind IN ('seen', 'said', 'document'))
+      UNION ALL (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 AND kind NOT IN ('seen', 'said', 'document', 'digest') ORDER BY ts DESC LIMIT 400)
+      UNION ALL (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 AND kind = 'digest' ORDER BY ts DESC LIMIT 1)
+    ) t ORDER BY ts ASC`, [callId]);
   return r.rows.map(x => ({ kind: x.kind, text: x.text, meta: x.meta || {}, ts: new Date(x.ts).getTime() }));
 }
 
@@ -2702,7 +2724,7 @@ function compactCall(sessionId, callId, rows, st) {
   const fresh = freshRows.map(r => `[${r.kind}] ${r.text}`).join('\n');
   const user = (st.text ? `CURRENT NOTES:\n${st.text}\n\n` : '') + `NEW LINES (newest last):\n${fresh}\n\nUPDATED NOTES:`;
   const t0 = Date.now(), count = (st.lastCount || 0) + freshRows.length, upTo = freshRows.length ? freshRows[freshRows.length - 1].ts : (st.lastTs || 0);
-  return callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU).then(out => {
+  return callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU, { __tag: 'copilot-digest' }).then(out => {
     st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count; st.lastTs = upTo;
     recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count, upTo });
     console.log(`[Co-pilot] digest updated in ${Date.now() - t0}ms (${st.text.length} chars from ${count} rows)`);
@@ -2719,7 +2741,7 @@ async function readPendingScreens(sessionId, callId) {
   const tModel = meetingCopilot.transcribeModelFor('smart') === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
   const one = async p => {
     try {
-      const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, p.image.toString('base64'), 'Transcribe the screen.', 900, tModel, p.media_type || 'image/jpeg', meetingCopilot.transcribeExtras()) || '').trim();
+      const txt = String(await callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, p.image.toString('base64'), 'Transcribe the screen.', 900, tModel, p.media_type || 'image/jpeg', Object.assign({ __tag: 'copilot-read' }, meetingCopilot.transcribeExtras())) || '').trim();
       await pool.query('UPDATE call_screens SET transcript = $1, image = NULL WHERE id = $2', [txt, p.id]); // live keeps no frames: once read, only the text stays
       await recordCallEvent(sessionId, callId, 'seen', txt, Object.assign({ key: p.key, full: true }, p.meta || {}));
       done++;
@@ -2790,7 +2812,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
     const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
     const digestUpTo = ((copilotDigests.get(callId) || {}).lastTs) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).upTo || 0;
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const parts = meetingCopilot.buildCopilotBlocks({ mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
@@ -2798,13 +2820,26 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, say, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
     if (mode === 'smart') console.log('[Co-pilot] screens given:', meetingCopilot.dedupeScreens(rows.filter(r => r.kind === 'seen')).map(r => (r.meta && r.meta.key || '?') + ' "' + r.text.replace(/\s+/g, ' ').slice(0, 50) + '"').join(' | ').slice(0, 1200));
 
-    let content = textPrompt;
-    if (hasImage) content = [imgBlock, { type: 'text', text: textPrompt }];
+    // History mode (Sonnet): cache order — instructions + session material + every page (one block each, new pages only
+    // append) are cached; the image and what changes per press come after. A press re-pays ~10% for what is cached.
+    // Regular mode (Haiku): one short string, no cache (below the cacheable minimum).
+    let content, system = meetingCopilot.MEETING_PROMPT;
+    if (mode === 'smart') {
+      system = [{ type: 'text', text: meetingCopilot.MEETING_PROMPT, cache_control: { type: 'ephemeral' } }];
+      const head = [];
+      if (parts.stable.length) head.push({ type: 'text', text: parts.stable.join('\n\n') });
+      for (const t of parts.screens) head.push({ type: 'text', text: t });
+      if (head.length) head[head.length - 1].cache_control = { type: 'ephemeral' };
+      content = head.concat(hasImage ? [imgBlock] : [], [{ type: 'text', text: parts.volatile.join('\n\n') }]);
+    } else {
+      const textPrompt = parts.stable.concat(parts.screens, parts.volatile).join('\n\n');
+      content = hasImage ? [imgBlock, { type: 'text', text: textPrompt }] : textPrompt;
+    }
     const t0 = Date.now(); let first = 0;
-    const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, meetingCopilot.maxTokensFor(mode, say), model, t => {
+    const answer = String(await callClaudeStream(system, content, meetingCopilot.maxTokensFor(mode, say), model, t => {
       if (!first) first = Date.now() - t0;
       broadcastToSession(sessionId, { type: 'copilot_delta', cardId, text: t });
-    }, meetingCopilot.requestExtrasFor(mode)) || '').trim();
+    }, Object.assign({ __tag: 'copilot-answer' }, meetingCopilot.requestExtrasFor(mode) || {})) || '').trim();
     console.log(`[Co-pilot] answered in ${Date.now() - t0}ms (first words ${first}ms, ${answer.length} chars)`);
     broadcastToSession(sessionId, { type: 'copilot_done', cardId, answer });
 
@@ -2813,7 +2848,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     if (hasImage && historyOn) {
       // Smart mode: the whole page is transcribed in the background (Haiku) so a question pages later can use it
       const t1 = Date.now();
-      writes.push(callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, content[0].source.data, 'Transcribe the screen.', 900, MODEL_SONNET, content[0].source.media_type, meetingCopilot.transcribeExtras())
+      writes.push(callClaudeVision(meetingCopilot.TRANSCRIBE_PROMPT, imgBlock.source.data, 'Transcribe the screen.', 900, MODEL_SONNET, imgBlock.source.media_type, Object.assign({ __tag: 'copilot-read' }, meetingCopilot.transcribeExtras()))
         .then(txt => { console.log(`[Co-pilot] screen transcribed in ${Date.now() - t1}ms (${String(txt).length} chars) :: ${String(txt).replace(/\s+/g, ' ').slice(0, 240)}`); return recordCallEvent(sessionId, callId, 'seen', txt, { key: screenKey, full: true }); })
         .catch(e => { console.error('[Co-pilot] transcription failed:', e.message); const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; return seen ? recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey }) : false; }));
     } else if (hasImage) { const seen = (answer.match(/^On screen:\s*(.+)$/mi) || [])[1]; if (seen) writes.push(recordCallEvent(sessionId, callId, 'seen', seen, { key: screenKey })); }
@@ -2884,7 +2919,7 @@ async function carryAssessmentCall(sessionId, callId) {
     if (!assessment.hasMaterial(rows)) { console.log(`[Assessment] sitting ${callId} has nothing to carry (${rows.length} rows)`); return null; }
     const prev = await pool.query(`SELECT memory FROM live_transcripts WHERE session_id = $1 AND id <> $2 AND coalesce(memory, '') <> ''
       AND started_at < (SELECT started_at FROM live_transcripts WHERE id = $2) ORDER BY started_at DESC LIMIT 1`, [sessionId, callId]);
-    const out = await callClaude(assessment.CARRY_PROMPT, assessment.buildCarryInput((prev.rows[0] || {}).memory || '', rows), 1400, MODEL_SONNET, { thinking: { type: 'disabled' } });
+    const out = await callClaude(assessment.CARRY_PROMPT, assessment.buildCarryInput((prev.rows[0] || {}).memory || '', rows), 1400, MODEL_SONNET, { __tag: 'assessment-carry', thinking: { type: 'disabled' } });
     const { title, notes } = assessment.parseCarry(out);
     if (!notes) throw new Error('the model returned no notes');
     await pool.query('UPDATE live_transcripts SET memory = $1 WHERE id = $2', [notes, callId]);
@@ -3997,7 +4032,7 @@ wss.on('connection', (ws) => {
           ws._copilotHeard.push(entry); // claims it now: a second route firing the same line 0.5 s later is a duplicate
           const t0 = Date.now();
           const verdict = await Promise.race([
-            callClaude(meetingCopilot.HEARD_ASK_JUDGE, meetingCopilot.buildHeardAskJudgeInput(q, rows), 30, MODEL_HAIKU).catch(e => 'ASK (judge failed: ' + e.message + ')'),
+            callClaude(meetingCopilot.HEARD_ASK_JUDGE, meetingCopilot.buildHeardAskJudgeInput(q, rows), 30, MODEL_HAIKU, { __tag: 'copilot-judge' }).catch(e => 'ASK (judge failed: ' + e.message + ')'),
             new Promise(r => setTimeout(() => r('ASK (judge timed out)'), 3000)),
           ]);
           if (!meetingCopilot.judgeSaysAsk(verdict)) {
