@@ -20,11 +20,24 @@ const img = f => fs.readFileSync(path.join(__dirname, 'fixtures/screens', f)).to
 (async () => {
   const email = 'assessment-e2e@local.test';
   let u = (await pool.query('SELECT * FROM users WHERE email=$1', [email])).rows[0];
-  if (!u) u = (await pool.query("INSERT INTO users (email, name, plan) VALUES ($1,'Assess Tester','pro') RETURNING *", [email])).rows[0];
+  if (!u) u = (await pool.query("INSERT INTO users (email, name, plan) VALUES ($1,'Assess Tester','premium') RETURNING *", [email])).rows[0];
+  await pool.query("UPDATE users SET plan='premium', is_admin=false WHERE id=$1", [u.id]); // local test user: a Premium account
+
+  // 0. who sees it (13 Oct: Admin, Premium, UAT Tester): a Pro and a Free account get no card and are refused
+  for (const plan of ['pro', 'free']) {
+    const e2 = plan + '-gate@local.test';
+    let g = (await pool.query('SELECT * FROM users WHERE email=$1', [e2])).rows[0];
+    if (!g) g = (await pool.query('INSERT INTO users (email, name, plan) VALUES ($1, $2, $3) RETURNING *', [e2, plan + ' gate', plan])).rows[0];
+    const t2 = jwt.sign({ userId: g.id, name: g.name, email: e2, isAdmin: false, plan, suspended: false }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const h = { Authorization: 'Bearer ' + t2 };
+    const lj = await (await fetch(BASE + '/api/assessments', { headers: h })).json();
+    const pr = await fetch(BASE + '/api/assessments', { method: 'POST', headers: h });
+    check(lj.allowed === false && pr.status === 403, plan + ' account: no card, start refused', JSON.stringify(lj) + ' ' + pr.status);
+  }
   await pool.query("DELETE FROM sessions WHERE user_id=$1 AND kind='assessment'", [u.id]); // local test user only
   if (!(await pool.query("SELECT 1 FROM sessions WHERE user_id=$1 AND coalesce(kind,'interview')<>'assessment'", [u.id])).rows.length)
     await pool.query("INSERT INTO sessions (user_id, company, role, resume) VALUES ($1,'Acme','Data Analyst','RESUME-MARKER: 5 years SQL at Acme.')", [u.id]);
-  const token = jwt.sign({ userId: u.id, name: u.name, email, isAdmin: false, plan: 'pro', suspended: false }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  const token = jwt.sign({ userId: u.id, name: u.name, email, isAdmin: false, plan: 'premium', suspended: false }, process.env.JWT_SECRET, { expiresIn: '1h' });
   const api = async (method, p, body) => { const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: body ? JSON.stringify(body) : undefined }); let j = {}; try { j = await r.json(); } catch (e) {} return { r, j }; };
   const live = async sid => {
     const ws = new WebSocket(BASE.replace(/^http/, 'ws'));
