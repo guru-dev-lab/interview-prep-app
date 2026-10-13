@@ -944,6 +944,18 @@ if (isElectronMode) {
   }, 100);
 }
 
+// ASSESSMENT (desktop, 13 Oct): opened from the launcher's Assessment entry (?assessment=new|continue) — co-pilot with
+// history on (the carry and the no-repeat ledger live there), live at once. History-on here is not saved as his preference.
+var ASSESSMENT = params.get('assessment');
+if (ASSESSMENT && isElectronMode) {
+  setTimeout(function () {
+    copilotHistory = true;
+    setMode('copilot');
+    showToast(ASSESSMENT === 'continue' ? 'Assessment — continuing where you left off' : 'Assessment — new', 'info', 2500);
+    if (!electronLive) toggleElectronLive();
+  }, 600);
+}
+
 // Windows: fix keyboard shortcut labels (Ctrl instead of Cmd)
 if (window.electronAPI && window.electronAPI.isWindows) {
   setTimeout(function() {

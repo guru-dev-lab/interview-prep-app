@@ -57,7 +57,7 @@ ok(/Atlanta \| 60/.test(p2) && /Q5 pick one/.test(p2), 'data and question pages 
 ok(mc.screenType('no type line here') === 'DATA', 'old transcripts count as data (kept whole)');
 // talk the digest covers is not repeated word for word
 const talk = []; for (let i = 0; i < 40; i++) talk.push(row('asker', 'narration line ' + i, i));
-const p3 = mc.buildCopilotPrompt({ mode: 'smart', rows: talk, digest: 'NOTES', digestRows: 36, session: {} });
+const p3 = mc.buildCopilotPrompt({ mode: 'smart', rows: talk, digest: 'NOTES', digestUpTo: 35, session: {} });
 ok(!/narration line 5\b/.test(p3) && /narration line 30/.test(p3) && /narration line 39/.test(p3), 'only post-digest talk (+6 overlap) rides raw');
 const p4 = mc.buildCopilotPrompt({ mode: 'smart', rows: talk, session: {} });
 ok(/narration line 0\b/.test(p4), 'no digest → all talk rides (nothing lost)');

@@ -11,7 +11,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const WebSocket = require('ws');
 const stringSimilarity = require('string-similarity');
-const meetingCopilot = require('./lib/meeting-copilot'); // meeting co-pilot logic (call log, prompts, budget)
+const meetingCopilot = require('./lib/meeting-copilot');
+const assessment = require('./lib/assessment'); // desktop Assessment: carry-over notes, title lock, who sees it // meeting co-pilot logic (call log, prompts, budget)
 // Import only the submodules we need — avoid loading SentimentAnalyzer which has ESM-only deps
 const TfIdf = require('natural/lib/natural/tfidf/tfidf');
 const PorterStemmer = require('natural/lib/natural/stemmers/porter_stemmer');
@@ -173,6 +174,13 @@ async function initDB() {
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS answer_style VARCHAR(50) DEFAULT 'conversational';
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS jd_requirements JSONB DEFAULT NULL;
     `).catch(() => {});
+    // Assessment (desktop, 13 Oct): a session of kind 'assessment' is not tied to a company; its title is locked from content
+    await client.query(`
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS kind VARCHAR(20) DEFAULT 'interview';
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title VARCHAR(160) DEFAULT '';
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_kind ON sessions(user_id, kind);
+      CREATE INDEX IF NOT EXISTS idx_call_events_session ON call_events(session_id, kind);
+    `).catch(e => console.error('[DB] assessment migration failed:', e.message));
     console.log('Database tables ready');
   } finally { client.release(); }
 }
@@ -1330,7 +1338,7 @@ app.get('/api/sessions', authMiddleware, async (req, res) => {
         (SELECT COUNT(*) FROM questions q WHERE q.session_id = s.id AND q.answer != '') as answered_count,
         (SELECT COUNT(*) FROM meetings m WHERE m.session_id = s.id) as meetings_count,
         s.created_at, s.updated_at
-      FROM sessions s WHERE s.user_id = $1 ORDER BY s.created_at DESC
+      FROM sessions s WHERE s.user_id = $1 AND coalesce(s.kind, 'interview') <> 'assessment' ORDER BY s.created_at DESC
     `, [req.userId]);
 
     // Get current meeting for each session
@@ -2670,7 +2678,9 @@ function liveWsForSession(sessionId) {
 }
 
 async function loadCallRows(callId) {
-  const r = await pool.query('SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 ORDER BY ts ASC LIMIT 400', [callId]);
+  // The NEWEST 400 rows, in time order. (Was the oldest 400: on 9 Oct a long call sat at rows=400 from 18:24 on — every
+  // later screen, answer and digest was invisible to the co-pilot.) The digest row carries the compacted start.
+  const r = await pool.query('SELECT kind, text, meta, ts FROM (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 ORDER BY ts DESC LIMIT 400) t ORDER BY ts ASC', [callId]);
   return r.rows.map(x => ({ kind: x.kind, text: x.text, meta: x.meta || {}, ts: new Date(x.ts).getTime() }));
 }
 
@@ -2679,21 +2689,22 @@ async function loadCallRows(callId) {
 function maybeCompactCall(sessionId, callId, rows, historyOn) {
   const st = copilotDigests.get(callId) || { text: '', lastAt: 0, lastCount: 0, running: false };
   copilotDigests.set(callId, st);
-  const material = rows.filter(r => r.kind !== 'digest');
-  if (st.running || !meetingCopilot.shouldCompact(st, { now: Date.now(), rowCount: material.length, historyOn })) return;
+  // Counted by time, not by position: the row window holds the newest 400, so positions shift on a long call
+  const newer = rows.filter(r => r.kind !== 'digest' && r.ts > (st.lastTs || 0)).length;
+  if (st.running || !meetingCopilot.shouldCompact(st, { now: Date.now(), rowCount: (st.lastCount || 0) + newer, historyOn })) return;
   return compactCall(sessionId, callId, rows, st);
 }
 // Compact now (awaitable). At an Assist with no digest and more raw talk than fits word for word, the server waits for
 // this so the start of a long call is not dropped (3 Oct: the first 40 s of an update were stored but never handed over).
 function compactCall(sessionId, callId, rows, st) {
-  const material = rows.filter(r => r.kind !== 'digest');
+  const freshRows = rows.filter(r => r.kind !== 'digest' && r.ts > (st.lastTs || 0));
   st.running = true;
-  const fresh = material.slice(st.lastCount).map(r => `[${r.kind}] ${r.text}`).join('\n');
+  const fresh = freshRows.map(r => `[${r.kind}] ${r.text}`).join('\n');
   const user = (st.text ? `CURRENT NOTES:\n${st.text}\n\n` : '') + `NEW LINES (newest last):\n${fresh}\n\nUPDATED NOTES:`;
-  const t0 = Date.now(), count = material.length;
+  const t0 = Date.now(), count = (st.lastCount || 0) + freshRows.length, upTo = freshRows.length ? freshRows[freshRows.length - 1].ts : (st.lastTs || 0);
   return callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU).then(out => {
-    st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count;
-    recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count });
+    st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count; st.lastTs = upTo;
+    recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count, upTo });
     console.log(`[Co-pilot] digest updated in ${Date.now() - t0}ms (${st.text.length} chars from ${count} rows)`);
     return st.text;
   }).catch(e => { console.error('[Co-pilot] digest failed:', e.message); return st.text; }).finally(() => { st.running = false; });
@@ -2733,7 +2744,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const live = liveWsForSession(sessionId);
     if (!live) return res.status(409).json({ error: 'Go Live first — co-pilot works during a live call' });
     const callId = live._callId;
-    const s = await pool.query('SELECT company, role, resume, jd FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
+    const s = await pool.query('SELECT company, role, resume, jd, kind FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, req.userId]);
     if (!s.rows.length) return res.status(404).json({ error: 'Session not found' });
     screenActivity.set(sessionId, Date.now()); // co-pilot use is activity — keeps the live connection from idling out
 
@@ -2778,8 +2789,8 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     // Q&A bank = his real answers about himself; it rides with the résumé so "tell me about yourself" on a work call is true to him
     const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
     const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
-    const digestRows = ((copilotDigests.get(callId) || {}).lastCount) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).rows || 0;
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, digestRows, session: s.rows[0], bank, priorMemory: live._priorMemory || '', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const digestUpTo = ((copilotDigests.get(callId) || {}).lastTs) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).upTo || 0;
+    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
@@ -2854,6 +2865,88 @@ app.post('/api/sessions/:id/copilot/extract', authMiddleware, upload.single('fil
 // Clear co-pilot memory when session ends
 app.post('/api/sessions/:id/copilot/reset', authMiddleware, (req, res) => {
   res.json({ ok: true }); // kept for older clients; the call log is per call and needs no reset
+});
+
+// ===== ASSESSMENT (desktop only) — logic in lib/assessment.js =====
+// Each sitting (one Go Live) ends with a CARRY: Sonnet compacts everything the sitting saw and answered (+ the carry before
+// it) into notes stored on live_transcripts.memory. The first carry with real content locks the assessment's title.
+// Continue = a new sitting in the same assessment; its co-pilot starts from the latest carry.
+const assessmentFinishing = new Map(); // callId → the carry in progress (a reconnect's new sitting waits for it, never starts blind)
+function finishAssessmentCall(sessionId, callId) {
+  if (!sessionId || !callId) return Promise.resolve(null);
+  if (!assessmentFinishing.has(callId)) assessmentFinishing.set(callId, carryAssessmentCall(sessionId, callId).finally(() => assessmentFinishing.delete(callId)));
+  return assessmentFinishing.get(callId);
+}
+async function carryAssessmentCall(sessionId, callId) {
+  const t0 = Date.now();
+  try {
+    const rows = await loadCallRows(callId);
+    if (!assessment.hasMaterial(rows)) { console.log(`[Assessment] sitting ${callId} has nothing to carry (${rows.length} rows)`); return null; }
+    const prev = await pool.query(`SELECT memory FROM live_transcripts WHERE session_id = $1 AND id <> $2 AND coalesce(memory, '') <> ''
+      AND started_at < (SELECT started_at FROM live_transcripts WHERE id = $2) ORDER BY started_at DESC LIMIT 1`, [sessionId, callId]);
+    const out = await callClaude(assessment.CARRY_PROMPT, assessment.buildCarryInput((prev.rows[0] || {}).memory || '', rows), 1400, MODEL_SONNET, { thinking: { type: 'disabled' } });
+    const { title, notes } = assessment.parseCarry(out);
+    if (!notes) throw new Error('the model returned no notes');
+    await pool.query('UPDATE live_transcripts SET memory = $1 WHERE id = $2', [notes, callId]);
+    let locked = false;
+    if (title) locked = !!(await pool.query("UPDATE sessions SET title = $1 WHERE id = $2 AND coalesce(title, '') = '' RETURNING id", [title, sessionId])).rowCount;
+    await pool.query('UPDATE sessions SET updated_at = NOW() WHERE id = $1', [sessionId]);
+    console.log(`[Assessment] sitting ${callId} carried in ${Date.now() - t0}ms (${notes.length} chars from ${rows.length} rows)${locked ? ` — title locked: "${title}"` : ''}`);
+    return notes;
+  } catch (e) { console.error(`[Assessment] carry failed for sitting ${callId} after ${Date.now() - t0}ms:`, e.message); return null; }
+}
+// Latest carry of this assessment for a new sitting. A sitting that ended without its carry (app closed, server restart)
+// gets it built now, so Continue never starts blind.
+async function loadAssessmentCarry(sessionId, currentCallId) {
+  const r = await pool.query('SELECT id, memory FROM live_transcripts WHERE session_id = $1 AND id <> $2 ORDER BY started_at DESC LIMIT 5', [sessionId, currentCallId]);
+  for (const row of r.rows) {
+    if (row.memory) return row.memory;
+    const has = await pool.query("SELECT 1 FROM call_events WHERE call_id = $1 AND kind IN ('seen', 'said', 'digest') LIMIT 1", [row.id]);
+    if (has.rows.length) { const m = await finishAssessmentCall(sessionId, row.id); if (m) return m; }
+  }
+  return '';
+}
+async function assessmentAllowed(req) {
+  const u = await pool.query('SELECT plan, is_admin FROM users WHERE id = $1', [req.userId]);
+  return assessment.canUseAssessment(u.rows[0] || { plan: req.plan, is_admin: req.isAdmin }, process.env);
+}
+const HAS_MATERIAL_SQL = "EXISTS (SELECT 1 FROM call_events e WHERE e.session_id = s.id AND e.kind IN ('seen', 'said', 'digest'))";
+
+// The desktop launcher's list: assessments with content, newest sitting first, each with its locked title + start time
+app.get('/api/assessments', authMiddleware, async (req, res) => {
+  try {
+    if (!(await assessmentAllowed(req))) return res.json({ allowed: false, items: [] });
+    const r = await pool.query(`SELECT s.id, s.title, s.created_at, lt.last_used, lt.sittings,
+        EXISTS (SELECT 1 FROM live_transcripts t WHERE t.session_id = s.id AND coalesce(t.memory, '') <> '') AS has_carry
+      FROM sessions s
+      LEFT JOIN LATERAL (SELECT max(started_at) AS last_used, count(*) AS sittings FROM live_transcripts t WHERE t.session_id = s.id) lt ON true
+      WHERE s.user_id = $1 AND s.kind = 'assessment' AND ${HAS_MATERIAL_SQL}
+      ORDER BY coalesce(lt.last_used, s.created_at) DESC LIMIT 50`, [req.userId]);
+    // content but no title yet (its sitting never got its carry): build it in the background — the next look shows the title
+    for (const x of r.rows.filter(x => !x.title).slice(0, 2)) {
+      pool.query('SELECT id FROM live_transcripts WHERE session_id = $1 ORDER BY started_at DESC LIMIT 1', [x.id])
+        .then(c => c.rows[0] && finishAssessmentCall(x.id, c.rows[0].id)).catch(e => console.error('[Assessment] background title failed:', e.message));
+    }
+    res.json({ allowed: true, items: r.rows.map(x => ({ id: x.id, title: x.title || '', started: x.created_at, lastUsed: x.last_used || x.created_at, sittings: parseInt(x.sittings, 10) || 0, carried: !!x.has_carry })) });
+  } catch (e) { console.error('[Assessment] list failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Start a new assessment. An earlier one that was opened but never got any content is reused (no pile of blanks).
+// His résumé rides along from his latest interview session — a personality/behavioural section asks about him.
+app.post('/api/assessments', authMiddleware, async (req, res) => {
+  try {
+    if (!(await assessmentAllowed(req))) return res.status(403).json({ error: 'Assessment is not on your plan' });
+    const blank = await pool.query(`SELECT s.id FROM sessions s WHERE s.user_id = $1 AND s.kind = 'assessment' AND NOT ${HAS_MATERIAL_SQL} ORDER BY s.created_at DESC LIMIT 1`, [req.userId]);
+    if (blank.rows.length) {
+      const u = await pool.query('UPDATE sessions SET created_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING id, created_at', [blank.rows[0].id]);
+      console.log(`[Assessment] new (reused blank ${u.rows[0].id}) for user ${req.userId}`);
+      return res.json({ id: u.rows[0].id, started: u.rows[0].created_at, reused: true });
+    }
+    const rs = await pool.query("SELECT resume FROM sessions WHERE user_id = $1 AND coalesce(kind, 'interview') <> 'assessment' AND coalesce(resume, '') <> '' ORDER BY updated_at DESC LIMIT 1", [req.userId]);
+    const ins = await pool.query("INSERT INTO sessions (user_id, kind, company, role, resume) VALUES ($1, 'assessment', '', '', $2) RETURNING id, created_at", [req.userId, (rs.rows[0] || {}).resume || '']);
+    console.log(`[Assessment] new ${ins.rows[0].id} for user ${req.userId} (résumé ${rs.rows.length ? 'carried' : 'none'})`);
+    res.json({ id: ins.rows[0].id, started: ins.rows[0].created_at, reused: false });
+  } catch (e) { console.error('[Assessment] create failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // Standalone Smart Canvas page
@@ -3812,11 +3905,18 @@ wss.on('connection', (ws) => {
         // SESSION MEMORY: fresh notes for this call; load what was said in earlier calls of this session (background)
         ws._callNotes = ''; ws._digestedLines = 0; ws._priorMemory = ''; ws._bridges = ''; ws._bridgesSeen = 0; ws._bridgesAt = 0; ws._bridgesRuns = 0; clearTimeout(ws._bridgeTimer); ws._bridgeTimer = null; ws._bankSnapshot = null;
         const _memT0 = Date.now(), _memTid = transcriptId;
-        loadPriorCallsMemory(sessionId, userId, _memTid).then(m => {
-          ws._priorMemory = m;
-          ws._bridges = '';
-          if (m) refreshBridgesSoon(ws);
-          console.log(`[Memory] Earlier calls loaded: ${m ? m.length + ' chars' : 'none'} in ${Date.now() - _memT0}ms`);
+        pool.query('SELECT kind FROM sessions WHERE id = $1', [sessionId]).then(k => {
+          ws._isAssessment = (k.rows[0] || {}).kind === 'assessment';
+          if (ws._isAssessment) return loadAssessmentCarry(sessionId, _memTid).then(m => { // no interviewers, no bridges: the carry is the memory
+            ws._priorMemory = m;
+            console.log(`[Assessment] sitting ${_memTid} starts from ${m ? 'the carry (' + m.length + ' chars)' : 'nothing (first sitting)'} in ${Date.now() - _memT0}ms`);
+          });
+          return loadPriorCallsMemory(sessionId, userId, _memTid).then(m => {
+            ws._priorMemory = m;
+            ws._bridges = '';
+            if (m) refreshBridgesSoon(ws);
+            console.log(`[Memory] Earlier calls loaded: ${m ? m.length + ' chars' : 'none'} in ${Date.now() - _memT0}ms`);
+          });
         }).catch(e => console.error('[Memory] load failed:', e.message));
         lastMatchedQId = null;
         let lastAutoMatchTime = 0; // Timestamp of last auto-detected match
@@ -4616,6 +4716,7 @@ wss.on('connection', (ws) => {
       else if (msg.type === 'stop') {
         clearTimeout(idleTimer);
         if (ws._callId) pool.query('UPDATE call_screens SET image = NULL WHERE call_id = $1', [ws._callId]).catch(e => console.error('[Co-pilot] image cleanup failed:', e.message)); // frames are for the call only; transcripts stay
+        if (ws._isAssessment && ws._callId) finishAssessmentCall(sessionId, ws._callId); // background: carry + title lock
         ws._callId = null; // call over — the call log stops here; co-pilot refuses until the next Go Live
         // Close Deepgram streams
         if (interviewerDG && interviewerDG.readyState === WebSocket.OPEN) {
@@ -4658,6 +4759,7 @@ wss.on('connection', (ws) => {
   ws.on('close', async () => {
     clearTimeout(idleTimer);
     if (ws._callId) pool.query('UPDATE call_screens SET image = NULL WHERE call_id = $1', [ws._callId]).catch(e => console.error('[Co-pilot] image cleanup failed:', e.message));
+    if (ws._isAssessment && ws._callId) finishAssessmentCall(sessionId, ws._callId); // app closed mid-assessment: still carried
     ws._callId = null;
     // Remove from session clients map
     if (sessionId) removeSessionClient(sessionId, ws);

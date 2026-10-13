@@ -1,5 +1,22 @@
 # Handoff
 
+## 13 Oct 2026 (later) — desktop ASSESSMENT entry + two co-pilot row-window fixes
+- Assessment (Electron only; launcher card hidden in a browser): not tied to a company — sessions.kind='assessment',
+  hidden from /api/sessions. Open → no history: starts at once; history: "Continue last" (title + start time + sittings)
+  / "Start new" / History list. Overlay opens in co-pilot, history on, goes live (?assessment=new|continue).
+  Each sitting (one live connection) ends with a CARRY (Sonnet, thinking off): earlier carry + digest + screens + answered
+  ledger → live_transcripts.memory; the first carry with content LOCKS sessions.title (written once). A new sitting starts
+  from the latest carry (a sitting that ended without one gets it built first; a reconnect waits for the carry in flight).
+  Prompt: ASSESSMENT frame + "THIS ASSESSMENT SO FAR" (never gated like interview memory). Blank assessments are reused.
+  Résumé copied from his latest interview session. Who sees it: lib/assessment.js canUseAssessment — everyone now;
+  env ASSESSMENT_PLANS=pro,team narrows it (admins always). Assessments do not count toward the session limit.
+- Fixes found on the way: loadCallRows returned the OLDEST 400 rows (9 Oct call froze at rows=400 — new screens/answers
+  invisible) → newest 400; digest compaction counted rows by position → now by timestamp (meta.upTo).
+- Proof: npm test (test/assessment.js 33 checks); test/assessment-e2e.js 16/16 on local server with real models
+  (title locked "TalentCheck Online Assessment — …", continue starts from carry, same question next sitting not redone,
+  second carry keeps the title); launcher screenshots desktop vs browser.
+- Rollback: known-good-2026-10-13-before-assessment.
+
 ## 13 Oct 2026 — co-pilot: answers only real asks, never the same question twice, compact non-questions
 - Evidence (Railway logs, his 12 Oct 21:40 CDT assessment): 3 unasked cards came from the voice route — a training video's
   voice-over: 2 statements ("Motion properties, which covers…", "When building options, ensure…") and a cut fragment

@@ -59,6 +59,30 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 .jobscout-card .s-role{font:400 11px Inter,sans-serif;color:#7dd3c0;margin-top:3px}
 .jobscout-card .js-arrow{color:#10B981;flex-shrink:0;margin-left:auto}
 .s-role-icon{opacity:.5;flex-shrink:0}
+/* Assessment (desktop only) — amber so it never reads as a company session */
+.as-card{width:100%;max-width:340px;padding:12px 14px;border:1px solid rgba(251,191,36,.35);border-radius:12px;background:linear-gradient(135deg,rgba(251,191,36,.10),rgba(249,115,22,.07));cursor:pointer;text-align:left;transition:all .2s ease;display:flex;align-items:center;gap:12px}
+.as-card:hover{border-color:rgba(251,191,36,.6);background:linear-gradient(135deg,rgba(251,191,36,.16),rgba(249,115,22,.12));transform:translateY(-1px);box-shadow:0 4px 14px rgba(251,191,36,.14)}
+.as-card:active{transform:translateY(0)}
+.as-icon{width:40px;height:40px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#F59E0B,#F97316);color:#fff}
+.as-card .s-company{font:600 13px Inter,sans-serif;color:#e2e8f0}
+.as-card .s-role{font:400 11px Inter,sans-serif;color:#fcd34d;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-arrow{color:#F59E0B;flex-shrink:0;margin-left:auto}
+.as-head{font:700 15px Inter,sans-serif;color:#fcd34d;display:flex;align-items:center;gap:8px}
+.as-q{font:400 12px Inter,sans-serif;color:#94a3b8}
+.as-last{width:100%;max-width:340px;padding:14px;border:1px solid rgba(251,191,36,.45);border-radius:12px;background:rgba(251,191,36,.08);text-align:left;cursor:pointer;transition:all .2s ease}
+.as-last:hover{background:rgba(251,191,36,.14);transform:translateY(-1px)}
+.as-last .as-k{font:700 9px Inter,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#F59E0B}
+.as-last .as-t{font:600 14px Inter,sans-serif;color:#f1f5f9;margin-top:4px;line-height:1.35}
+.as-last .as-d{font:400 11px Inter,sans-serif;color:#94a3b8;margin-top:4px}
+.as-new{width:100%;max-width:340px;padding:11px;border:1px dashed rgba(255,255,255,.18);border-radius:10px;background:transparent;font:600 12px Inter,sans-serif;color:#cbd5e1;cursor:pointer;transition:.15s}
+.as-new:hover{border-color:rgba(251,191,36,.5);color:#fcd34d}
+.as-hist-h{width:100%;max-width:340px;font:700 9px Inter,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#475569;text-align:left;margin-top:2px}
+.as-hist{width:100%;max-width:340px;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto}
+.as-row{padding:9px 12px;border:1px solid rgba(255,255,255,.07);border-radius:9px;background:rgba(255,255,255,.025);text-align:left;cursor:pointer;display:flex;align-items:baseline;gap:10px;transition:.15s}
+.as-row:hover{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)}
+.as-row .as-t{flex:1;min-width:0;font:500 12px Inter,sans-serif;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-row .as-d{font:400 10px Inter,sans-serif;color:#64748b;flex-shrink:0}
+.as-pending{color:#94a3b8;font-style:italic}
 .s-avatar-img{width:100%;height:100%;object-fit:contain;border-radius:8px;padding:4px}
 .s-avatar-letter{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 
@@ -108,6 +132,17 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
       <button class="back-btn" onclick="showStep('step-login')">&larr; Back</button>
     </div>
 
+    <!-- Step 2b: Assessment (desktop only) — continue the last one or start new; history locked by title + start time -->
+    <div id="step-assessment" class="step">
+      <div class="as-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Assessment</div>
+      <div class="as-q">Continue where you left off?</div>
+      <div id="as-last" class="as-last"></div>
+      <button class="as-new" onclick="startNewAssessment()">+ Start a new assessment</button>
+      <div id="as-hist-h" class="as-hist-h">History</div>
+      <div id="as-hist" class="as-hist"></div>
+      <div id="as-error" class="error"></div>
+      <button class="back-btn" onclick="showStep('step-sessions')">&larr; Back</button>
+    </div>
     <!-- Step 3: Connecting -->
     <div id="step-connecting" class="step">
       <span class="spinner"></span>
@@ -235,7 +270,7 @@ async function handleGoogleResponse(response) {
 function showStep(id) {
   document.querySelectorAll('.step').forEach(function(s) { s.classList.remove('active'); });
   document.getElementById(id).classList.add('active');
-  if (id === 'step-sessions') renderJobScout();
+  if (id === 'step-sessions') { renderJobScout(); renderAssessmentCard(); }
 }
 
 // Job Scout entry — WEB ONLY. Never rendered inside the Electron desktop app
@@ -264,6 +299,75 @@ function openJobScout() {
   var sep = JOBS_URL.indexOf('?') > -1 ? '&' : '?';
   var url = JOBS_URL + (authToken ? sep + 'xhire_token=' + encodeURIComponent(authToken) : '');
   window.open(url, '_blank');                      // web: open in a new tab
+}
+
+// ===== ASSESSMENT — DESKTOP ONLY (owner, 13 Oct). Never rendered in a browser (no window.electronAPI there). =====
+// Not tied to a company. Opening it: no history → a new one starts at once; history → "continue the last one?" first.
+// Each assessment is listed by the title locked from its content + the date/time it started.
+var assessments = null; // last list from the server
+function fmtWhen(iso) {
+  try { var d = new Date(iso); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; }
+}
+function asError(msg) { // the login error box is hidden on these steps — show it where he is
+  var host = document.querySelector('.step.active'), el = document.getElementById('as-error');
+  if (host && host.id === 'step-sessions') { var c = document.querySelector('#as-card .s-role'); if (c) { c.textContent = msg; return; } }
+  if (el) { el.textContent = msg; el.style.display = 'block'; setTimeout(function () { el.style.display = 'none'; }, 4000); }
+}
+function asTitle(a) { return a.title ? esc(a.title) : '<span class="as-pending">Untitled — named after its next save</span>'; }
+async function fetchAssessments() {
+  var res = await fetch(SERVER + '/api/assessments', { headers: { 'Authorization': 'Bearer ' + authToken } });
+  if (!res.ok) throw new Error('assessments ' + res.status);
+  return res.json();
+}
+async function renderAssessmentCard() {
+  if (!window.electronAPI) return;                          // desktop app only
+  var host = document.getElementById('step-sessions'), list = document.getElementById('session-list');
+  if (!host || !list || !authToken) return;
+  var data;
+  try { data = await fetchAssessments(); } catch (e) { console.warn('[Assessment] list failed:', e); return; }
+  var old = document.getElementById('as-card'); if (old) old.remove();
+  if (!data.allowed) return;                                // not on this profile type
+  assessments = data.items || [];
+  var last = assessments[0];
+  var card = document.createElement('div');
+  card.id = 'as-card'; card.className = 'as-card'; card.onclick = openAssessment;
+  card.innerHTML = '<div class="as-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>'
+    + '<div class="s-info"><div class="s-company">Assessment</div><div class="s-role">' + (last ? 'Last: ' + (last.title ? esc(last.title) : 'untitled') + ' · ' + esc(fmtWhen(last.started)) : 'Any test — not tied to a company') + '</div></div>'
+    + '<svg class="as-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+  list.parentNode.insertBefore(card, list);
+}
+async function openAssessment() {
+  try { var data = await fetchAssessments(); assessments = data.items || []; } catch (e) { asError('Could not load assessments'); return; }
+  if (!assessments.length) return startNewAssessment();    // first time: straight in
+  var last = assessments[0];
+  var el = document.getElementById('as-last');
+  el.innerHTML = '<div class="as-k">Continue last</div><div class="as-t">' + asTitle(last) + '</div>'
+    + '<div class="as-d">Started ' + esc(fmtWhen(last.started)) + (last.sittings > 1 ? ' · ' + last.sittings + ' sittings' : '') + (last.carried ? ' · progress saved' : '') + '</div>';
+  el.onclick = function () { connectToAssessment(last.id, false); };
+  var rest = assessments.slice(1), hist = document.getElementById('as-hist');
+  hist.innerHTML = '';
+  rest.forEach(function (a) {
+    var row = document.createElement('div'); row.className = 'as-row';
+    row.innerHTML = '<div class="as-t">' + asTitle(a) + '</div><div class="as-d">' + esc(fmtWhen(a.started)) + '</div>';
+    row.onclick = function () { connectToAssessment(a.id, false); };
+    hist.appendChild(row);
+  });
+  document.getElementById('as-hist-h').style.display = rest.length ? '' : 'none';
+  hist.style.display = rest.length ? '' : 'none';
+  showStep('step-assessment');
+}
+async function startNewAssessment() {
+  try {
+    var res = await fetch(SERVER + '/api/assessments', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } });
+    var data = await res.json();
+    if (!res.ok || !data.id) { asError(data.error || 'Could not start an assessment'); return; }
+    connectToAssessment(data.id, true);
+  } catch (e) { asError('Could not start an assessment'); }
+}
+function connectToAssessment(id, isNew) {
+  showStep('step-connecting');
+  var url = SERVER + '/canvas?token=' + encodeURIComponent(authToken) + '&session=' + encodeURIComponent(id) + '&electron=1&assessment=' + (isNew ? 'new' : 'continue');
+  window.electronAPI.loadCanvas(url);
 }
 
 function showError(msg) {
