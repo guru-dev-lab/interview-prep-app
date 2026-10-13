@@ -795,6 +795,10 @@ document.body.style.background='transparent';
           <div><div class="settings-label">Stealth Mode</div><div class="settings-desc">Hide from screen sharing</div></div>
           <label class="toggle-switch"><input type="checkbox" id="s-stealth" checked onchange="toggleStealthFromSettings(this.checked)"><span class="toggle-slider"></span></label>
         </div>
+        <div class="settings-row" id="row-global-shortcut" style="display:none">
+          <div><div class="settings-label">Global Shortcut Mode</div><div class="settings-desc" id="s-global-shortcut-status">Screen Assist shortcut works from any app</div></div>
+          <label class="toggle-switch"><input type="checkbox" id="s-global-shortcut" onchange="toggleGlobalShortcut(this.checked)"><span class="toggle-slider"></span></label>
+        </div>
         <div class="settings-row">
           <div><div class="settings-label">Screen Capture Interval</div><div class="settings-desc">Auto-record interval (sec)</div></div>
           <input type="number" class="settings-input" id="s-record-interval" value="8" min="3" max="30" onchange="applyRecordInterval(this.value)">
@@ -944,6 +948,8 @@ if (isElectronMode) {
     if (sepLive) sepLive.style.display = '';
     var sepStealth = document.getElementById('sep-after-stealth');
     if (sepStealth) sepStealth.style.display = '';
+    var gsRow = document.getElementById('row-global-shortcut');
+    if (gsRow) gsRow.style.display = '';
   }, 100);
 }
 
@@ -2418,6 +2424,35 @@ function toggleStealthFromSettings(on) {
   }
 }
 
+// GLOBAL SHORTCUT MODE (desktop, owner 13 Oct): ON = Cmd+Enter runs Screen Assist from any app, without clicking into
+// the overlay; the overlay is not brought forward. OFF (default) = Cmd+Enter only while the overlay has the keyboard.
+// The desktop app holds the system shortcut and calls back here; Screen Assist itself is the same screenAssist().
+var globalShortcutOn = false;
+function globalShortcutKeys() { return (window.electronAPI && window.electronAPI.isMac) ? '⌘↵' : 'Ctrl+Enter'; }
+function showGlobalShortcutStatus(text, bad) {
+  var el = $('s-global-shortcut-status');
+  if (el) { el.textContent = text; el.style.color = bad ? '#F87171' : ''; }
+}
+async function toggleGlobalShortcut(on) {
+  on = !!on;
+  saveSetting('globalShortcut', on);
+  globalShortcutOn = on;
+  var box = $('s-global-shortcut'); if (box) box.checked = on;
+  var api = window.electronAPI;
+  if (!api || !api.setGlobalShortcut) { // desktop builds before 13 Oct have no system shortcut
+    showGlobalShortcutStatus(on ? 'Needs the latest desktop app. Reinstall from xhire.app/download' : 'Off', on);
+    return;
+  }
+  var st;
+  try { st = await api.setGlobalShortcut(on); } catch (e) { st = { on: false, error: (e && e.message) || 'failed' }; }
+  if (on && st && st.on) showGlobalShortcutStatus('On. ' + globalShortcutKeys() + ' works from any app');
+  else if (on) showGlobalShortcutStatus('Could not turn on: ' + globalShortcutKeys() + ' is ' + ((st && st.error) || 'unavailable'), true);
+  else showGlobalShortcutStatus('Off. ' + globalShortcutKeys() + ' works only while Xhire is in front');
+}
+if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
+  window.electronAPI.onGlobalShortcut(function(action) { if (action === 'screen-assist' && globalShortcutOn) screenAssist(); });
+}
+
 function applyRecordInterval(val) {
   var seconds = parseInt(val) || 8;
   RECORD_INTERVAL_MS = seconds * 1000;
@@ -2514,6 +2549,7 @@ var overlayDiag = { lagMax: 0, pingMax: 0, pingAvg: 0, pingN: 0, grabMax: 0, gra
   if ((v = loadSetting('fontSize')) !== undefined && v !== canvasFontSize) changeFontSize(v - canvasFontSize);
   if ((v = loadSetting('lightMode')) !== undefined && !!v !== isLightMode) toggleLightMode();
   if ((v = loadSetting('stealth')) !== undefined) setTimeout(function() { toggleStealthFromSettings(!!v); }, 300); // after the stealth default is applied
+  if (window.electronAPI) toggleGlobalShortcut(!!loadSetting('globalShortcut')); // the desktop app dropped it on page load; OFF also writes the status line
 })();
 
 // Keyboard shortcut: Cmd+, opens settings

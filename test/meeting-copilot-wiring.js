@@ -100,7 +100,8 @@ const main = require('fs').readFileSync(require('path').join(__dirname, '..', 'e
 const pre = require('fs').readFileSync(require('path').join(__dirname, '..', 'electron', 'preload.js'), 'utf8');
 ok(/ipcMain\.handle\('capture-display'/.test(main) && /desktopCapturer\.getSources\(\{ types: \['screen'\], thumbnailSize/.test(main) && /ipcMain\.handle\('get-bounds'/.test(main), 'desktop app: capture-display via desktopCapturer thumbnails + get-bounds');
 ok(/captureDisplay: \(maxW\) => ipcRenderer\.invoke\('capture-display', maxW\)/.test(pre) && /getBounds: \(\) => ipcRenderer\.invoke\('get-bounds'\)/.test(pre), 'preload exposes captureDisplay + getBounds');
-ok(/"version": "1\.1\.4"/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'electron', 'package.json'), 'utf8')), 'desktop version 1.1.4');
+{ const dv = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'electron', 'package.json'), 'utf8')).version.split('.').map(Number);
+  ok(dv[0] > 1 || (dv[0] === 1 && (dv[1] > 1 || (dv[1] === 1 && dv[2] >= 4))), 'desktop version 1.1.4 or later (capture-display shipped in 1.1.4)'); }
 ok(/\/\\d\/\.test\(sp\[1\]\)/.test(src.slice(src.indexOf('function styleCopilotCard('), src.indexOf('function styleCopilotCard(') + 1600)), 'a page tag with no number is not shown (single-page test showed an empty PAGE chip)');
 
 // ---- SAY button in co-pilot mode (owner, 3 Oct): one brain — the server pulls what they just asked from the call, the overlay

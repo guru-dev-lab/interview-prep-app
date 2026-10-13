@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Click-through on the transparent parts of the window (true = clicks pass to the apps behind)
   setClickThrough: (on) => ipcRenderer.send('set-click-through', !!on),
 
+  // Global Shortcut Mode: Cmd+Enter from any app → this page's Screen Assist. set returns { on, accelerator, error? }
+  setGlobalShortcut: (on) => ipcRenderer.invoke('set-global-shortcut', !!on),
+  onGlobalShortcut: (callback) => ipcRenderer.on('global-shortcut', (_, action) => callback(action)),
+
   // Platform info
   platform: process.platform,
   isElectron: true,
