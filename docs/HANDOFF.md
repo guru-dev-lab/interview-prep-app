@@ -1,5 +1,20 @@
 # Handoff
 
+## 13 Oct 2026 (02:00) — co-pilot context: tiers + prompt caching + usage logs; INFO-page regression fixed
+- REGRESSION FOUND + FIXED: PR #84 compacted every page the reader tagged INFO; the pack's page 5 (12%/8% surcharge, 20%
+  growth) was tagged INFO → rules vanished → 3/15 pack checks failed on live main. Now isBareInfo(): an INFO page with any
+  figure or rule word rides in full; the reader prompt defines INFO as no figures and no rules.
+- Tiers (lib/meeting-copilot.js buildCopilotBlocks): every page listed; full = open question / data / rules / newest;
+  index line = bare info, fully answered page (pageAnswered vs ledger), or over budget (oldest first). pullIn(): an index
+  page returns in full when the ask names its page or shares ≥3 names/numbers. >60 index lines fold to a count line.
+- Cache order: system + stable (session material, assessment carry, docs) + one block per page (cache_control on the last)
+  → image → volatile (pulled pages, digest, talk, ledger, ask). Regular (Haiku) mode unchanged, string, no cache.
+- loadCallRows: ALL seen/said/document rows + newest 400 talk rows + newest digest (all-day calls keep every page).
+- [Usage] <tag> log on copilot-answer / copilot-read / copilot-digest / copilot-judge / assessment-carry.
+- Proof (same 8-page pack, before → after): 12/15 → 15/15; answer input 64.5k full-price → 26.3k full + 32.6k cached;
+  ~15.8¢ → ~9.1¢ for 10 answers. meeting-copilot-e2e 18/18, assessment-e2e 25/25, npm test (+copilot-context 18 checks).
+- Rollback: known-good-2026-10-13-before-smart-context.
+
 ## 13 Oct 2026 (night, last) — Assessment: who sees it
 - Owner's call: Admin, Premium, UAT Tester (plan 'test'). Default lives in lib/assessment.js ASSESSMENT_DEFAULT_PLANS;
   is_admin accounts always; env ASSESSMENT_PLANS overrides without a deploy ("all" = everyone). Free/Pro: no card, POST 403.

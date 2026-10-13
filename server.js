@@ -2696,7 +2696,13 @@ function liveWsForSession(sessionId) {
 async function loadCallRows(callId) {
   // The NEWEST 400 rows, in time order. (Was the oldest 400: on 9 Oct a long call sat at rows=400 from 18:24 on — every
   // later screen, answer and digest was invisible to the co-pilot.) The digest row carries the compacted start.
-  const r = await pool.query('SELECT kind, text, meta, ts FROM (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 ORDER BY ts DESC LIMIT 400) t ORDER BY ts ASC', [callId]);
+  // Pages, answers and documents ALWAYS load (an all-day call keeps every page reachable); talk = the newest 400 lines;
+  // the digest = the newest one (it already folds in everything before it).
+  const r = await pool.query(`SELECT kind, text, meta, ts FROM (
+      (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 AND kind IN ('seen', 'said', 'document'))
+      UNION ALL (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 AND kind NOT IN ('seen', 'said', 'document', 'digest') ORDER BY ts DESC LIMIT 400)
+      UNION ALL (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 AND kind = 'digest' ORDER BY ts DESC LIMIT 1)
+    ) t ORDER BY ts ASC`, [callId]);
   return r.rows.map(x => ({ kind: x.kind, text: x.text, meta: x.meta || {}, ts: new Date(x.ts).getTime() }));
 }
 
@@ -2806,7 +2812,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const bankQ = await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer != '' ORDER BY id LIMIT 60", [sessionId]);
     const bank = bankQ.rows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
     const digestUpTo = ((copilotDigests.get(callId) || {}).lastTs) || ((rows.filter(r => r.kind === 'digest').pop() || {}).meta || {}).upTo || 0;
-    const textPrompt = meetingCopilot.buildCopilotPrompt({ mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const parts = meetingCopilot.buildCopilotBlocks({ mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
@@ -2814,10 +2820,23 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, say, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
     if (mode === 'smart') console.log('[Co-pilot] screens given:', meetingCopilot.dedupeScreens(rows.filter(r => r.kind === 'seen')).map(r => (r.meta && r.meta.key || '?') + ' "' + r.text.replace(/\s+/g, ' ').slice(0, 50) + '"').join(' | ').slice(0, 1200));
 
-    let content = textPrompt;
-    if (hasImage) content = [imgBlock, { type: 'text', text: textPrompt }];
+    // History mode (Sonnet): cache order — instructions + session material + every page (one block each, new pages only
+    // append) are cached; the image and what changes per press come after. A press re-pays ~10% for what is cached.
+    // Regular mode (Haiku): one short string, no cache (below the cacheable minimum).
+    let content, system = meetingCopilot.MEETING_PROMPT;
+    if (mode === 'smart') {
+      system = [{ type: 'text', text: meetingCopilot.MEETING_PROMPT, cache_control: { type: 'ephemeral' } }];
+      const head = [];
+      if (parts.stable.length) head.push({ type: 'text', text: parts.stable.join('\n\n') });
+      for (const t of parts.screens) head.push({ type: 'text', text: t });
+      if (head.length) head[head.length - 1].cache_control = { type: 'ephemeral' };
+      content = head.concat(hasImage ? [imgBlock] : [], [{ type: 'text', text: parts.volatile.join('\n\n') }]);
+    } else {
+      const textPrompt = parts.stable.concat(parts.screens, parts.volatile).join('\n\n');
+      content = hasImage ? [imgBlock, { type: 'text', text: textPrompt }] : textPrompt;
+    }
     const t0 = Date.now(); let first = 0;
-    const answer = String(await callClaudeStream(meetingCopilot.MEETING_PROMPT, content, meetingCopilot.maxTokensFor(mode, say), model, t => {
+    const answer = String(await callClaudeStream(system, content, meetingCopilot.maxTokensFor(mode, say), model, t => {
       if (!first) first = Date.now() - t0;
       broadcastToSession(sessionId, { type: 'copilot_delta', cardId, text: t });
     }, Object.assign({ __tag: 'copilot-answer' }, meetingCopilot.requestExtrasFor(mode) || {})) || '').trim();
