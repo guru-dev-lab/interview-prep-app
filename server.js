@@ -2670,7 +2670,9 @@ function liveWsForSession(sessionId) {
 }
 
 async function loadCallRows(callId) {
-  const r = await pool.query('SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 ORDER BY ts ASC LIMIT 400', [callId]);
+  // The NEWEST 400 rows, in time order. (Was the oldest 400: on 9 Oct a long call sat at rows=400 from 18:24 on — every
+  // later screen, answer and digest was invisible to the co-pilot.) The digest row carries the compacted start.
+  const r = await pool.query('SELECT kind, text, meta, ts FROM (SELECT kind, text, meta, ts FROM call_events WHERE call_id = $1 ORDER BY ts DESC LIMIT 400) t ORDER BY ts ASC', [callId]);
   return r.rows.map(x => ({ kind: x.kind, text: x.text, meta: x.meta || {}, ts: new Date(x.ts).getTime() }));
 }
 
