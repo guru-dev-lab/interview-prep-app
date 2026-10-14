@@ -1,5 +1,17 @@
 # Handoff
 
+## 13 Oct 2026 (21:15) — continued assessment + press shows answers as cards (PRs #100, #101) — owner: "it works now"
+- #100: a CONTINUED sitting said "the last answer stands" for answers given in an EARLIER sitting (not on his screen).
+  Carry text no longer says "never redo it"; DONE items on screen are re-shown as "<item> — answered earlier:"; volatile
+  block CONTINUED SITTING (assessment + priorMemory + pressed); answeredItems() records those headings.
+- #101: a press with questions already answered THIS sitting gave "Nothing is being asked right now; the last answer
+  stands (…)" with the answer in a bracket (log 14 Oct 02:09–02:10Z). Now every press re-shows each on-screen answered
+  question as its own block "<question> — answered earlier:" + same lines. "Nothing open" = screen holds NO question.
+- Proof kit: scratchpad frontwin/continue.js (1 Sonnet call; SECOND=1 = this-sitting case). test/meeting-copilot.js +2,
+  test/assessment.js 53 checks. Rollback tags: known-good-2026-10-13-before-{carry-restate,answer-card}.
+- Open: 17 junk rows (blocked on Railway SSH link); read [Overlay] diag / [Usage] / [Assessment] logs after his next real
+  run; co-pilot plan limit unanswered; Support Weekly Sync artifact — delete when he says.
+
 ## 13 Oct 2026 (19:00) — front-window read, launcher fonts, Snap shortcut, auto-follow (PRs #95–#98, desktop v1.1.6)
 - #95 screen reader: overlapping windows → FRONT window first + decides TYPE, "Behind:" lines, "Typed in the box (not
   sent): …". Cause in log: "Transcribing the main terminal window". Repro kit: scratchpad frontwin/ (1 Sonnet call).
