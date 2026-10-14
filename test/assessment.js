@@ -90,4 +90,12 @@ ok(/<body class="board-closed"/.test(canvas), 'panel starts closed → side bar 
 ok(/body\.board-closed \.copilot-float,body\.board-closed \.copilot-capture-list\{display:none !important\}/.test(canvas), 'closed panel hides the side bar + capture list');
 ok(/document\.body\.classList\.toggle\('board-closed', !boardVisible\)/.test(canvas), 'the panel toggle moves the side bar with it');
 
-console.log(`assessment: ${n} checks\nALL PASS (desktop-only entry, continue from carry, title locked once)`);
+// ---- continued sitting (owner, 13 Oct): answers from an earlier sitting are not on his screen — a press SHOWS them again
+const contBlocks = o => mc.buildCopilotBlocks(Object.assign({ mode: 'smart', rows: [], session: {}, bank: '', docs: '', ask: '', pullIdx: [] }, o)).volatile.join('\n');
+ok(/CONTINUED SITTING[\s\S]*answered earlier/.test(contBlocks({ assessment: true, priorMemory: 'DONE — Q1 → A', pressed: true })), 'continued sitting + press → show earlier answers again');
+ok(!/CONTINUED SITTING/.test(contBlocks({ assessment: true, priorMemory: '', pressed: true })), 'first sitting (no carry) → rule absent');
+ok(!/CONTINUED SITTING/.test(contBlocks({ assessment: false, priorMemory: 'notes', pressed: true })), 'meetings → rule absent');
+ok(mc.answeredItems('Asked: x\n\nTextEdit line 1 — "WHAT IS SQL." — answered earlier:\nSay:\n  SQL is…').includes('TextEdit line 1 — "WHAT IS SQL."'), 'a re-shown item joins this sitting\'s ledger (no repeat on the next press)');
+ok(!/never redo it/.test(mc.buildCopilotBlocks({ mode: 'smart', rows: [], session: {}, assessment: true, priorMemory: 'DONE — Q1 → A' }).stable.join('\n')), 'carry no longer says "never redo it"');
+
+console.log(`assessment: ${n} checks\nALL PASS (desktop-only entry, continue from carry, title locked once, earlier answers shown again)`);
