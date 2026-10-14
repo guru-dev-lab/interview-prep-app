@@ -1,5 +1,20 @@
 # Handoff
 
+## 13 Oct 2026 (19:00) — front-window read, launcher fonts, Snap shortcut, auto-follow (PRs #95–#98, desktop v1.1.6)
+- #95 screen reader: overlapping windows → FRONT window first + decides TYPE, "Behind:" lines, "Typed in the box (not
+  sent): …". Cause in log: "Transcribing the main terminal window". Repro kit: scratchpad frontwin/ (1 Sonnet call).
+- #96 launcher Assessment History rows = Continue-last fonts (600 12px / 10px #94a3b8).
+- #97 (v1.1.6, installed on his Mac): Snap = ⌘⌥↵ (Ctrl+Alt+Enter) → copilotCapture(); in-page always, global with Global
+  Shortcut Mode. Keys: ⌘↵ Assist, ⌘⌥↵ Snap, ⌘⇧↵ Say. Real-key proof harness scratchpad gs-proof/snap.js (takes over the
+  keyboard ~30 s — ASK him first; a blocked Write once launched Electron with no file → error dialog on his screen).
+- #98 auto-follow: ONE door revealAnswer() — newest answer's first line to the top, re-applied per streamed chunk, never
+  past it / never back up; instant scrollTo (the list has CSS scroll-behavior:smooth, whose in-between positions read as
+  "scrolled up"). userScrolledUp = reading ABOVE the newest answer. Proof: scratchpad gs-proof/follow.js.
+- Assessment "Continue last" checked against [Assessment] logs: correct (most recent sitting first). Owner confirmed.
+  Known weak spot (owner said leave it): titles come from whatever is on screen at the first carry, incl. background
+  windows (my terminals named two of his). Offer if it comes up: name from the front window only, or tap-to-rename.
+- Rollback tags: known-good-2026-10-13-before-{front-window,as-font,snap-shortcut,auto-follow}.
+
 ## 13 Oct 2026 (18:00) — Global Shortcut Mode (PR #93, desktop v1.1.5)
 - Owner's ask: Settings → Live Mode → Global Shortcut Mode (desktop only, default OFF). ON = Cmd+Enter (Ctrl+Enter on
   Windows) runs Screen Assist from any app; the overlay is not raised or focused. He uses it in meetings (incl. Assessment).
