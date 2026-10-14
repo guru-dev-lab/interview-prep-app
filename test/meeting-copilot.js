@@ -372,5 +372,7 @@ console.log('ALL PASS (missing page is missing)');
   const pressed = mc.buildCopilotPrompt({ mode: 'smart', rows: [{ kind: 'said', text: 'Asked: write a SQL… Say: Here is the complete query … ORDER BY total_spend DESC;', ts: 1 }], session: {}, ask: '', pressed: true, screenChanged: false });
   ok(/nothing open/i.test(pressed) && /last answer stands/i.test(pressed), 'the press instruction points to the status line when nothing is open');
   ok(/never answer "nothing new"/i.test(pressed), 'the silent "nothing new" is still forbidden on a press (a press always gets a reply)');
+  ok(/answered earlier:/.test(P) && /Never fold an answer into/.test(P), 'a press on an already-answered question shows the answer again as a real card (owner, 13 Oct)');
+  ok(/every question on the CURRENT screen already has an answer, show those answers again/.test(pressed) && /current screen holds NO question/.test(pressed), 'the status line is only for a screen with no question');
   console.log('ALL PASS (a press never invents)');
 }
