@@ -5,7 +5,8 @@ const prev = "What's the difference between an inner join and a left join?";
 const cases = [
   ['How would you approach this problem?', true], ['And when would you use each one?', true], ['Can you walk me through that?', true],
   ['What about when the tables are huge?', true], ["What if they're a senior executive?", true], ['How would you test it?', true],
-  ['How do you prioritize competing deadlines?', false], ['How do you handle it when you get stuck on something?', false],
+  ['What tools did you use for it? And who used it every week?', true], ['Who did you build it for, and how often did they use it?', true],
+  ['How do you prioritize competing deadlines?', false], ['How do you make it to work on time when plans change?', false], ['How do you handle it when you get stuck on something?', false],
   ['In Power BI, what is the difference between a calculated column and a measure?', false], ['Why are you looking to leave your current job?', false],
 ];
 (async () => { let fail = 0; for (const [q, want] of cases) { const got = await f(q, prev); if (got !== want) { fail++; console.log('FAIL', q, '→', got); } }

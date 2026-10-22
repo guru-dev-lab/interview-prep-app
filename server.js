@@ -3453,6 +3453,8 @@ async function isFollowUpOf(newQ, prevQ) {
   const t = (newQ || '').trim().toLowerCase();
   if (/^(and|also|plus|what about|how about|what if)\b/.test(t)) return true; // question clean-up strips a leading And
   if (t.split(/\s+/).length <= 14 && (/\b(this|that|those|these|each|either|both)\b/.test(t) || /\b(it|them)\s*[?.!]?$/.test(t))) return true;
+  // "What tools did you use for it? And who used it every week?" (22 Oct test): "it/them" pointing back, anywhere in a short ask.
+  if (t.split(/\s+/).length <= 20 && /\b(for|with|on|about|in|of|from|to|into|use|used|using|build|built|do|did|run|ran|make|made|handle|handled|share|test|tested|explain)\s+(it|them)(\s*([?.!,]|$)|\s+(and|or|every|each|daily|weekly|at|in|on|with|for)\b)/.test(t)) return true; // not "handle it when…" (points forward)
   try {
     const a = await embedText(newQ), b = await embedText(prevQ);
     if (a && b) { let sim = 0; for (let i = 0; i < a.length; i++) sim += a[i] * b[i]; if (sim >= FOLLOW_UP_SIMILARITY) return true; }
@@ -4124,6 +4126,7 @@ wss.on('connection', (ws) => {
           if (alreadyAsked && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) { console.log('[Grow] Same question found again — nothing new to add'); return; }
           if (growEnabled && growFresh && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
             console.log('[Grow] Continuation detected — extending active answer:', q.substring(0, 80));
+            ws._lastCard.heardTs = Date.now(); // Say: this line is part of the card on screen, not a newer question
             growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
             return;
           }
@@ -4148,6 +4151,7 @@ wss.on('connection', (ws) => {
               const last = ws._lastNewCard;
               if (qLow.includes(prev) && qLow.length >= prev.length + 8 && last && last.q.toLowerCase() === prev && Date.now() - last.ts < GROW_WINDOW_MS) {
                 recentDetectedQs[ri] = q; last.q = q;
+                if (ws._lastCard && ws._lastCard.id === last.id) { ws._lastCard.asked = q; ws._lastCard.heardTs = Date.now(); } // Say stays on it
                 upgradeCard(q, last.id).catch(e => console.error('[Upgrade] failed:', e.message));
                 return;
               }
@@ -4693,14 +4697,15 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify({ type: 'copilot_say', text }));
           return;
         }
-        const newerQuestion = !lc || interviewerLines().some(t => (t.ts || 0) > lc.ts && substantive(t.text)) || substantive(currentBuf);
+        // heardTs: the card was grown/upgraded with later lines — those are this card's question, not a newer one.
+        const newerQuestion = !lc || interviewerLines().some(t => (t.ts || 0) > (lc.heardTs || lc.ts) && substantive(t.text)) || substantive(currentBuf);
         // The jump ALWAYS happens first (owner: "don't remove the jump — it may be answered already, or the AI is still
         // writing it and I just need something to start talking"). If the interviewer asked something newer, the re-read
         // below answers that too and moves the screen to it.
         // …but only when that card IS their latest question (owner, 21 Oct: every press showed the old card first while
         // they had already asked something new — "stale"). Something new since the card → answer the new thing directly.
         let jumpedTo = null;
-        if (lc && Date.now() - lc.ts < 90000 && !newerQuestion) {
+        if (lc && !newerQuestion) { // no age limit (22 Oct): after a long answer (> 90 s) the press rewrote the card — nothing new since = it is still their latest question
           const onScreen = (ws._activeAnswer && ws._activeAnswer.id === lc.id) ? ws._activeAnswer.answer : ((sessionQuestions.find(x => x.id === lc.id) || {}).answer || '');
           const focusMsg = { type: 'match', questionId: lc.id, questionText: lc.isBank ? lc.q : (lc.asked || lc.q), answer: onScreen || '', similarity: 100, hasAnswer: !!onScreen, navigate: true };
           ws.send(JSON.stringify(focusMsg)); broadcastToSession(sessionId, focusMsg, ws);
@@ -4773,7 +4778,7 @@ wss.on('connection', (ws) => {
         }
 
         // Same as the card already on screen (jumped to or not)? Show THAT card — never rewrite it.
-        if (!jumpedTo && lc && Date.now() - lc.ts < 90000) {
+        if (!jumpedTo && lc) {
           const a0 = questionText.toLowerCase();
           if ([lc.asked, lc.q].filter(Boolean).some(b => { b = b.toLowerCase(); return b.includes(a0) || a0.includes(b) || stringSimilarity.compareTwoStrings(a0, b) >= 0.6; })) {
             const onScreen = (ws._activeAnswer && ws._activeAnswer.id === lc.id) ? ws._activeAnswer.answer : ((sessionQuestions.find(x => x.id === lc.id) || {}).answer || '');
