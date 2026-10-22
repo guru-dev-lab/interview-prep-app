@@ -83,9 +83,11 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   check(r.ids.length === 0, `no card for statements (got ${r.ids.length})`);
 
   // 3. One turn with a follow-up tag → one card.
-  r = await scenario(sess, 'ONE TURN, follow-up tag (11:19)', { lines: ['How do you handle conflicting priorities?', { pause: 400 }, 'Right? Just give me an example of how you handled it when two regions both said theirs was the most urgent.'] });
+  r = await scenario(sess, 'ONE TURN, follow-up tag (11:19)', { lines: ['How do you handle conflicting priorities?', { pause: 400 }, 'Right? Just give me an example of how you handled it when two regions both said theirs was the most urgent.'], click: true });
   check(r.ids.length === 1, `one card, not ${r.ids.length}`);
-  check(r.detected.length && r.detected.every(d => d._t >= r.askEndT), 'nothing answered before the turn finished');
+  check(r.detected.filter(d => d.source !== 'manual').every(d => d._t >= r.askEndT), 'nothing answered before the turn finished');
+  const ci3 = r.got.findIndex(m => m.type === 'CLICK'), after3 = r.got.slice(ci3 + 1).filter(m => ['match', 'new_question'].includes(m.type));
+  check(after3.length && after3.every(m => m.type === 'match' && m.questionId === r.ids[0]), 'Say on the updated card stays on it');
 
   // 4. Stale: after the candidate answered card 1, a related NEW question must get its own answer, not card 1.
   r = await scenario(await seed(), 'STALE re-use (11:19:59)', { lines: ['Have you come across situations where several teams sent you conflicting priorities, and how did you solve them?', { you: 'Yes. At Northwind I ranked the requests by business impact and agreed the order with each manager, then I shared the plan every Monday.' }, 'Okay. When the APAC team says their project is the most urgent, how would you decide what to build first?'], waitMs: 11000 });
@@ -101,6 +103,25 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   const firstAfter = r.got.slice(ci + 1).find(m => ['match', 'new_question', 'live_answer'].includes(m.type));
   check(!firstAfter || !/deadline/i.test(firstAfter.questionText || ''), `Say did not bring back the old deadline card (first: "${firstAfter ? (firstAfter.questionText || '').slice(0, 50) : 'nothing'}")`);
   check(r.got.slice(ci + 1).some(m => ['match', 'new_question', 'live_answer'].includes(m.type) && /quality|warehouse/i.test(m.questionText || '')), 'the data-quality point is answered');
+
+  // 6. Say when the latest question is already answered and nothing new was asked — even a long answer later (> 90 s):
+  //    stay on that card, nothing rewritten, no second card.
+  r = await scenario(await seed(), 'SAY, already answered, long answer', { lines: ['How would you handle a missed deadline on a client report?', { you: 'I would tell the client early and agree a new date with them.' }, { pause: 95000 }], click: true, waitMs: 8000 });
+  const cardIds = [...new Set(r.got.filter(m => m.type === 'new_question').map(m => m.questionId))];
+  const ci6 = r.got.findIndex(m => m.type === 'CLICK');
+  const after6 = r.got.slice(ci6 + 1).filter(m => ['match', 'new_question', 'live_answer', 'question_detected'].includes(m.type));
+  check(cardIds.length === 1, `one card before the press (got ${cardIds.length})`);
+  check(after6.length && after6[0].type === 'match' && after6[0].questionId === cardIds[0], `Say stayed on the answered card (first: ${after6[0] ? after6[0].type : 'nothing'})`);
+  check(!after6.some(m => m.type === 'new_question' || (m.type === 'live_answer' && m.questionId === cardIds[0])), 'nothing rewritten, no new card');
+
+  // 7. The card is updated after it appeared (second part of the question a moment later), then Say: stay on that card.
+  r = await scenario(await seed(), 'SAY on a card updated after it appeared', { lines: ['Tell me about a dashboard you built for a sales team?', { pause: 2500 }, 'And what tools did you use for it, and who used it every week?'], click: true, waitMs: 9000 });
+  const ci7 = r.got.findIndex(m => m.type === 'CLICK');
+  const cards7 = [...new Set(r.got.slice(0, ci7).filter(m => m.type === 'new_question').map(m => m.questionId))];
+  const after7 = r.got.slice(ci7 + 1).filter(m => ['match', 'new_question'].includes(m.type));
+  check(cards7.length === 1, `the second part updated the first card, no second card (got ${cards7.length})`);
+  check(after7.length && after7.every(m => m.type === 'match' && m.questionId === cards7[cards7.length - 1]), `Say stayed on the latest card (cards before press: ${cards7.length})`);
+  check(!r.got.slice(ci7 + 1).some(m => m.type === 'question_detected' && m.source === 'manual' && r.got.slice(ci7 + 1).some(x => x.type === 'new_question')), 'no new card from the press');
 
   await pool.end();
   console.log(fails.length ? `\n${fails.length} FAILED` : '\nALL PASS');
