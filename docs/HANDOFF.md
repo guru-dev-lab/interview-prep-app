@@ -1,12 +1,12 @@
 # Handoff
 
-## 22 Oct 2026 — Say stays on the answered card (PR #104) · NOT LIVE YET (Railway outage, builds paused)
+## 22 Oct 2026 — Say stays on the answered card (PR #104) · LIVE 21:23Z (deploy e5aced7b, 1cf07b6, #103 + #104)
 - Say > 90 s after a card with nothing new asked re-ran the AI and rewrote the card → no age limit now (nothing new since =
   still their latest question); lines that grew/upgraded a card count as that card (`_lastCard.heardTs`).
 - A question's second part ("What tools did you use for it? And who used it every week?") made a 2nd card → isFollowUpOf
   catches it/them pointing back in a short ask (not "handle it when…").
 - Proof: early-stale-e2e 7 scenarios ALL PASS (6, 7 failed before), live-e2e ALL PASS, npm test green.
-- Deploy: main 6973084 (#103 + #104) waits on Railway's outage; live is still 700e19b (14 Oct). Rollback tags:
+- Deployed by hand (Railway outage paused builds ~05:00–21:08Z; GitHub push did not auto-deploy). Live smoke: pages, APIs, auth refusals, WebSocket all PASS. Rollback tags:
   known-good-2026-10-21-before-detect-fix (before both), known-good-2026-10-22-before-say-fix.
 - Railway posted a security notice: reconnect GitHub after their credential reset — if merges stop auto-deploying, check it.
 
