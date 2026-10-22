@@ -1,5 +1,15 @@
 # Handoff
 
+## 22 Oct 2026 — Say stays on the answered card (PR #104) · NOT LIVE YET (Railway outage, builds paused)
+- Say > 90 s after a card with nothing new asked re-ran the AI and rewrote the card → no age limit now (nothing new since =
+  still their latest question); lines that grew/upgraded a card count as that card (`_lastCard.heardTs`).
+- A question's second part ("What tools did you use for it? And who used it every week?") made a 2nd card → isFollowUpOf
+  catches it/them pointing back in a short ask (not "handle it when…").
+- Proof: early-stale-e2e 7 scenarios ALL PASS (6, 7 failed before), live-e2e ALL PASS, npm test green.
+- Deploy: main 6973084 (#103 + #104) waits on Railway's outage; live is still 700e19b (14 Oct). Rollback tags:
+  known-good-2026-10-21-before-detect-fix (before both), known-good-2026-10-22-before-say-fix.
+- Railway posted a security notice: reconnect GitHub after their credential reset — if merges stop auto-deploying, check it.
+
 ## 21 Oct 2026 — answers before the question finished + stale answers (regular panel), user call 11:00–11:33 CDT
 - Evidence (Railway logs 16:00–16:33Z, session 626c2a88…, copilot:false): fast route answered fragments and statements
   ("So when when it comes to Power BI, right,", "Build reports that", "…what the culture is all about.", "I do have one
