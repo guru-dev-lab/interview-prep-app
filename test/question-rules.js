@@ -34,6 +34,13 @@ const QUESTIONS = [
   'Write me a quick SQL query to get the top three customers by revenue in each region.',
   'Can you write a DAX measure for year over year growth?',
   'Build me a simple model to forecast weekly demand.',
+  // Live call 21 Oct — the real questions
+  "When it comes to Power BI, can you share a certain project you've worked on where you have built Power BI solutions?",
+  'How do you handle conflicting priorities?',
+  'If you have, like, two or three projects coming to you, how would you handle that?',
+  'Like, what are you looking for your next role? You mentioned',
+  'Have you come across any issues like that in your role, right, and how have you solved them?',
+  'Just give me maybe an example of how you handled that.',
 ];
 const NOT_QUESTIONS = [
   // Host feedback, prod 26 Sep 23:15 — a clause about what the candidate did, not a question
@@ -58,6 +65,22 @@ const NOT_QUESTIONS = [
   'Thanks so much for your time today',
   'For joining. You hear me okay?',
   'Can you see me alright?',
+  // Live call 21 Oct (regular panel) — every one of these got an answer card
+  'Build datasets, helping them build dashboards, helping them really automate a lot of the manual task that they do. Right?',
+  'So when when it comes to Power BI, right,',
+  'Build reports that',
+  '? Just give me maybe an example of how',
+  "Report could serve multiple stakeholders. Right? You you know what I'm trying to say?",
+  'I know we are kind of running close to the thirty minute mark. I do have one question I wanted to ask you.',
+  'Up me and another manager. We report up to Tricia, who who is our manager.',
+  "So that's, I think, what the culture is all about.",
+  'Right? So the way it works is I report',
+  'Does that make sense?',
+];
+// Deepgram cuts a sentence across lines; the second half starts lowercase. It is never a fresh question on its own.
+const CONTINUATIONS = [
+  "describe the culture. So far, it's been really good, really productive environment to work on.",
+  'up me and another manager. We report up to Tricia, who who is our manager.',
 ];
 // questionPartOf / cleanQuestionText live outside the block — grab them by name from the same source
 function grab(name) { const i = src.indexOf('function ' + name + '('); let d = 0, j = src.indexOf('{', i); for (let k = j; k < src.length; k++) { if (src[k] === '{') d++; else if (src[k] === '}') { d--; if (!d) return src.slice(i, k + 1); } } }
@@ -65,6 +88,7 @@ const questionPartOf = new Function(block + grab('cleanQuestionText') + grab('qu
 let fail = 0;
 for (const q of QUESTIONS) if (!isQuestion(q)) { fail++; console.log('MISSED question :', q); }
 for (const q of NOT_QUESTIONS) if (isQuestion(q)) { fail++; console.log('FALSE question  :', q); }
+for (const q of CONTINUATIONS) if (questionPartOf(q)) { fail++; console.log('CONTINUATION answered:', q); }
 // Fast route: clear interviewer questions come back (with their context), everything else → null (AI route decides)
 const FAST = [
   ['How would you speed up a slow query in our environment?', 'How would you speed up a slow query in our environment?'],

@@ -1,0 +1,108 @@
+// Live call 21 Oct (regular panel): answers came before the question was finished, the rest of the question made a NEW
+// card, statements got answer cards, and a new question showed an old card ("stale"). Real server + real Deepgram + Haiku,
+// spoken with macOS `say`, streamed like Electron. ONE seeded session for the whole run (spend rule).
+// Usage: node test/early-stale-e2e.js [http://localhost:3999]   (LOCAL DATABASE_URL only; server with MUSTHAVE_PREBUILD=0)
+require('dotenv').config();
+const { execFileSync } = require('child_process');
+const fs = require('fs'), os = require('os'), path = require('path');
+const WebSocket = require('ws');
+const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
+
+const BASE = process.argv[2] || 'http://localhost:3999';
+if (!/127\.0\.0\.1|localhost/.test(process.env.DATABASE_URL || '')) { console.error('Refusing: DATABASE_URL is not local'); process.exit(2); }
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'xhire-es-'));
+const speech = (text, voice) => {
+  const aiff = path.join(tmp, Math.random().toString(36).slice(2) + '.aiff'), wav = aiff.replace('.aiff', '.wav');
+  execFileSync('say', ['-v', voice || 'Samantha', '-o', aiff, text]);
+  execFileSync('afconvert', ['-f', 'WAVE', '-d', 'LEI16@16000', '-c', '1', aiff, wav]);
+  const b = fs.readFileSync(wav); const i = b.indexOf('data'); return b.slice(i + 8);
+};
+const silence = ms => Buffer.alloc(Math.round(16 * ms) * 2);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function seed() {
+  const email = 'e2e-es-' + Date.now() + '@local.test';
+  const u = (await pool.query("INSERT INTO users (email, name, plan) VALUES ($1,'E2E Tester','pro') RETURNING *", [email])).rows[0];
+  const s = (await pool.query("INSERT INTO sessions (user_id, company, role, resume) VALUES ($1,'Acme Analytics','Data Analyst','Data analyst, 4 years. SQL, Power BI, Excel, Python. Built sales dashboards at Northwind.') RETURNING id", [u.id])).rows[0];
+  const token = jwt.sign({ userId: u.id, name: u.name, email, isAdmin: false, plan: 'pro', suspended: false }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  return { token, sessionId: s.id };
+}
+
+// lines: interviewer string | { you } (candidate mic) | { pause: ms } (interviewer silent mid-turn, replaces the 700 ms gap)
+async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
+  const ws = new WebSocket(BASE.replace(/^http/, 'ws'));
+  const got = [];
+  ws.on('message', d => { try { const m = JSON.parse(d); m._t = Date.now(); if (!/transcript/.test(m.type)) got.push(m); } catch (e) {} });
+  await new Promise(r => ws.on('open', r));
+  ws.send(JSON.stringify({ type: 'start', token: sess.token, sessionId: sess.sessionId, mode: 'full', platform: 'electron', dualStream: true }));
+  await sleep(1500);
+  const ch1 = [silence(500)], ch2 = [silence(500)];
+  let lastAskEnd = 0; // byte offset where the interviewer's LAST line ends
+  const len1 = () => ch1.reduce((n, b) => n + b.length, 0);
+  for (const l of lines) {
+    if (typeof l === 'string') { const a = speech(l); ch1.push(a); lastAskEnd = len1(); ch1.push(silence(700)); ch2.push(silence(a.length / 32 + 700)); }
+    else if (l.pause) { ch1.pop(); ch2.pop(); ch1.push(silence(l.pause)); ch2.push(silence(l.pause)); }
+    else { const a = speech(l.you, 'Daniel'); ch2.push(a, silence(900)); ch1.push(silence(a.length / 32 + 900)); }
+  }
+  let c1 = Buffer.concat([...ch1, silence(2500)]), c2 = Buffer.concat(ch2);
+  const len = Math.max(c1.length, c2.length);
+  c1 = Buffer.concat([c1, Buffer.alloc(len - c1.length)]); c2 = Buffer.concat([c2, Buffer.alloc(len - c2.length)]);
+  const t0 = Date.now();
+  for (let o = 0; o < len; o += 3200) {
+    ws.send(Buffer.concat([Buffer.from([1]), c1.slice(o, o + 3200)]));
+    ws.send(Buffer.concat([Buffer.from([2]), c2.slice(o, o + 3200)]));
+    await sleep(100);
+  }
+  const askEndT = t0 + (lastAskEnd / 32000) * 1000;
+  if (click) { got.push({ type: 'CLICK', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
+  await sleep(waitMs);
+  ws.close();
+  const detected = got.filter(m => m.type === 'question_detected');
+  const ids = [...new Set(got.filter(m => ['new_question', 'match', 'live_answer'].includes(m.type)).map(m => m.questionId))];
+  console.log(`\n### ${name}`);
+  for (const m of got.filter(m => ['question_detected', 'new_question', 'match', 'CLICK'].includes(m.type)))
+    console.log(`  ${String(m._t - askEndT).padStart(6)} ms  ${m.type.padEnd(17)} ${m.source || ''} "${(m.text || m.questionText || '').slice(0, 90)}"`);
+  return { got, detected, ids, askEndT };
+}
+
+(async () => {
+  const sess = await seed();
+  const fails = [];
+  const check = (ok, what) => { console.log(`  ${ok ? 'PASS' : 'FAIL'} ${what}`); if (!ok) fails.push(what); };
+
+  // 1. Deepgram cuts the question in two; the first half must not get a card, the whole question gets ONE card.
+  let r = await scenario(sess, 'SPLIT question (11:10 Power BI)', { lines: ['So when it comes to Power BI, right,', { pause: 1100 }, 'can you share a project where you built Power BI solutions, and how you structured it?'] });
+  check(r.ids.length === 1, `one card, not ${r.ids.length}`);
+  check(r.detected.length && r.detected.every(d => d._t >= r.askEndT), 'nothing answered before the question finished');
+  check(r.detected.length && /share|project/i.test(r.detected[0].text), 'the card is the full question');
+
+  // 2. Statements and an announced question: no card at all.
+  r = await scenario(sess, 'STATEMENTS (11:02, 11:22)', { lines: ['Build datasets, helping them build dashboards, helping them really automate a lot of the manual tasks that they do. Right?', 'I know we are running close to the thirty minute mark. I do have one question I wanted to ask you.'], waitMs: 7000 });
+  check(r.ids.length === 0, `no card for statements (got ${r.ids.length})`);
+
+  // 3. One turn with a follow-up tag → one card.
+  r = await scenario(sess, 'ONE TURN, follow-up tag (11:19)', { lines: ['How do you handle conflicting priorities?', { pause: 400 }, 'Right? Just give me an example of how you handled it when two regions both said theirs was the most urgent.'] });
+  check(r.ids.length === 1, `one card, not ${r.ids.length}`);
+  check(r.detected.length && r.detected.every(d => d._t >= r.askEndT), 'nothing answered before the turn finished');
+
+  // 4. Stale: after the candidate answered card 1, a related NEW question must get its own answer, not card 1.
+  r = await scenario(await seed(), 'STALE re-use (11:19:59)', { lines: ['Have you come across situations where several teams sent you conflicting priorities, and how did you solve them?', { you: 'Yes. At Northwind I ranked the requests by business impact and agreed the order with each manager, then I shared the plan every Monday.' }, 'Okay. When the APAC team says their project is the most urgent, how would you decide what to build first?'], waitMs: 11000 });
+  check(r.ids.length === 2, `two different cards (got ${r.ids.length})`);
+  const lastQ = r.detected[r.detected.length - 1];
+  check(lastQ && /decide|build first/i.test(lastQ.text) && lastQ._t >= r.askEndT, `the new question is answered whole, after it finished (got "${lastQ ? lastQ.text.slice(0, 60) : 'none'}")`);
+  check(!r.got.some(m => m.type === 'match' && /conflicting priorities/i.test(m.questionText || '') && m._t > r.askEndT - 6000), 'the new question did not re-show the old priorities card');
+
+  // 5. Say after the interviewer moved on with something that is not shaped like a question (no auto card): the press
+  //    must answer THAT, not jump back to the old card (11:16–11:23 presses).
+  r = await scenario(sess, 'SAY after they moved on', { lines: ['How would you handle a missed deadline on a client report?', { you: 'I would tell the client early and agree a new date with them.' }, 'We have been struggling with data quality in our warehouse feeds lately.'], click: true, waitMs: 9000 });
+  const ci = r.got.findIndex(m => m.type === 'CLICK');
+  const firstAfter = r.got.slice(ci + 1).find(m => ['match', 'new_question', 'live_answer'].includes(m.type));
+  check(!firstAfter || !/deadline/i.test(firstAfter.questionText || ''), `Say did not bring back the old deadline card (first: "${firstAfter ? (firstAfter.questionText || '').slice(0, 50) : 'nothing'}")`);
+  check(r.got.slice(ci + 1).some(m => ['match', 'new_question', 'live_answer'].includes(m.type) && /quality|warehouse/i.test(m.questionText || '')), 'the data-quality point is answered');
+
+  await pool.end();
+  console.log(fails.length ? `\n${fails.length} FAILED` : '\nALL PASS');
+  process.exit(fails.length ? 1 : 0);
+})().catch(e => { console.error(e); process.exit(1); });

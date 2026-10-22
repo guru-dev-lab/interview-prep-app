@@ -3101,7 +3101,11 @@ function cleanQuestionText(text) {
 // Short lines are kept whole (context like "A lot of our clients use Salesforce." matters); long ones are trimmed to
 // start at the first sentence that begins the question.
 function questionPartOf(text) {
-  let t = cleanQuestionText((text || '').trim());
+  let raw = (text || '').trim();
+  // A line that starts lowercase is the rest of a sentence Deepgram cut ("…how I wanna | describe the culture. So far…") —
+  // its first sentence is never a question of its own (21 Oct: "describe the culture." became an answer card).
+  if (/^[a-z]/.test(raw)) { const k = raw.search(/[.?!]\s+/); raw = k === -1 ? '' : raw.slice(k + 1).trim(); }
+  let t = cleanQuestionText(raw);
   // strip spoken lead-ins ("Okay. So…", "Great, so…") with the shared filler rule, keep the question's own casing
   const leadRe = new RegExp(LEAD_FILLER_RE.source, 'i'); let prev;
   do { prev = t; t = t.replace(leadRe, ''); } while (t !== prev && t);
@@ -3146,11 +3150,17 @@ const INTERVIEWER_ASK_RE = /\b(i('d| would) (like|love) to (know|hear|understand
 // Leading filler/acknowledgement the interviewer says before the real question ("Okay. So…", "Great question,").
 const LEAD_FILLER_RE = /^(okay|ok|so|now|well|great question|good question|great|alright|all right|right|yeah|yes|sure|cool|awesome|perfect|good|nice|and|but|also|then|um|uh|hmm|oh|next|moving on|thanks|thank you|got it|makes sense|interesting|fair enough|sounds good|absolutely|definitely|exactly|actually|basically|just)\b[,.!:;]?\s*/;
 function stripLeadFiller(t) { let prev; do { prev = t; t = t.replace(LEAD_FILLER_RE, ''); } while (t !== prev && t); return t; }
+// A clause cut off mid-sentence ("…when it comes to Power BI, right,", "Build reports that") — Deepgram splits lines at tiny
+// pauses; the rest is still coming. Live call 21 Oct: these got answer cards before the question was asked.
+const CUT_OFF_END_RE = /(,|\b(that|how|of|and|the|to|a|an|in|on|for|with|or|but|so|like|which|what|when|where|who|why|is|are|was|were|be|about|if|because|from|as|at|by|your|my|our|their|this|these|those|i|we|you|they|it|than|then|into|do|does|did|can|could|would|will|should|have|has|had))$/;
 function isQuestionClause(s) {
   s = stripLeadFiller(s.trim());
   const words = s ? s.split(/\s+/).length : 0;
   if (words < 3) return false;
+  if (!/[?.!]["')\]]?$/.test(s) && CUT_OFF_END_RE.test(s)) return false;
   if (CANDIDATE_SPEECH_RE.test(s)) return false;
+  // Tag questions that only check the listener is following — "You know what I'm trying to say?", "Does that make sense?"
+  if (/^((you\s+)+)?(know what i('m| am) (trying to say|saying|getting at)|know what i mean)|^(does|did) (that|this|it) make sense|^(that )?makes? sense\b/.test(s)) return false;
   // "What I did was…", "How we solved it…" — a statement, not a question
   if (/^(what|how|why|when|where|who|which) (i|we|they|he|she|it|this|that)\b/.test(s)) return false;
   // Small talk / logistics / wrap-up
@@ -3167,7 +3177,9 @@ function isQuestionClause(s) {
   // Imperative interview prompts: "Please describe…", "Talk me through…", "Share an example…"
   if (/^(please |kindly )?(explain|define|describe|compare|contrast|walk (me|us) through|talk (me|us) through|talk (to (me|us) )?about|tell (me|us)|give (me|us)|share|show (me|us)|outline|discuss|elaborate|summarize|list|name|provide|imagine|suppose|say you|let's say|what if|pretend|think of|think about|how about)\b/.test(s)) return true;
   // Task requests ("Write me a quick SQL query…", "Build a measure that…", "Calculate the…") — mock interview 26 Sep
-  if (/^(please |kindly |can you |could you )?(write|code|build|create|design|draft|sketch|calculate|compute|find|model|set up|put together)\b/.test(s)) return true;
+  // …but not the interviewer describing what THEIR team does ("Build datasets, helping them build dashboards…" — 21 Oct)
+  if (/^(please |kindly |can you |could you )?(write|code|build|create|design|draft|sketch|calculate|compute|find|model|set up|put together)\b/.test(s)
+    && !(/\b(they|them|their)\b/.test(s) && !/\b(you|your|me|us)\b/.test(s))) return true;
   if (words >= 4 && /^(can you |could you |have you |had you |do you |did you |would you |will you |are you |were you |should you |is there |was there |have there been |what's |how's |where's |who's )/.test(s)) return true;
   if (words >= 5 && /^(what |how |why |when |where |who |which )/.test(s)) return true;
   return false;
@@ -3175,6 +3187,8 @@ function isQuestionClause(s) {
 function isQuestion(text) {
   const t = text.trim().toLowerCase();
   if (t.split(/\s+/).length < 3 || t.length < 15) return false;
+  // Announcing a question that hasn't been asked yet — "I do have one question I wanted to ask you." (21 Oct)
+  if (!/\?/.test(t) && /\b(ask you|for you)[.!]?$/.test(t) && /\b(question|ask)\b/.test(t)) return false;
   if (/\byou(r|'re|'ve|'d)?\b/.test(t) && INTERVIEWER_ASK_RE.test(t)) return true;
   // The utterance opens as the candidate talking about themselves → not a question.
   // …unless a later sentence is a clear question TO the candidate ("I didn't catch the company names. So what companies
@@ -3184,8 +3198,10 @@ function isQuestion(text) {
   // Any sentence — or the tail after a lead-in clause ("In your current role, what…") — can carry the question.
   for (const sentence of t.split(/(?<=[.?!;])\s+|\s+[—–]\s+|\s+-\s+/)) {
     if (isQuestionClause(sentence)) return true;
+    // The tail after a lead-in clause counts only when it is asked of the candidate ("In your role, what…", "…, how would
+    // you…") or ends in "?" — never a clause continuing a statement ("We report up to Tricia, who is our manager." 21 Oct)
     let i = sentence.indexOf(',');
-    while (i !== -1) { if (isQuestionClause(sentence.slice(i + 1))) return true; i = sentence.indexOf(',', i + 1); }
+    while (i !== -1) { const tail = sentence.slice(i + 1).trim(); if ((/\?["')\]]?$/.test(tail) || /\byou(r)?\b/.test(tail)) && isQuestionClause(tail)) return true; i = sentence.indexOf(',', i + 1); }
   }
   return false;
 }
@@ -3500,7 +3516,13 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
   if (!skipClean) console.log(`[TIMING] aiCleanQuestion: ${Date.now() - tClean}ms`);
 
   // Get top 3 keyword candidates, excluding already-matched questions
-  const allowed = m => m.question.id !== lastMatchedQId && !recentMatchedIds?.has?.(m.question.id);
+  // A card made earlier in THIS call that the candidate has already answered is not a prepared answer for a new question —
+  // only the same question asked again may show it (live call 21 Oct: "How do you handle conflicting priorities?" showed
+  // the 3-minute-old card for "Have you come across issues like that…"). Earlier calls' cards and the bank are unaffected.
+  const staleThisCall = m => m.question.source === 'live' && m.question._createdAt && (ws._lastUserSpeechTs || 0) > m.question._createdAt
+    && stringSimilarity.compareTwoStrings(String(m.question.text || '').toLowerCase(), q.toLowerCase()) < 0.85;
+  const allowed = m => m.question.id !== lastMatchedQId && !recentMatchedIds?.has?.(m.question.id)
+    && !(staleThisCall(m) && (console.log(`[FastMatch] Skipping already-answered card from this call: "${String(m.question.text).slice(0, 50)}"`), true));
   const topMatches = findTopMatches(q, sessionQuestions, questionIndex, 3).filter(allowed);
   // + meaning-based candidates the word matcher missed (paraphrases). Haiku verification below confirms any pick.
   try {
@@ -3655,9 +3677,12 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
   return lastMatchedQId;
 }
 
-function openDeepgramStream(onTranscript, onError) {
+// opts.endpointing = ms of real silence before Deepgram marks speech_final (its default, 10 ms, fires on every breath —
+// live call 21 Oct: sentences cut mid-way and answered). opts.onUtteranceEnd = the speaker has stopped (utterance_end_ms).
+function openDeepgramStream(onTranscript, onError, opts = {}) {
   if (!DEEPGRAM_API_KEY) { onError(new Error('DEEPGRAM_API_KEY not set')); return null; }
-  const params = 'model=nova-3&punctuate=true&interim_results=true&utterance_end_ms=1500&vad_events=true&encoding=linear16&sample_rate=16000&channels=1';
+  const params = 'model=nova-3&punctuate=true&interim_results=true&utterance_end_ms=1500&vad_events=true&encoding=linear16&sample_rate=16000&channels=1'
+    + (opts.endpointing ? '&endpointing=' + opts.endpointing : '');
   const dgWs = new WebSocket('wss://api.deepgram.com/v1/listen?' + params, {
     headers: { 'Authorization': 'Token ' + DEEPGRAM_API_KEY }
   });
@@ -3695,7 +3720,7 @@ function openDeepgramStream(onTranscript, onError) {
         // When speech began = first WORD's start (msg.start is the result window, which can include leading silence)
         const w0 = msg.channel.alternatives[0].words && msg.channel.alternatives[0].words[0];
         if (text.trim()) onTranscript(text, msg.is_final, msg.speech_final, { startWall: wallAt(w0 ? w0.start : msg.start) });
-      }
+      } else if (msg.type === 'UtteranceEnd' && opts.onUtteranceEnd) opts.onUtteranceEnd();
     } catch (e) { console.error('[Deepgram] Parse error:', e.message); }
   });
   dgWs.on('error', (err) => { console.error('[Deepgram] WS error:', err.message); onError(err); });
@@ -3991,17 +4016,28 @@ wss.on('connection', (ws) => {
         let lastAiExtractedQ = ''; // prevent re-firing same extracted question
         let recentDetectedQs = []; // last 5 detected questions for fuzzy de-dup
         let aiExtractTimer = null; // debounce timer — wait for speech to settle before extracting
-        const AI_EXTRACT_DELAY = 800; // wait after last speechFinal before AI fires (trimmed for speed)
+        const AI_EXTRACT_DELAY = 800;
+        const GROW_WINDOW_MS = 20000; // the rest of a question updates its card only this soon after it was asked // wait after last speechFinal before AI fires (trimmed for speed)
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
         let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
         let ch1BufStartWall = null; // server time the current interviewer utterance started (shared clock)
         let lastInterviewerCommit = null; // { text, ts } — to re-join a question split across two commits
         let pendingFastTimer = null, pendingFastQ = null, pendingSince = 0; // a cut-off question waits for its continuation
-        // (re)arm the hold: fires 0.7 s after the interviewer's last partial word, never later than 2.5 s after the fragment
+        // (re)arm the hold. The real "they stopped" signals are Deepgram's: speech_final (500 ms of silence, endpointing) and
+        // UtteranceEnd (1.5 s) — both fire it at once. This timer is only the safety net: 3 s after the last word we
+        // received (Deepgram sends words ~1 s apart while someone talks, so a short timer fired mid-sentence — 21 Oct
+        // e2e), never later than 10 s after the question. Live call 21 Oct: answers came before the question was finished.
         const armPendingFast = () => {
           if (pendingFastTimer) clearTimeout(pendingFastTimer);
-          const q = pendingFastQ, wait = Math.max(0, Math.min(700, 2500 - (Date.now() - pendingSince)));
-          pendingFastTimer = setTimeout(() => { pendingFastTimer = null; pendingFastQ = null; fireDetectedQuestion(q, 'fast'); }, wait);
+          const q = pendingFastQ, wait = Math.max(0, Math.min(3000, 10000 - (Date.now() - pendingSince)));
+          pendingFastTimer = setTimeout(() => { pendingFastTimer = null; pendingFastQ = null; console.log('[Fast] Interviewer stopped — answering held question'); fireDetectedQuestion(q, 'fast'); }, wait);
+        };
+        const firePendingNow = (why) => {
+          if (!pendingFastTimer) return;
+          clearTimeout(pendingFastTimer); pendingFastTimer = null;
+          const q = pendingFastQ; pendingFastQ = null;
+          console.log('[Fast] ' + why + ' — answering held question');
+          fireDetectedQuestion(q, 'fast');
         };
 
         // Re-answer a card for its full question: prepared bank answer when one matches, else a fresh answer — same card id.
@@ -4080,11 +4116,14 @@ wss.on('connection', (ws) => {
           // Growth needs something NEW: the same question found again (e.g. the AI re-reading the last question when the
           // next line is only "In Power BI,") must not grow or relabel the card — mock interview 26 Sep.
           const qLowG = q.toLowerCase().trim();
+          // Grow only a card asked moments ago (owner, 21 Oct: new questions minutes later were folded into an old card —
+          // "stale"). Older than GROW_WINDOW_MS → a new question gets its own answer.
+          const growFresh = !!(ws._activeAnswer && ws._lastCard && ws._lastCard.id === ws._activeAnswer.id && Date.now() - ws._lastCard.ts < GROW_WINDOW_MS);
           const alreadyAsked = [...recentDetectedQs, ws._activeAnswer && ws._activeAnswer.questionText, ws._lastCard && ws._lastCard.asked]
             .filter(Boolean).some(p => { const pl = String(p).toLowerCase().trim(); return pl.includes(qLowG) || stringSimilarity.compareTwoStrings(pl, qLowG) >= 0.75; });
           if (alreadyAsked && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) { console.log('[Grow] Same question found again — nothing new to add'); return; }
-          if (growEnabled && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
-            console.log('[Grow] Continuation detected — extending active answer');
+          if (growEnabled && growFresh && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
+            console.log('[Grow] Continuation detected — extending active answer:', q.substring(0, 80));
             growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
             return;
           }
@@ -4107,7 +4146,7 @@ wss.on('connection', (ws) => {
               // The FULL question after its first half already made a card ("…your manager pushes" → "…pushes back on
               // your analysis?"): upgrade that SAME card instead of skipping — prepared answer if the bank has it.
               const last = ws._lastNewCard;
-              if (qLow.includes(prev) && qLow.length >= prev.length + 8 && last && last.q.toLowerCase() === prev && Date.now() - last.ts < 8000) {
+              if (qLow.includes(prev) && qLow.length >= prev.length + 8 && last && last.q.toLowerCase() === prev && Date.now() - last.ts < GROW_WINDOW_MS) {
                 recentDetectedQs[ri] = q; last.q = q;
                 upgradeCard(q, last.id).catch(e => console.error('[Upgrade] failed:', e.message));
                 return;
@@ -4347,7 +4386,7 @@ wss.on('connection', (ws) => {
                 ws._recentTranscript = transcript.slice(-6).map(t => t.text);
                 maybeDigestCurrentCall(ws);
                 if (!isEcho) {
-                  if (aiExtractTimer) clearTimeout(aiExtractTimer);
+                  if (aiExtractTimer) { clearTimeout(aiExtractTimer); aiExtractTimer = null; }
                   // FAST ROUTE: the interviewer's own line is already a clear question → answer now (skips the 0.8 s wait +
                   // ~0.6 s AI extraction). Unclear lines take the AI route exactly as before. FAST_DETECT=0 turns it off.
                   // Deepgram cuts at pauses/noise ("…pushes | back on your analysis?", "…Snowflake got slow. | How would you
@@ -4361,21 +4400,27 @@ wss.on('connection', (ws) => {
                   const prevT = prevLine ? prevLine.text.trim() : '';
                   const recent = prevLine && Date.now() - prevLine.ts < 4000;
                   const prevCut = !/[?.!]["')\]]?$/.test(prevT);
-                  const continues = recent && !/\?["')\]]?$/.test(prevT) && (!prevCut || /^[a-z]/.test(fullUtterance.trim()));
+                  // A line cut mid-sentence + a lowercase continuation is ONE sentence however long the speaker took to
+                  // finish it (21 Oct: "…how I wanna | describe the culture." 4.9 s apart became the question "Describe the
+                  // culture."), up to 15 s.
+                  const lowerCont = prevCut && /^[a-z]/.test(fullUtterance.trim()) && prevLine && Date.now() - prevLine.ts < 15000;
+                  const continues = lowerCont || (recent && !/\?["')\]]?$/.test(prevT) && !prevCut);
                   const joined = continues ? prevT + ' ' + fullUtterance : fullUtterance;
                   lastInterviewerCommit = { text: fullUtterance, ts: Date.now() };
-                  const fastQ = process.env.FAST_DETECT !== '0' ? questionPartOf(joined) : null;
-                  const heldQ = pendingFastQ; // a cut-off question from the previous line, if any
+                  let fastQ = process.env.FAST_DETECT !== '0' ? questionPartOf(joined) : null;
+                  const heldQ = pendingFastQ; // a question held from the previous line, if any
+                  const heldSince = pendingSince;
                   if (pendingFastTimer) { clearTimeout(pendingFastTimer); pendingFastTimer = null; pendingFastQ = null; }
-                  if (heldQ && !continues) fireDetectedQuestion(heldQ, 'fast'); // the new line isn't its continuation — answer it on its own
-                  // A finished sentence ends in ? . or ! (Deepgram punctuates). Without it the line was cut mid-sentence
-                  // ("…your manager pushes") — wait 0.7 s; if the continuation arrives, the joined question fires instead.
-                  if (fastQ && /[?.!]["')\]]?\s*$/.test(fullUtterance)) fireDetectedQuestion(fastQ, 'fast');
-                  else if (fastQ) { pendingFastQ = fastQ; pendingSince = Date.now(); armPendingFast(); }
-                  else {
-                    if (heldQ && continues) fireDetectedQuestion(heldQ, 'fast'); // joined text isn't a question — never drop the held one
-                    aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
-                  }
+                  // The interviewer kept talking after a held question → it is one turn: judge the question with what followed
+                  // ("How do you handle conflicting priorities? Right? Just give me an example of how…" = one card, not three).
+                  if (heldQ && !continues) fastQ = (process.env.FAST_DETECT !== '0' && questionPartOf(heldQ + ' ' + fullUtterance)) || fastQ || heldQ;
+                  else if (heldQ && !fastQ) fastQ = heldQ; // joined text isn't a question — never drop the held one
+                  // Answer only once the interviewer has STOPPED: a line committed on a real pause (Deepgram speech_final after
+                  // 500 ms of silence) that ends a sentence fires now; a line cut mid-sentence or committed mid-speech (eager)
+                  // is held until they stop (armPendingFast / UtteranceEnd).
+                  if (fastQ && !eager && /[?.!]["')\]]?\s*$/.test(fullUtterance)) fireDetectedQuestion(fastQ, 'fast');
+                  else if (fastQ) { pendingFastQ = fastQ; pendingSince = heldQ ? heldSince : Date.now(); armPendingFast(); }
+                  else aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
                   setTimeout(() => recentMatchedIds.clear(), 5000);
                 }
               };
@@ -4385,6 +4430,7 @@ wss.on('connection', (ws) => {
                 if (!interviewerBuffer) { ch1BufStartWall = (meta && meta.startWall) || null; ws._ch1BufStartWall = ch1BufStartWall; }
                 interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
                 ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
+                if (pendingFastTimer) armPendingFast(); // still talking → keep holding the question
                 // EAGER: a complete question is already on the table — don't wait for a pause.
                 // Rate-limited so continuous speech commits at most ~once/1.5s; dedup handles repeats.
                 if (process.env.EAGER_DETECT !== '0' && looksLikeCompleteQuestion(interviewerBuffer) && Date.now() - lastCommitTs > 1500) {
@@ -4399,6 +4445,9 @@ wss.on('connection', (ws) => {
                 ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
                 if (pendingFastTimer && text.trim()) armPendingFast(); // still talking → keep holding the cut-off question
               }
+              // Still talking → the AI read of "what did they ask" waits too (it used to fire 0.8 s after a pause even when
+              // the next words were already arriving).
+              if (aiExtractTimer && text.trim()) { clearTimeout(aiExtractTimer); aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY); }
 
               // Pause detected — commit whatever's left (the normal path for real interviews).
               if (speechFinal && interviewerBuffer.trim()) {
@@ -4407,13 +4456,14 @@ wss.on('connection', (ws) => {
                 interviewerBuffer = '';
                 const st = ch1BufStartWall; ch1BufStartWall = null;
                 commitInterviewer(fullUtterance, false, st);
-              }
+              } else if (speechFinal) firePendingNow('Interviewer paused'); // an eager commit took every word — the pause ends it
             },
             (err) => {
               console.error('[Deepgram Error]', err.message);
               interviewerDG = null; // Allow re-open on next audio packet
               ws.send(JSON.stringify({ type: 'error', message: 'Transcription error: ' + err.message }));
-            }
+            },
+            { endpointing: Number(process.env.DG_ENDPOINTING_MS || 500), onUtteranceEnd: () => firePendingNow('Interviewer stopped (UtteranceEnd)') }
           );
           // Flush buffered audio as soon as Deepgram connects
           if (interviewerDG) {
@@ -4647,8 +4697,10 @@ wss.on('connection', (ws) => {
         // The jump ALWAYS happens first (owner: "don't remove the jump — it may be answered already, or the AI is still
         // writing it and I just need something to start talking"). If the interviewer asked something newer, the re-read
         // below answers that too and moves the screen to it.
+        // …but only when that card IS their latest question (owner, 21 Oct: every press showed the old card first while
+        // they had already asked something new — "stale"). Something new since the card → answer the new thing directly.
         let jumpedTo = null;
-        if (lc && Date.now() - lc.ts < 90000) {
+        if (lc && Date.now() - lc.ts < 90000 && !newerQuestion) {
           const onScreen = (ws._activeAnswer && ws._activeAnswer.id === lc.id) ? ws._activeAnswer.answer : ((sessionQuestions.find(x => x.id === lc.id) || {}).answer || '');
           const focusMsg = { type: 'match', questionId: lc.id, questionText: lc.isBank ? lc.q : (lc.asked || lc.q), answer: onScreen || '', similarity: 100, hasAnswer: !!onScreen, navigate: true };
           ws.send(JSON.stringify(focusMsg)); broadcastToSession(sessionId, focusMsg, ws);
@@ -4656,9 +4708,15 @@ wss.on('connection', (ws) => {
           console.log(`[WhatShouldISay] Jumped instantly to the newest answer card (no AI call)${newerQuestion ? ' — interviewer said more since; re-reading' : ''}`);
         }
 
-        // Build transcript with recency markers — newest at bottom, labeled
+        // Build transcript with recency markers — newest at bottom, labeled. With a card on screen, MOST RECENT = everything
+        // the interviewer said AFTER that card (that is what's being asked now); the card's own question is older context.
         let rawTranscript = '';
-        if (recentLines.length > 3) {
+        const sinceCard = lc ? recentLines.filter(t => (t.ts || 0) > lc.ts) : [];
+        if (lc && sinceCard.length) {
+          const before = recentLines.filter(t => (t.ts || 0) <= lc.ts).slice(-4);
+          if (before.length) rawTranscript = 'OLDER CONTEXT (already answered on screen):\n' + before.map(t => t.text).join('\n') + '\n\n';
+          rawTranscript += 'MOST RECENT:\n' + sinceCard.slice(-6).map(t => t.text).join('\n');
+        } else if (recentLines.length > 3) {
           rawTranscript = 'OLDER CONTEXT:\n' + recentLines.slice(0, -3).map(t => t.text).join('\n');
           rawTranscript += '\n\nMOST RECENT:\n' + recentLines.slice(-3).map(t => t.text).join('\n');
         } else if (recentLines.length > 0) {
@@ -4677,7 +4735,7 @@ wss.on('connection', (ws) => {
         // Step 1: Ask Haiku to extract the LATEST question
         const wsCtx = ws._sessionContext || {};
         const ctxLine = (wsCtx.company || wsCtx.role) ? `\nContext: Interview for ${wsCtx.role || 'a role'} at ${wsCtx.company || 'a company'}.\n` : '';
-        const extractSystem = 'The candidate just pressed a PANIC button in a live interview: there IS something they must respond to right now. From the interviewer\'s speech below (newest at the bottom), find the MOST RECENT thing the interviewer wants the candidate to respond to — a direct question, a request ("tell me more", "walk me through that"), a statement that invites a reply ("so you\'ve used Snowflake", "your thoughts on dbt"), or a problem they described ("we struggle with data quality") — and write it as ONE clear question for the candidate to answer. Combine a question with its immediate follow-up. Output ONLY that question. Never output NONE unless the interviewer said nothing at all. KEEP THE INTERVIEWER\'S OWN WORDS: "you/your" always means the candidate who pressed the button. Never add a company, school, employer, product, place or person\'s name the interviewer did not say IN THAT QUESTION — other voices in the audio (another candidate, a presenter, a recording) often run straight into the question and must never leak into it (e.g. "…I worked at Calvert College. And when you talk about your role, what projects…" → "When you talk about your role, what projects are you working on…", never "…at Calvert College").\n\nOLD GUIDANCE (still applies): You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler.\n\nIMPORTANT — MULTI-PART QUESTIONS: Interviewers often ask a main question then add a follow-up like "how would you approach this?" or "walk me through your process" or "what would you do differently?". These are ONE question, not two. Combine the main question and its follow-up into a single complete question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → return the full combined question.\n\nOutput ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.';
+        const extractSystem = 'The candidate just pressed a PANIC button in a live interview: there IS something they must respond to right now. From the interviewer\'s speech below (newest at the bottom), find the MOST RECENT thing the interviewer wants the candidate to respond to — a direct question, a request ("tell me more", "walk me through that"), a statement that invites a reply ("so you\'ve used Snowflake", "your thoughts on dbt"), or a problem they described ("we struggle with data quality") — and write it as ONE clear question for the candidate to answer. Combine a question with its immediate follow-up. Output ONLY that question. Never output NONE unless the interviewer said nothing at all. KEEP THE INTERVIEWER\'S OWN WORDS: "you/your" always means the candidate who pressed the button. Never add a company, school, employer, product, place or person\'s name the interviewer did not say IN THAT QUESTION — other voices in the audio (another candidate, a presenter, a recording) often run straight into the question and must never leak into it (e.g. "…I worked at Calvert College. And when you talk about your role, what projects…" → "When you talk about your role, what projects are you working on…", never "…at Calvert College").\n\nOLD GUIDANCE (still applies): You extract the LAST interview question from conversation transcripts. The transcript has recency markers. Search from bottom to top — find the most recent question the interviewer asked, even if it was a few lines back. Questions can be direct ("What is X?") or imperative ("Tell me about X", "Describe your experience with X", "Walk me through X"). Ignore the candidate\'s answers, small talk, and filler.\n\nIMPORTANT — MULTI-PART QUESTIONS: Interviewers often ask a main question then add a follow-up like "how would you approach this?" or "walk me through your process" or "what would you do differently?". These are ONE question, not two. Combine the main question and its follow-up into a single complete question. Example: "What is the difference between inner join and left join? How would you approach this problem?" → return the full combined question.\n\nOutput ONLY the clean question text — no quotes, no explanation. If there is truly no question anywhere in the transcript, output NONE.\n\nNEWEST FIRST: when MOST RECENT or RIGHT NOW holds a request, that is the question — even if OLDER CONTEXT holds a clearer one (that one is already answered). If the newest question is still unfinished (cut off mid-sentence), write it as the question it is clearly heading toward. Never write about the transcript or explain — a question or NONE only.';
         const extractUser = ctxLine + rawTranscript + '\n\nPANIC PRESS — output the one question the candidate must answer now (never NONE if the interviewer spoke). Find the LAST question the interviewer asked (combine multi-part questions into one). Search from the most recent speech backwards. Output the question only.';
 
         let questionText;
@@ -4688,6 +4746,13 @@ wss.on('connection', (ws) => {
           ]);
           questionText = cleanQuestionText(questionText.trim().replace(/^["']|["']$/g, ''));
           console.log('[WhatShouldISay] Haiku extracted:', questionText);
+          // The extractor sometimes explains itself instead of giving a question (21 Oct: "I understand you want me to find
+          // the most recent question, but…" was answered as the question). That is never the question.
+          if (/^(i understand|i (can't|cannot|don't|do not)|based on|it (appears|seems|looks like)|the (most recent|transcript|interviewer'?s? (speech|words))|there (is|are|was|were) no|sorry|unfortunately|note:|however)\b/i.test(questionText)
+            || /MOST RECENT|OLDER CONTEXT|RIGHT NOW|cut off mid|incomplete/i.test(questionText) || questionText.length > 400) {
+            console.log('[WhatShouldISay] Extraction was not a question — using the interviewer\'s latest words');
+            questionText = '';
+          }
         } catch (e) {
           // Fallback: use most recent lines
           console.log('[WhatShouldISay] Extraction failed, using raw transcript');
@@ -4697,7 +4762,9 @@ wss.on('connection', (ws) => {
 
         // PANIC: a NONE / empty extraction still answers — the interviewer's latest words ARE what to respond to.
         if (!questionText || questionText.length < 5 || /^\s*NONE\b/i.test(questionText)) {
-          questionText = currentBuf || interviewerLines().slice(-2).map(t => t.text).join(' ');
+          const latest = (sinceCard.length ? sinceCard.slice(-3) : interviewerLines().slice(-2)).map(t => t.text);
+          if (currentBuf) latest.push(currentBuf);
+          questionText = latest.join(' ').trim();
           console.log('[WhatShouldISay] Nothing question-shaped found — answering the interviewer\'s latest words:', (questionText || '').substring(0, 60));
         }
         if (!questionText || questionText.length < 5) {

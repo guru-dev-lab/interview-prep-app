@@ -1,5 +1,25 @@
 # Handoff
 
+## 21 Oct 2026 — answers before the question finished + stale answers (regular panel), user call 11:00–11:33 CDT
+- Evidence (Railway logs 16:00–16:33Z, session 626c2a88…, copilot:false): fast route answered fragments and statements
+  ("So when when it comes to Power BI, right,", "Build reports that", "…what the culture is all about.", "I do have one
+  question I wanted to ask you."); Deepgram default endpointing (10 ms) cut sentences ("…how I wanna | describe the
+  culture." → card "Describe the culture."); full question then made a NEW card; Grow folded new questions into a 3-min-old
+  card; a new question matched an already-answered card from this call; every Say press jumped to the old card first, and
+  once answered Haiku's "I understand you want me to find…" as the question.
+- Fix (server.js): question rules (cut-off endings, comma tails need you/?, tag checks, announced questions, third-person
+  task lines, lowercase continuations); Deepgram endpointing=500 (DG_ENDPOINTING_MS) + UtteranceEnd fires held questions;
+  fast route fires only after a real pause, eager/cut lines held (3 s safety net); one turn = one question; lowercase
+  continuation rejoins within 15 s; AI-route timer waits while they talk (and a cleared timer is never re-armed); Grow and
+  upgrade only within 20 s (GROW_WINDOW_MS); answered cards from this call aren't reused for a new question; Say jumps only
+  when nothing new was said, reads only lines since the card, rejects non-question extractions.
+- Proof: test/question-rules.js (+16 real lines); test/early-stale-e2e.js (5 cases from the call) OLD code 7 FAIL → new
+  ALL PASS; test/live-e2e.js 21/21; npm test green. Answer lands ~0.8–1.2 s after the interviewer's last word (old code
+  fired up to 1 s BEFORE it; a clean "?" question used to land ~0.3 s after).
+- Rollback: tag known-good-2026-10-21-before-detect-fix.
+- Open: watch the next real call for "[Fast] … answering held question", "[FastMatch] Skipping already-answered card",
+  "[WhatShouldISay] Extraction was not a question"; Grow lines now log the line that grew the card.
+
 ## 13 Oct 2026 (21:15) — continued assessment + press shows answers as cards (PRs #100, #101) — owner: "it works now"
 - #100: a CONTINUED sitting said "the last answer stands" for answers given in an EARLIER sitting (not on his screen).
   Carry text no longer says "never redo it"; DONE items on screen are re-shown as "<item> — answered earlier:"; volatile
