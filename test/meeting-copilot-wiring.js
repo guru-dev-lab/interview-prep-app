@@ -186,7 +186,7 @@ const srv3 = require('fs').readFileSync(require('path').join(__dirname, '..', 's
 const cq = srv3.slice(srv3.indexOf("msg.type === 'canvas_question'"), srv3.indexOf("msg.type === 'canvas_question'") + 1500);
 ok(/rebuildIdx, true, true, \{ typed: true \}\)/.test(cq), 'the typed question is flagged typed on its way to the writer');
 ok(/^async function fastMatchAndRespond\(.*skipClean, extraOpts\)/m.test(srv3), 'fastMatchAndRespond carries extra writer options');
-const fm = srv3.slice(srv3.indexOf('async function fastMatchAndRespond('), srv3.indexOf('async function fastMatchAndRespond(') + 9000);
+const fm = srv3.slice(srv3.indexOf('async function fastMatchAndRespond('), srv3.indexOf('async function fastMatchAndRespond(') + 10000);
 ok((fm.match(/generateLiveAnswer\([^)]*Object\.assign\(\{\}, extraOpts/g) || []).length >= 3, 'every writer call inside it passes the flag through (bank, fresh, regen)');
 const gl = srv3.slice(srv3.indexOf('async function generateLiveAnswer('), srv3.indexOf('async function generateLiveAnswer(') + 12000);
 ok(/const typedBlock = opts\.typed \? /.test(gl) && /TYPED BY THE CANDIDATE/.test(gl) && /never declined/i.test(gl), 'the writer is told a typed line is an order: do it in full, never decline or redirect');
