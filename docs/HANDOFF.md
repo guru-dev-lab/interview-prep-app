@@ -1,5 +1,17 @@
 # Handoff
 
+
+## 23 Oct — Say pressed mid-question (PR: fix/say-mid-question)
+- Owner: candidates press Say early, while the interviewer is still asking, because they can already hear the question.
+- Reproduced (early-stale-e2e scenario 8, old code): Say read only FINAL transcript words; the question still being spoken was
+  interim → "nothing new" → it jumped to the OLD card; when they finished, a SECOND card appeared.
+- Fix (server.js): Say reads the in-progress words too (`interviewerInterim`); a press mid-question marks `ws._sayTurn`; the
+  question they then finish grows that same card (`growSayCard`) — or, if it finishes before the card exists, the press
+  answers the whole question.
+- Proof: scenario 8 PASS (was 2 FAIL); all 8 scenarios, live-e2e, npm test PASS. Note: run scenario 6 WITHOUT IDLE_TIMEOUT_MS=20000
+  (its 95 s pause trips the short test cutoff). `ONLY=6,8 node test/early-stale-e2e.js` runs chosen scenarios.
+- Rollback: tag known-good-2026-10-23-before-say-midq.
+
 ## 22 Oct 2026 — Say stays on the answered card (PR #104) · LIVE 21:23Z (deploy e5aced7b, 1cf07b6, #103 + #104)
 - Say > 90 s after a card with nothing new asked re-ran the AI and rewrote the card → no age limit now (nothing new since =
   still their latest question); lines that grew/upgraded a card count as that card (`_lastCard.heardTs`).
