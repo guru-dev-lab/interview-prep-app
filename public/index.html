@@ -2743,6 +2743,13 @@ function handleLiveMessage(msg) {
     if (msg.grew) {
       var gq = S.questions.find(function(x){ return x.id === msg.questionId; });
       if (gq) gq.answer = msg.answer;
+      // Say pressed mid-question: the title becomes the whole question once they finish (it was the half heard).
+      if (gq && msg.questionText && msg.questionText !== gq.text) {
+        gq.text = msg.questionText;
+        if (FQ[CI] && FQ[CI].id === msg.questionId) $('cq').textContent = msg.questionText;
+        var gcq = document.querySelector('#sc-card-' + msg.questionId + ' .sc-q-text'); if (gcq) gcq.textContent = msg.questionText;
+        var gcc = canvasCards.find(function(c){ return c.id === msg.questionId; }); if (gcc) gcc.question = msg.questionText;
+      }
       if (FQ[CI] && FQ[CI].id === msg.questionId) { try { rAns(msg.answer); } catch(e) {} }
       addCanvasCard(msg.questionId, msg.questionText, msg.answer, classifyQuestionFE(msg.questionText), 'new', 0, true, false);
       return;

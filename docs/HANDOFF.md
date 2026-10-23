@@ -11,6 +11,12 @@
 - Proof: scenario 8 PASS (was 2 FAIL); all 8 scenarios, live-e2e, npm test PASS. Note: run scenario 6 WITHOUT IDLE_TIMEOUT_MS=20000
   (its 95 s pause trips the short test cutoff). `ONLY=6,8 node test/early-stale-e2e.js` runs chosen scenarios.
 - Rollback: tag known-good-2026-10-23-before-say-midq.
+- Follow-up (owner: "TEST PROPERLY"): 6 early-press scenarios (8–13: pressed at 35% / 60% / 92% / as they finish / first question
+  of the call / then a new question). Found + fixed 3 gaps: (1) "nothing to add" used 90% similarity and skipped "on their
+  phones" → now any new word grows the card; (2) an early press left the card TITLE as the half heard → title becomes the whole
+  question (server + index.html grew branch); (3) a press right after a phrase went final / before the held question fired
+  wasn't mid-question → now also counts (`_ch1HeardTs`, `_ch1PauseTs`, `ws._questionPending`). All 13 scenarios, live-e2e,
+  npm test PASS. Rollback: known-good-2026-10-23-before-say-midq-2.
 
 ## 22 Oct 2026 — Say stays on the answered card (PR #104) · LIVE 21:23Z (deploy e5aced7b, 1cf07b6, #103 + #104)
 - Say > 90 s after a card with nothing new asked re-ran the AI and rewrote the card → no age limit now (nothing new since =

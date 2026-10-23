@@ -40,9 +40,10 @@ async function scenario(sess, name, { lines, click, clickAt, waitMs = 9000 }) {
   await sleep(1500);
   const ch1 = [silence(500)], ch2 = [silence(500)];
   let lastAskEnd = 0, lastAskStart = 0; // byte offsets of the interviewer's LAST line
+  let pressByte = null, pressEnd = null; // { ask, pressAt }: press Say part-way through THAT line
   const len1 = () => ch1.reduce((n, b) => n + b.length, 0);
   for (const l of lines) {
-    if (typeof l === 'string') { const a = speech(l); lastAskStart = len1(); ch1.push(a); lastAskEnd = len1(); ch1.push(silence(700)); ch2.push(silence(a.length / 32 + 700)); }
+    if (typeof l === 'string' || l.ask) { const a = speech(l.ask || l); lastAskStart = len1(); ch1.push(a); lastAskEnd = len1(); if (l.pressAt) { pressByte = lastAskStart + Math.round(a.length * l.pressAt); pressEnd = lastAskEnd; } ch1.push(silence(700)); ch2.push(silence(a.length / 32 + 700)); }
     else if (l.pause) { ch1.pop(); ch2.pop(); ch1.push(silence(l.pause)); ch2.push(silence(l.pause)); }
     else { const a = speech(l.you, 'Daniel'); ch2.push(a, silence(900)); ch1.push(silence(a.length / 32 + 900)); }
   }
@@ -51,15 +52,15 @@ async function scenario(sess, name, { lines, click, clickAt, waitMs = 9000 }) {
   c1 = Buffer.concat([c1, Buffer.alloc(len - c1.length)]); c2 = Buffer.concat([c2, Buffer.alloc(len - c2.length)]);
   const t0 = Date.now();
   // clickAt: press Say part-way through the interviewer's last line (0.6 = 60% of it spoken) — they are still talking.
-  const clickByte = clickAt ? lastAskStart + Math.round((lastAskEnd - lastAskStart) * clickAt) : null;
+  const clickByte = pressByte !== null ? pressByte : clickAt ? lastAskStart + Math.round((lastAskEnd - lastAskStart) * clickAt) : null;
   for (let o = 0; o < len; o += 3200) {
     if (clickByte !== null && o >= clickByte && !got.some(m => m.type === 'CLICK')) { got.push({ type: 'CLICK', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
     ws.send(Buffer.concat([Buffer.from([1]), c1.slice(o, o + 3200)]));
     ws.send(Buffer.concat([Buffer.from([2]), c2.slice(o, o + 3200)]));
     await sleep(100);
   }
-  const askEndT = t0 + (lastAskEnd / 32000) * 1000;
-  if (click && !clickAt) { got.push({ type: 'CLICK', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
+  const askEndT = t0 + ((pressEnd !== null ? pressEnd : lastAskEnd) / 32000) * 1000; // end of the line pressed in (else the last line)
+  if (click && !clickAt && pressByte === null) { got.push({ type: 'CLICK', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
   await sleep(waitMs);
   ws.close();
   const detected = got.filter(m => m.type === 'question_detected');
@@ -142,18 +143,67 @@ async function scenario(sess, name, { lines, click, clickAt, waitMs = 9000 }) {
   check(!r.got.slice(ci7 + 1).some(m => m.type === 'question_detected' && m.source === 'manual' && r.got.slice(ci7 + 1).some(x => x.type === 'new_question')), 'no new card from the press');
   }
 
-  if (run(8)) {
-  // 8. Say pressed while the interviewer is still asking (the candidate can already hear the question): answer THAT
-  //    question — not the older card — and when they finish, the same card covers the whole question (no second card).
-  r = await scenario(await seed(), 'SAY pressed mid-question', { lines: ['How would you handle a missed deadline on a client report?', { you: 'I would tell the client early and agree a new date with them.' }, 'Can you walk me through how you would build a dashboard that tracks weekly sales by region, and which metrics you would show first?'], clickAt: 0.6, waitMs: 14000 });
-  const ci8 = r.got.findIndex(m => m.type === 'CLICK');
-  const post8 = r.got.slice(ci8 + 1).filter(m => ['match', 'new_question', 'live_answer'].includes(m.type));
-  const ids8 = [...new Set(post8.map(m => m.questionId))];
-  const final8 = post8.filter(m => m.type === 'live_answer' && m.answer).pop();
-  check(post8.length && !/deadline/i.test(post8[0].questionText || '') && /dashboard|sales/i.test(post8[0].questionText || ''), `Say answered the question being asked, not the old card (first: "${post8[0] ? (post8[0].questionText || '').slice(0, 60) : 'nothing'}")`);
-  check(ids8.length === 1, `one card for that question after the press (got ${ids8.length})`);
-  check(final8 && /metric|KPI|revenue|growth/i.test(final8.answer), `the answer covers the whole question, incl. the part said after the press`);
-  console.log('  cards after press:', post8.map(m => `${m.type}:${m.questionId}:"${(m.questionText || '').slice(0, 70)}"`).filter((v, i, a) => a.indexOf(v) === i).join('\n    '));
+  // 8–12. Say pressed WHILE the interviewer is still asking (owner, 23 Oct: "I detect the question and can not wait"). The press
+  //    answers at once from what was said so far; when they finish, the automatic side adds the rest to the SAME card
+  //    (lines on screen stay, 1–2 added). The ending ("…on their phones?") is not spoken at the press, so it must arrive by growing.
+  const DASH = 'Can you walk me through how you would build a dashboard that tracks weekly sales by region, and how you would make it work for managers who open it on their phones?';
+  const OLD = ['How would you handle a missed deadline on a client report?', { you: 'I would tell the client early and agree a new date with them.' }];
+  const midPress = (r, label, { topic = /dashboard|sales/i, windowMs = Infinity, early = false } = {}) => {
+    const ci = r.got.findIndex(m => m.type === 'CLICK');
+    const post = r.got.slice(ci + 1).filter(m => ['match', 'new_question', 'live_answer'].includes(m.type) && m._t < r.askEndT + windowMs);
+    const ids = [...new Set(post.map(m => m.questionId))];
+    const first = post[0];
+    const firstAns = post.filter(m => m.type === 'live_answer' && !m.grew && m.answer)[0];
+    const grown = post.filter(m => m.type === 'live_answer' && m.grew).pop();
+    const askEnd = r.askEndT, pressT = r.got[ci]._t;
+    console.log(`  timing: press ${Math.round(askEnd - pressT)} ms before they finished; card ${first ? first._t - pressT : '-'} ms after press; answer ${firstAns ? firstAns._t - pressT : '-'} ms after press; grew ${grown ? Math.round(grown._t - askEnd) + ' ms after they finished' : 'never'}`);
+    check(first && first._t < askEnd, `${label}: answered while they were still asking (proactive)`);
+    check(first && !/deadline/i.test(first.questionText || '') && (early || topic.test(first.questionText || '')), `${label}: the card is the question being asked, not the old card (got "${first ? (first.questionText || '').slice(0, 60) : 'nothing'}")`);
+    check(ids.length === 1, `${label}: one card only (got ${ids.length})`);
+    check(!!grown, `${label}: when they finished, the rest was added to that card`);
+    check(grown && firstAns && grown.answer.startsWith(firstAns.answer.trim().slice(0, 120)), `${label}: lines already on screen stayed the same`);
+    check(grown && /phone|mobile/i.test(grown.answer), `${label}: the added part answers the end of the question (phones)`);
+    check(grown && topic.test(grown.questionText || '') && /phone/i.test(grown.questionText || ''), `${label}: the card's title is now the whole question (got "${grown ? (grown.questionText || '').slice(-50) : 'none'}")`);
+    return { ids, grown };
+  };
+
+  if (run(8)) { // pressed 60% in, an older answered card on screen
+    r = await scenario(await seed(), 'SAY pressed mid-question (60%)', { lines: [...OLD, DASH], clickAt: 0.6, waitMs: 15000 });
+    midPress(r, '60%');
+  }
+  if (run(9)) { // pressed early — only "Can you walk me through how you would build a dashboard" heard
+    r = await scenario(await seed(), 'SAY pressed early (35%)', { lines: [...OLD, DASH], clickAt: 0.35, waitMs: 15000 });
+    midPress(r, '35%', { early: true }); // only "…how you would build a" heard — the title may be half until they finish
+  }
+  if (run(10)) { // pressed near the end — they finish while the press is still reading the question
+    r = await scenario(await seed(), 'SAY pressed near the end (92%)', { lines: [...OLD, DASH], clickAt: 0.92, waitMs: 15000 });
+    const ci = r.got.findIndex(m => m.type === 'CLICK');
+    const post = r.got.slice(ci + 1).filter(m => ['match', 'new_question', 'live_answer'].includes(m.type));
+    const ids = [...new Set(post.map(m => m.questionId))];
+    const last = post.filter(m => m.type === 'live_answer' && m.answer).pop();
+    check(post[0] && !/deadline/i.test(post[0].questionText || ''), `92%: not the old card (got "${post[0] ? (post[0].questionText || '').slice(0, 60) : 'nothing'}")`);
+    check(ids.length === 1, `92%: one card only (got ${ids.length})`);
+    check(last && /phone|mobile/i.test(last.answer), '92%: the answer covers the whole question (phones)');
+  }
+  if (run(13)) { // pressed the moment they finish — before the automatic side answers it: still ONE card, the whole question
+    r = await scenario(await seed(), 'SAY pressed as they finish', { lines: [...OLD, DASH], clickAt: 0.995, waitMs: 15000 });
+    const ci = r.got.findIndex(m => m.type === 'CLICK');
+    const post = r.got.slice(ci + 1).filter(m => ['match', 'new_question', 'live_answer'].includes(m.type));
+    const ids = [...new Set(post.map(m => m.questionId))];
+    const last = post.filter(m => m.type === 'live_answer' && m.answer).pop();
+    check(post[0] && !/deadline/i.test(post[0].questionText || ''), `as they finish: not the old card (got "${post[0] ? (post[0].questionText || '').slice(0, 60) : 'nothing'}")`);
+    check(ids.length === 1, `as they finish: one card only (got ${ids.length})`);
+    check(last && /phone|mobile/i.test(last.answer), 'as they finish: the answer covers the whole question (phones)');
+  }
+  if (run(11)) { // first question of the call — no card on screen yet
+    r = await scenario(await seed(), 'SAY pressed mid-question, first question of the call', { lines: [DASH], clickAt: 0.6, waitMs: 15000 });
+    midPress(r, 'first question');
+  }
+  if (run(12)) { // press mid-question, card grows; the candidate answers; then a NEW question → its own card, not grown into the press card
+    r = await scenario(await seed(), 'SAY mid-question, then a new question later', { lines: [...OLD, { ask: DASH, pressAt: 0.6 }, { you: 'I would build it in Power BI with one page per region and a mobile layout for the managers.' }, 'Okay. How do you make sure the numbers on it are correct before the managers see them?'], waitMs: 12000 });
+    const { ids } = midPress(r, 'then new question', { windowMs: 6000 });
+    const lastQ = r.got.filter(m => m.type === 'new_question').pop();
+    check(lastQ && !ids.includes(lastQ.questionId) && /correct|numbers|accura/i.test(lastQ.questionText || ''), `the later question got its own card (got "${lastQ ? (lastQ.questionText || '').slice(0, 60) : 'none'}")`);
   }
 
   await pool.end();
