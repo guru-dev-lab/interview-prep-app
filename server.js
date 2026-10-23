@@ -4026,6 +4026,7 @@ wss.on('connection', (ws) => {
         let ch1BufStartWall = null; // server time the current interviewer utterance started (shared clock)
         let lastInterviewerCommit = null; // { text, ts } — to re-join a question split across two commits
         let pendingFastTimer = null, pendingFastQ = null, pendingSince = 0; // a cut-off question waits for its continuation
+        ws._questionPending = () => !!(pendingFastQ || aiExtractTimer); // Say: a heard question not answered yet belongs to the press
         // (re)arm the hold. The real "they stopped" signals are Deepgram's: speech_final (500 ms of silence, endpointing) and
         // UtteranceEnd (1.5 s) — both fire it at once. This timer is only the safety net: 3 s after the last word we
         // received (Deepgram sends words ~1 s apart while someone talks, so a short timer fired mid-sentence — 21 Oct
@@ -4048,12 +4049,21 @@ wss.on('connection', (ws) => {
         function growSayCard(fullQ) {
           const lc = ws._lastCard; if (!lc) return;
           const before = String(lc.asked || lc.q).toLowerCase();
+          // Only the tail may arrive ("…on their phones?" when the line was split) — keep the start of the question with it.
+          if (!fullQ.toLowerCase().includes(before.split(/\s+/).slice(0, 4).join(' '))) fullQ = `${(lc.asked || lc.q).replace(/\?\s*$/, '')}, ${fullQ}`;
           lc.asked = fullQ; lc.heardTs = Date.now();
           recentDetectedQs.push(fullQ); if (recentDetectedQs.length > 5) recentDetectedQs.shift();
-          if (before.includes(fullQ.toLowerCase()) || stringSimilarity.compareTwoStrings(before, fullQ.toLowerCase()) >= 0.9) { console.log('[WhatShouldISay] Finished question is the one on screen — nothing to add'); return; }
+          // Nothing to add only when no new word was said (23 Oct test: "…open it" vs "…open it on their phones?" is 90% alike —
+          // the similarity check skipped "phones", the part that mattered).
+          const added = fullQ.toLowerCase().match(/[a-z][a-z'-]{3,}/g) || [];
+          if (!added.some(w => !before.includes(w.replace(/(ies|es|s)$/, '')))) { console.log('[WhatShouldISay] Finished question is the one on screen — nothing to add'); return; }
+          // The card's title becomes the whole question (pressed early: it was the half heard, "…how you would build a").
+          if (ws._activeAnswer && ws._activeAnswer.id === lc.id) ws._activeAnswer.questionText = fullQ;
+          const sq = sessionQuestions.find(x => x.id === lc.id); if (sq && !lc.isBank) sq.text = fullQ;
+          if (!lc.isBank) pool.query('UPDATE questions SET text = $1 WHERE id = $2', [fullQ, lc.id]).catch(e => console.error('[WhatShouldISay] title update failed:', e.message));
           console.log('[WhatShouldISay] Rest of the question arrived — growing the card on screen:', fullQ.substring(0, 80));
           if (ws._activeAnswer && ws._activeAnswer.id === lc.id) growLiveAnswer(ws, sessionId, ws._activeAnswer, fullQ).catch(e => console.error('[Grow]', e.message));
-          else ws._pendingGrow = { id: lc.id, q: fullQ };
+          else ws._pendingGrow = { id: lc.id, q: fullQ, title: lc.isBank ? null : fullQ };
         }
         ws._growSayCard = growSayCard; // the Say handler grows its card when they finish during the press
 
@@ -4401,6 +4411,7 @@ wss.on('connection', (ws) => {
             (text, isFinal, speechFinal, meta) => {
               console.log(`[DIAG-DG] Ch1 transcript: "${text.substring(0,60)}" isFinal=${isFinal} speechFinal=${speechFinal}`);
               if (!text.trim()) return;
+              ws._ch1HeardTs = Date.now(); // Say: words still arriving = they are mid-question
 
               // Commit an interviewer utterance: echo-check, push to transcript, schedule detection.
               // `eager` = fired mid-stream on a complete question (short debounce); else = on a pause.
@@ -4479,6 +4490,7 @@ wss.on('connection', (ws) => {
               if (aiExtractTimer && text.trim()) { clearTimeout(aiExtractTimer); aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, AI_EXTRACT_DELAY); }
 
               // Pause detected — commit whatever's left (the normal path for real interviews).
+              if (speechFinal) ws._ch1PauseTs = Date.now();
               if (speechFinal && interviewerBuffer.trim()) {
                 lastCommitTs = Date.now();
                 const fullUtterance = interviewerBuffer.trim();
@@ -4726,7 +4738,11 @@ wss.on('connection', (ws) => {
         }
         // heardTs: the card was grown/upgraded with later lines — those are this card's question, not a newer one.
         // Pressed while they are still asking: the question they finish is THIS press's card (fireDetectedQuestion), not a new one.
-        ws._sayTurn = substantive(currentBuf) ? { at: Date.now(), done: false, fullQ: null, used: false } : null;
+        // (23 Oct test: pressed the instant a phrase went final → nothing "in progress" → the press wasn't treated as mid-question)
+        // A question they just finished that the automatic side is still holding is this press's too (else: two cards).
+        const stillTalking = substantive(currentBuf) || (Date.now() - (ws._ch1HeardTs || 0) < 1500 && !((ws._ch1PauseTs || 0) >= (ws._ch1HeardTs || 0)))
+          || !!(ws._questionPending && ws._questionPending());
+        ws._sayTurn = stillTalking ? { at: Date.now(), done: false, fullQ: null, used: false } : null;
         const newerQuestion = !lc || interviewerLines().some(t => (t.ts || 0) > (lc.heardTs || lc.ts) && substantive(t.text)) || substantive(currentBuf);
         // The jump ALWAYS happens first (owner: "don't remove the jump — it may be answered already, or the AI is still
         // writing it and I just need something to start talking"). If the interviewer asked something newer, the re-read
@@ -5836,6 +5852,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // A follow-up arrived while this answer was still coming in → grow it now (append-only).
     if (ws._pendingGrow && ws._pendingGrow.id === questionId) {
       const pg = ws._pendingGrow; ws._pendingGrow = null;
+      if (pg.title) ws._activeAnswer.questionText = pg.title; // a Say card's title becomes the whole question
       setTimeout(() => growLiveAnswer(ws, sessionId, ws._activeAnswer, pg.q).catch(e => console.error('[Grow]', e.message)), 0);
     }
 
