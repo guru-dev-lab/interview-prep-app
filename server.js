@@ -3741,6 +3741,7 @@ wss.on('connection', (ws) => {
   let transcript = [];
   let transcriptId = null;
   let interviewerBuffer = ''; // accumulate partial transcripts
+  let interviewerInterim = ''; // words still being spoken (not final yet) — Say reads them too
   let lastMatchedQId = null;
   let lastWsayMatchId = null; // track last "What should I say?" result — exclude on re-click
   let recentMatchedIds = new Set(); // prevent duplicate matches within short window
@@ -4043,6 +4044,19 @@ wss.on('connection', (ws) => {
         };
 
         // Re-answer a card for its full question: prepared bank answer when one matches, else a fresh answer — same card id.
+        // The rest of the question after a mid-question Say press: grow that card (lines on screen stay; 1–2 added).
+        function growSayCard(fullQ) {
+          const lc = ws._lastCard; if (!lc) return;
+          const before = String(lc.asked || lc.q).toLowerCase();
+          lc.asked = fullQ; lc.heardTs = Date.now();
+          recentDetectedQs.push(fullQ); if (recentDetectedQs.length > 5) recentDetectedQs.shift();
+          if (before.includes(fullQ.toLowerCase()) || stringSimilarity.compareTwoStrings(before, fullQ.toLowerCase()) >= 0.9) { console.log('[WhatShouldISay] Finished question is the one on screen — nothing to add'); return; }
+          console.log('[WhatShouldISay] Rest of the question arrived — growing the card on screen:', fullQ.substring(0, 80));
+          if (ws._activeAnswer && ws._activeAnswer.id === lc.id) growLiveAnswer(ws, sessionId, ws._activeAnswer, fullQ).catch(e => console.error('[Grow]', e.message));
+          else ws._pendingGrow = { id: lc.id, q: fullQ };
+        }
+        ws._growSayCard = growSayCard; // the Say handler grows its card when they finish during the press
+
         async function upgradeCard(fullQ, cardId) {
           console.log('[Upgrade] Full question arrived — upgrading card:', fullQ.substring(0, 60));
           pool.query('UPDATE questions SET text = $1 WHERE id = $2', [fullQ, cardId]).catch(() => {});
@@ -4111,6 +4125,15 @@ wss.on('connection', (ws) => {
           // MEETING CO-PILOT MODE: the question goes to co-pilot (the client answers it with the shared screen) —
           // no Q&A card, no bank match, no bridges. One question is paid once.
           if (ws._copilotMode) return routeHeardToCopilot(q, via);
+
+          // SAY PRESSED MID-QUESTION (owner, 23 Oct: "they click early because they can already hear the question"): the
+          // question the interviewer then finishes is the one that press is answering — the same card, grown with the rest.
+          const st = ws._sayTurn;
+          if (st && !st.used && Date.now() - st.at < 20000 && !((ws._lastUserSpeechTs || 0) > st.at)) {
+            st.used = true;
+            if (!st.done) { st.fullQ = q; console.log('[WhatShouldISay] The question they were asking is finished — the press answers it:', q.substring(0, 60)); return; }
+            growSayCard(q); return;
+          }
 
           // CONTINUATION: the interviewer is elaborating on the SAME question we're already
           // answering → grow that answer in place (append), instead of a new card. This
@@ -4431,6 +4454,7 @@ wss.on('connection', (ws) => {
 
               if (isFinal) {
                 resetIdleTimer();
+                interviewerInterim = '';
                 if (!interviewerBuffer) { ch1BufStartWall = (meta && meta.startWall) || null; ws._ch1BufStartWall = ch1BufStartWall; }
                 interviewerBuffer += (interviewerBuffer ? ' ' : '') + text.trim();
                 ws.send(JSON.stringify({ type: 'transcript', text: interviewerBuffer, isFinal: false }));
@@ -4445,6 +4469,7 @@ wss.on('connection', (ws) => {
                   commitInterviewer(fu, true, st);
                 }
               } else {
+                interviewerInterim = text.trim();
                 const preview = interviewerBuffer ? interviewerBuffer + ' ' + text.trim() : text.trim();
                 ws.send(JSON.stringify({ type: 'transcript', text: preview, isFinal: false }));
                 if (pendingFastTimer && text.trim()) armPendingFast(); // still talking → keep holding the cut-off question
@@ -4667,7 +4692,9 @@ wss.on('connection', (ws) => {
         // Full mode: extract the MOST RECENT question from transcript
         // Priority: current buffer > last 3 lines (newest first)
         // Interviewer speech only — the user's own words must never come back as "the question".
-        let currentBuf = interviewerBuffer.trim();
+        // The words still being spoken count (23 Oct test: pressed mid-question, "Can you walk me through how you would build
+        // a dashboard that" was not final yet → Say saw nothing new and showed the OLD card).
+        let currentBuf = (interviewerBuffer + ' ' + interviewerInterim).trim();
         if (currentBuf && ws._isEchoOfUser && ws._isEchoOfUser(currentBuf, ws._ch1BufStartWall)) {
           console.log('[WhatShouldISay] Ignoring in-progress line — it is the user\'s echo');
           currentBuf = '';
@@ -4698,6 +4725,8 @@ wss.on('connection', (ws) => {
           return;
         }
         // heardTs: the card was grown/upgraded with later lines — those are this card's question, not a newer one.
+        // Pressed while they are still asking: the question they finish is THIS press's card (fireDetectedQuestion), not a new one.
+        ws._sayTurn = substantive(currentBuf) ? { at: Date.now(), done: false, fullQ: null, used: false } : null;
         const newerQuestion = !lc || interviewerLines().some(t => (t.ts || 0) > (lc.heardTs || lc.ts) && substantive(t.text)) || substantive(currentBuf);
         // The jump ALWAYS happens first (owner: "don't remove the jump — it may be answered already, or the AI is still
         // writing it and I just need something to start talking"). If the interviewer asked something newer, the re-read
@@ -4777,6 +4806,8 @@ wss.on('connection', (ws) => {
           return;
         }
 
+        const sayTurn = ws._sayTurn;
+        if (sayTurn && sayTurn.fullQ) { console.log('[WhatShouldISay] They finished the question while it was read — answering the whole of it:', sayTurn.fullQ.substring(0, 60)); questionText = sayTurn.fullQ; sayTurn.fullQ = null; }
         // Same as the card already on screen (jumped to or not)? Show THAT card — never rewrite it.
         if (!jumpedTo && lc) {
           const a0 = questionText.toLowerCase();
@@ -4811,6 +4842,10 @@ wss.on('connection', (ws) => {
         const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
         lastAutoMatchTime = Date.now(); // Reset cooldown — user chose this action
         fastMatchAndRespond(questionText, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true, true).then(newLastId => {
+          if (sayTurn && ws._sayTurn === sayTurn) {
+            sayTurn.done = true;
+            if (sayTurn.fullQ) { const fq = sayTurn.fullQ; sayTurn.fullQ = null; if (ws._growSayCard) ws._growSayCard(fq); } // finished while the card was being made
+          }
           lastWsayMatchId = newLastId || null;
           if (newLastId) lastMatchedQId = newLastId;
           console.log('[WhatShouldISay] done:', newLastId ? 'matched bank question' : 'new/updated live question');
@@ -4830,6 +4865,7 @@ wss.on('connection', (ws) => {
         }
         interviewerDG = null;
         interviewerBuffer = '';
+        interviewerInterim = '';
         ws.send(JSON.stringify({ type: 'status', message: 'Tab switched — listening on new tab' }));
       }
 

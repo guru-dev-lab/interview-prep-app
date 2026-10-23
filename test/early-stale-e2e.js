@@ -31,7 +31,7 @@ async function seed() {
 }
 
 // lines: interviewer string | { you } (candidate mic) | { pause: ms } (interviewer silent mid-turn, replaces the 700 ms gap)
-async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
+async function scenario(sess, name, { lines, click, clickAt, waitMs = 9000 }) {
   const ws = new WebSocket(BASE.replace(/^http/, 'ws'));
   const got = [];
   ws.on('message', d => { try { const m = JSON.parse(d); m._t = Date.now(); if (!/transcript/.test(m.type)) got.push(m); } catch (e) {} });
@@ -39,10 +39,10 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   ws.send(JSON.stringify({ type: 'start', token: sess.token, sessionId: sess.sessionId, mode: 'full', platform: 'electron', dualStream: true }));
   await sleep(1500);
   const ch1 = [silence(500)], ch2 = [silence(500)];
-  let lastAskEnd = 0; // byte offset where the interviewer's LAST line ends
+  let lastAskEnd = 0, lastAskStart = 0; // byte offsets of the interviewer's LAST line
   const len1 = () => ch1.reduce((n, b) => n + b.length, 0);
   for (const l of lines) {
-    if (typeof l === 'string') { const a = speech(l); ch1.push(a); lastAskEnd = len1(); ch1.push(silence(700)); ch2.push(silence(a.length / 32 + 700)); }
+    if (typeof l === 'string') { const a = speech(l); lastAskStart = len1(); ch1.push(a); lastAskEnd = len1(); ch1.push(silence(700)); ch2.push(silence(a.length / 32 + 700)); }
     else if (l.pause) { ch1.pop(); ch2.pop(); ch1.push(silence(l.pause)); ch2.push(silence(l.pause)); }
     else { const a = speech(l.you, 'Daniel'); ch2.push(a, silence(900)); ch1.push(silence(a.length / 32 + 900)); }
   }
@@ -50,13 +50,16 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   const len = Math.max(c1.length, c2.length);
   c1 = Buffer.concat([c1, Buffer.alloc(len - c1.length)]); c2 = Buffer.concat([c2, Buffer.alloc(len - c2.length)]);
   const t0 = Date.now();
+  // clickAt: press Say part-way through the interviewer's last line (0.6 = 60% of it spoken) — they are still talking.
+  const clickByte = clickAt ? lastAskStart + Math.round((lastAskEnd - lastAskStart) * clickAt) : null;
   for (let o = 0; o < len; o += 3200) {
+    if (clickByte !== null && o >= clickByte && !got.some(m => m.type === 'CLICK')) { got.push({ type: 'CLICK', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
     ws.send(Buffer.concat([Buffer.from([1]), c1.slice(o, o + 3200)]));
     ws.send(Buffer.concat([Buffer.from([2]), c2.slice(o, o + 3200)]));
     await sleep(100);
   }
   const askEndT = t0 + (lastAskEnd / 32000) * 1000;
-  if (click) { got.push({ type: 'CLICK', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
+  if (click && !clickAt) { got.push({ type: 'CLICK', _t: Date.now() }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
   await sleep(waitMs);
   ws.close();
   const detected = got.filter(m => m.type === 'question_detected');
@@ -72,30 +75,41 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   const fails = [];
   const check = (ok, what) => { console.log(`  ${ok ? 'PASS' : 'FAIL'} ${what}`); if (!ok) fails.push(what); };
 
+  let r;
+  const only = (process.env.ONLY || '').split(',').filter(Boolean), run = n => !only.length || only.includes(String(n)); // ONLY=6,8 → just those (spend rule)
+  if (run(1)) {
   // 1. Deepgram cuts the question in two; the first half must not get a card, the whole question gets ONE card.
-  let r = await scenario(sess, 'SPLIT question (11:10 Power BI)', { lines: ['So when it comes to Power BI, right,', { pause: 1100 }, 'can you share a project where you built Power BI solutions, and how you structured it?'] });
+  r = await scenario(sess, 'SPLIT question (11:10 Power BI)', { lines: ['So when it comes to Power BI, right,', { pause: 1100 }, 'can you share a project where you built Power BI solutions, and how you structured it?'] });
   check(r.ids.length === 1, `one card, not ${r.ids.length}`);
   check(r.detected.length && r.detected.every(d => d._t >= r.askEndT), 'nothing answered before the question finished');
   check(r.detected.length && /share|project/i.test(r.detected[0].text), 'the card is the full question');
+  }
 
+  if (run(2)) {
   // 2. Statements and an announced question: no card at all.
   r = await scenario(sess, 'STATEMENTS (11:02, 11:22)', { lines: ['Build datasets, helping them build dashboards, helping them really automate a lot of the manual tasks that they do. Right?', 'I know we are running close to the thirty minute mark. I do have one question I wanted to ask you.'], waitMs: 7000 });
   check(r.ids.length === 0, `no card for statements (got ${r.ids.length})`);
+  }
 
+  if (run(3)) {
   // 3. One turn with a follow-up tag → one card.
   r = await scenario(sess, 'ONE TURN, follow-up tag (11:19)', { lines: ['How do you handle conflicting priorities?', { pause: 400 }, 'Right? Just give me an example of how you handled it when two regions both said theirs was the most urgent.'], click: true });
   check(r.ids.length === 1, `one card, not ${r.ids.length}`);
   check(r.detected.filter(d => d.source !== 'manual').every(d => d._t >= r.askEndT), 'nothing answered before the turn finished');
   const ci3 = r.got.findIndex(m => m.type === 'CLICK'), after3 = r.got.slice(ci3 + 1).filter(m => ['match', 'new_question'].includes(m.type));
   check(after3.length && after3.every(m => m.type === 'match' && m.questionId === r.ids[0]), 'Say on the updated card stays on it');
+  }
 
+  if (run(4)) {
   // 4. Stale: after the candidate answered card 1, a related NEW question must get its own answer, not card 1.
   r = await scenario(await seed(), 'STALE re-use (11:19:59)', { lines: ['Have you come across situations where several teams sent you conflicting priorities, and how did you solve them?', { you: 'Yes. At Northwind I ranked the requests by business impact and agreed the order with each manager, then I shared the plan every Monday.' }, 'Okay. When the APAC team says their project is the most urgent, how would you decide what to build first?'], waitMs: 11000 });
   check(r.ids.length === 2, `two different cards (got ${r.ids.length})`);
   const lastQ = r.detected[r.detected.length - 1];
   check(lastQ && /decide|build first/i.test(lastQ.text) && lastQ._t >= r.askEndT, `the new question is answered whole, after it finished (got "${lastQ ? lastQ.text.slice(0, 60) : 'none'}")`);
   check(!r.got.some(m => m.type === 'match' && /conflicting priorities/i.test(m.questionText || '') && m._t > r.askEndT - 6000), 'the new question did not re-show the old priorities card');
+  }
 
+  if (run(5)) {
   // 5. Say after the interviewer moved on with something that is not shaped like a question (no auto card): the press
   //    must answer THAT, not jump back to the old card (11:16–11:23 presses).
   r = await scenario(sess, 'SAY after they moved on', { lines: ['How would you handle a missed deadline on a client report?', { you: 'I would tell the client early and agree a new date with them.' }, 'We have been struggling with data quality in our warehouse feeds lately.'], click: true, waitMs: 9000 });
@@ -103,7 +117,9 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   const firstAfter = r.got.slice(ci + 1).find(m => ['match', 'new_question', 'live_answer'].includes(m.type));
   check(!firstAfter || !/deadline/i.test(firstAfter.questionText || ''), `Say did not bring back the old deadline card (first: "${firstAfter ? (firstAfter.questionText || '').slice(0, 50) : 'nothing'}")`);
   check(r.got.slice(ci + 1).some(m => ['match', 'new_question', 'live_answer'].includes(m.type) && /quality|warehouse/i.test(m.questionText || '')), 'the data-quality point is answered');
+  }
 
+  if (run(6)) {
   // 6. Say when the latest question is already answered and nothing new was asked — even a long answer later (> 90 s):
   //    stay on that card, nothing rewritten, no second card.
   r = await scenario(await seed(), 'SAY, already answered, long answer', { lines: ['How would you handle a missed deadline on a client report?', { you: 'I would tell the client early and agree a new date with them.' }, { pause: 95000 }], click: true, waitMs: 8000 });
@@ -113,7 +129,9 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   check(cardIds.length === 1, `one card before the press (got ${cardIds.length})`);
   check(after6.length && after6[0].type === 'match' && after6[0].questionId === cardIds[0], `Say stayed on the answered card (first: ${after6[0] ? after6[0].type : 'nothing'})`);
   check(!after6.some(m => m.type === 'new_question' || (m.type === 'live_answer' && m.questionId === cardIds[0])), 'nothing rewritten, no new card');
+  }
 
+  if (run(7)) {
   // 7. The card is updated after it appeared (second part of the question a moment later), then Say: stay on that card.
   r = await scenario(await seed(), 'SAY on a card updated after it appeared', { lines: ['Tell me about a dashboard you built for a sales team?', { pause: 2500 }, 'And what tools did you use for it, and who used it every week?'], click: true, waitMs: 9000 });
   const ci7 = r.got.findIndex(m => m.type === 'CLICK');
@@ -122,6 +140,21 @@ async function scenario(sess, name, { lines, click, waitMs = 9000 }) {
   check(cards7.length === 1, `the second part updated the first card, no second card (got ${cards7.length})`);
   check(after7.length && after7.every(m => m.type === 'match' && m.questionId === cards7[cards7.length - 1]), `Say stayed on the latest card (cards before press: ${cards7.length})`);
   check(!r.got.slice(ci7 + 1).some(m => m.type === 'question_detected' && m.source === 'manual' && r.got.slice(ci7 + 1).some(x => x.type === 'new_question')), 'no new card from the press');
+  }
+
+  if (run(8)) {
+  // 8. Say pressed while the interviewer is still asking (the candidate can already hear the question): answer THAT
+  //    question — not the older card — and when they finish, the same card covers the whole question (no second card).
+  r = await scenario(await seed(), 'SAY pressed mid-question', { lines: ['How would you handle a missed deadline on a client report?', { you: 'I would tell the client early and agree a new date with them.' }, 'Can you walk me through how you would build a dashboard that tracks weekly sales by region, and which metrics you would show first?'], clickAt: 0.6, waitMs: 14000 });
+  const ci8 = r.got.findIndex(m => m.type === 'CLICK');
+  const post8 = r.got.slice(ci8 + 1).filter(m => ['match', 'new_question', 'live_answer'].includes(m.type));
+  const ids8 = [...new Set(post8.map(m => m.questionId))];
+  const final8 = post8.filter(m => m.type === 'live_answer' && m.answer).pop();
+  check(post8.length && !/deadline/i.test(post8[0].questionText || '') && /dashboard|sales/i.test(post8[0].questionText || ''), `Say answered the question being asked, not the old card (first: "${post8[0] ? (post8[0].questionText || '').slice(0, 60) : 'nothing'}")`);
+  check(ids8.length === 1, `one card for that question after the press (got ${ids8.length})`);
+  check(final8 && /metric|KPI|revenue|growth/i.test(final8.answer), `the answer covers the whole question, incl. the part said after the press`);
+  console.log('  cards after press:', post8.map(m => `${m.type}:${m.questionId}:"${(m.questionText || '').slice(0, 70)}"`).filter((v, i, a) => a.indexOf(v) === i).join('\n    '));
+  }
 
   await pool.end();
   console.log(fails.length ? `\n${fails.length} FAILED` : '\nALL PASS');
