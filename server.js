@@ -218,6 +218,7 @@ async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS idx_answer_note_groups_note ON answer_note_groups(note_id, sort_order);
       CREATE INDEX IF NOT EXISTS idx_answer_note_items_group ON answer_note_items(group_id, sort_order);
+      ALTER TABLE answer_note_groups ADD COLUMN IF NOT EXISTS section VARCHAR(80) DEFAULT '';
     `).catch(e => console.error('[DB] answer note migration failed:', e.message));
     console.log('Database tables ready');
   } finally { client.release(); }
@@ -3050,7 +3051,7 @@ app.post('/api/assessments', authMiddleware, async (req, res) => {
 
 // ============ ANSWER NOTE (owner, 23 Oct) ============
 // A desktop note he reads from during a live interview. ONE note per user, seeded from data/note-seed.json on first
-// open (18 groups mined from his real interviews, their phrasings as items). Logic in lib/answer-note.js; this block
+// open (43 questions mined from his real interviews: short title, full question, up to 3 other ways to ask it). Logic in lib/answer-note.js; this block
 // is the DB + the writer. Every content write goes through answerNote.applyChange (history kept, stale writes → 409).
 async function loadNote(userId) {
   let n = (await pool.query('SELECT * FROM answer_notes WHERE user_id = $1', [userId])).rows[0];
@@ -3059,13 +3060,48 @@ async function loadNote(userId) {
   if (!has.rows.length && !n.settings?.seeded) {
     let items = 0;
     for (const g of answerNote.seedRows()) {
-      const gr = await pool.query('INSERT INTO answer_note_groups (note_id, name, sort_order) VALUES ($1, $2, $3) RETURNING id', [n.id, g.name, g.sort_order]);
+      const gr = await pool.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order) VALUES ($1, $2, $3, $4) RETURNING id', [n.id, g.name, g.section, g.sort_order]);
       for (const it of g.items) { await pool.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4)', [n.id, gr.rows[0].id, it.question, it.sort_order]); items++; }
     }
-    n = (await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"seeded\": true}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0]; // seeded once; deleting every group later does not re-seed
+    n = (await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"seeded\": true, \"seedVersion\": 2}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0]; // seeded once; deleting every group later does not re-seed
     console.log(`[Note] Seeded ${items} answers in ${answerNote.seedRows().length} groups for user ${userId}`);
-  }
+  } else if (n.settings?.seeded && !n.settings?.seedVersion) n = await upgradeNoteSeed(n);
   return n;
+}
+// v1 → v2 seed (24 Oct): short titles in sections, the full question under each, at most 3 other ways. Runs once per
+// note, in one transaction, the note row locked so two windows opening together cannot both run it.
+// answerNote.upgradePlan decides; a row is only removed here if it is STILL empty at that moment (no answer, no KEY,
+// no history), so nothing he wrote or generated can go.
+async function upgradeNoteSeed(n) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = (await client.query('SELECT * FROM answer_notes WHERE id = $1 FOR UPDATE', [n.id])).rows[0];
+    if (!locked || locked.settings?.seedVersion) { await client.query('ROLLBACK'); return locked || n; }
+    const groups = (await client.query('SELECT * FROM answer_note_groups WHERE note_id = $1', [n.id])).rows;
+    const items = (await client.query('SELECT * FROM answer_note_items WHERE note_id = $1', [n.id])).rows;
+    const ops = answerNote.upgradePlan(groups.map(g => ({ ...g, items: items.filter(i => i.group_id === g.id) })));
+    const count = {};
+    for (const o of ops) {
+      count[o.op] = (count[o.op] || 0) + 1;
+      if (o.op === 'updateGroup') await client.query('UPDATE answer_note_groups SET name = coalesce($1, name), section = coalesce($2, section), sort_order = $3 WHERE id = $4 AND note_id = $5', [o.name || null, o.section === undefined ? null : o.section, o.sort_order, o.id, n.id]);
+      else if (o.op === 'updateItem') await client.query('UPDATE answer_note_items SET question = coalesce($1, question), sort_order = $2 WHERE id = $3 AND note_id = $4', [o.question || null, o.sort_order, o.id, n.id]);
+      else if (o.op === 'insertItem') await client.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4)', [n.id, o.group_id, o.question, o.sort_order]);
+      else if (o.op === 'deleteEmptyItem') await client.query("DELETE FROM answer_note_items WHERE id = $1 AND note_id = $2 AND coalesce(answer_html, '') = '' AND coalesce(key_points, '') = '' AND coalesce(versions, '[]'::jsonb) = '[]'::jsonb", [o.id, n.id]);
+      else if (o.op === 'insertGroup') {
+        const gr = await client.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order) VALUES ($1, $2, $3, $4) RETURNING id', [n.id, o.name, o.section || '', o.sort_order]);
+        for (let j = 0; j < o.items.length; j++) await client.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4)', [n.id, gr.rows[0].id, o.items[j], j]);
+      }
+    }
+    const out = (await client.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"seedVersion\": 2}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0];
+    await client.query('COMMIT');
+    console.log(`[Note] Upgraded note ${n.id} to seed v2: ${JSON.stringify(count)}`);
+    return out;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(`[Note] Seed upgrade failed for note ${n.id}, left as it was: ${e.message}`);
+    return n;
+  } finally { client.release(); }
 }
 function noteItemOut(i) {
   return { id: i.id, group_id: i.group_id, question: i.question, answer_html: i.answer_html || '', key_points: i.key_points || '', version: i.version || 0,
@@ -3075,7 +3111,7 @@ function noteItemOut(i) {
 async function noteTree(note) {
   const groups = (await pool.query('SELECT * FROM answer_note_groups WHERE note_id = $1 ORDER BY sort_order, created_at', [note.id])).rows;
   const items = (await pool.query('SELECT * FROM answer_note_items WHERE note_id = $1 ORDER BY sort_order, created_at', [note.id])).rows;
-  return { id: note.id, settings: note.settings || {}, groups: answerNote.sortGroups(groups).map(g => ({ id: g.id, name: g.name, color: g.color || '', pinned: !!g.pinned, sort_order: g.sort_order, items: items.filter(i => i.group_id === g.id).map(noteItemOut) })) };
+  return { id: note.id, settings: note.settings || {}, groups: answerNote.sortGroups(groups).map(g => ({ id: g.id, name: g.name, section: g.section || '', color: g.color || '', pinned: !!g.pinned, sort_order: g.sort_order, items: items.filter(i => i.group_id === g.id).map(noteItemOut) })) };
 }
 async function ownNoteGroup(userId, gid) {
   if (!isValidUUID(gid)) return null;
@@ -3155,9 +3191,10 @@ app.post('/api/note/groups', authMiddleware, async (req, res) => {
   try {
     const note = await loadNote(req.userId);
     const name = String(req.body?.name || '').trim().slice(0, 160) || 'New group';
+    const section = String(req.body?.section || '').trim().slice(0, 80);
     const mx = await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [note.id]);
-    const g = (await pool.query('INSERT INTO answer_note_groups (note_id, name, sort_order) VALUES ($1, $2, $3) RETURNING *', [note.id, name, mx.rows[0].n])).rows[0];
-    res.json({ id: g.id, name: g.name, color: '', pinned: false, sort_order: g.sort_order, items: [] });
+    const g = (await pool.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order) VALUES ($1, $2, $3, $4) RETURNING *', [note.id, name, section, mx.rows[0].n])).rows[0];
+    res.json({ id: g.id, name: g.name, section: g.section || '', color: '', pinned: false, sort_order: g.sort_order, items: [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/note/groups/order', authMiddleware, async (req, res) => { // before /:gid so "order" is never read as an id
@@ -3176,8 +3213,9 @@ app.put('/api/note/groups/:gid', authMiddleware, async (req, res) => {
     const name = req.body?.name !== undefined ? (String(req.body.name).trim().slice(0, 160) || g.name) : g.name;
     const color = req.body?.color !== undefined ? String(req.body.color || '').slice(0, 32) : g.color;
     const pinned = req.body?.pinned !== undefined ? !!req.body.pinned : g.pinned;
-    const r = await pool.query('UPDATE answer_note_groups SET name = $1, color = $2, pinned = $3 WHERE id = $4 RETURNING *', [name, color, pinned, g.id]);
-    res.json({ id: r.rows[0].id, name: r.rows[0].name, color: r.rows[0].color || '', pinned: !!r.rows[0].pinned, sort_order: r.rows[0].sort_order });
+    const section = req.body?.section !== undefined ? String(req.body.section || '').trim().slice(0, 80) : (g.section || '');
+    const r = await pool.query('UPDATE answer_note_groups SET name = $1, color = $2, pinned = $3, section = $4 WHERE id = $5 RETURNING *', [name, color, pinned, section, g.id]);
+    res.json({ id: r.rows[0].id, name: r.rows[0].name, section: r.rows[0].section || '', color: r.rows[0].color || '', pinned: !!r.rows[0].pinned, sort_order: r.rows[0].sort_order });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/note/groups/:gid', authMiddleware, async (req, res) => {
@@ -3193,6 +3231,8 @@ app.post('/api/note/groups/:gid/items', authMiddleware, async (req, res) => {
     const g = await ownNoteGroup(req.userId, req.params.gid);
     if (!g) return res.status(404).json({ error: 'Group not found' });
     const question = String(req.body?.question || '').trim().slice(0, 500) || 'New question';
+    const cnt = await pool.query('SELECT count(*)::int AS n FROM answer_note_items WHERE group_id = $1', [g.id]);
+    if (cnt.rows[0].n >= answerNote.MAX_WAYS + 1) return res.status(400).json({ error: `A question holds at most ${answerNote.MAX_WAYS} other ways to ask it. Delete one first.` });
     const mx = await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_items WHERE group_id = $1', [g.id]);
     const it = (await pool.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4) RETURNING *', [g.note_id, g.id, question, mx.rows[0].n])).rows[0];
     res.json(noteItemOut(it));

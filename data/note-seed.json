@@ -1,135 +1,49 @@
 {
-  "_source": "Mined 23 Oct 2026 from 16 real xHire interviews (calls >=10 min where the candidate spoke 700+ words), plus the two the owner remembers (prioritise, sell to an executive who won't budge). Groups = left rail (vertical). Variations = horizontal tabs inside a group: the different ways interviewers phrase the same question.",
+  "_source": "Mined 23 Oct 2026 from 16 real xHire interviews (calls >=10 min where the candidate spoke 700+ words), plus the two the owner remembers (prioritize, sell to an executive who won't budge). v2 (24 Oct, owner): every distinct question is its own line on the left: a short 'title' in bold with the full question under it, grouped in 'section's; 'ways' are up to 3 rewordings of THAT SAME question (never a different question). 'was' = the v1 group name it replaces (used once to update notes seeded with v1).",
+  "version": 2,
   "groups": [
-    { "name": "Tell me about yourself", "variations": [
-      "Tell me about yourself.",
-      "Give us a little introduction of yourself.",
-      "Walk me through your background and what you want to highlight.",
-      "Tell me about the reporting work you did at your current company.",
-      "Can you give me a brief overview of yourself, titles and things you've done?"
-    ]},
-    { "name": "Why are you looking / why this role", "variations": [
-      "Why are you looking to leave your current role?",
-      "Why are you interested in this role?",
-      "What has you looking for a new position now?",
-      "What are you looking for in your next role?",
-      "What got you interested in our company?",
-      "You're already a subject matter expert where you are. Why move?"
-    ]},
-    { "name": "What do you know about us", "variations": [
-      "What do you know about our company?",
-      "What have you learned about us so far?",
-      "What can you say about our culture?"
-    ]},
-    { "name": "Prioritising", "variations": [
-      "How do you prioritise?",
-      "How do you handle conflicting priorities?",
-      "You have two or three projects coming at once. How do you handle it?",
-      "How do you prioritise across a global team and multiple regions?",
-      "How do you handle tight deadlines and pressure?"
-    ]},
-    { "name": "Selling to an executive who won't budge", "variations": [
-      "How do you convince an executive who won't budge?",
-      "How did you make them care?",
-      "What happens if they want you to go the wrong direction?",
-      "Leadership disagrees with what your data shows. What do you do?",
-      "How do you get buy-in when stakeholders aren't sold on your idea?",
-      "Tell me about a time you influenced a decision without authority."
-    ]},
-    { "name": "Stakeholders & requirements", "variations": [
-      "A leader asked for one report but actually needed something different. What did you do?",
-      "What's your process when a new requirement comes in?",
-      "How do you handle a stakeholder who keeps changing requirements?",
-      "Have you renegotiated a timeline with someone more senior?",
-      "Tell me about a time you had to say no to a stakeholder.",
-      "How do you get people to actually adopt something new you built?"
-    ]},
-    { "name": "Checking the numbers are right", "variations": [
-      "How do you validate a report before it goes to leadership?",
-      "How did you turn questionable data into clean data you trusted?",
-      "The business says these numbers are wrong. How do you look into it?",
-      "Tell me about a time you missed an error before it went out.",
-      "How do you document your data cleaning?"
-    ]},
-    { "name": "Dashboards you built", "variations": [
-      "What dashboards have you built?",
-      "What visuals and functionality does your dashboard have?",
-      "Walk me through one you built end to end and how it solved the problem.",
-      "How were the executives using them?",
-      "What did the team do with that data?"
-    ]},
-    { "name": "Power BI & data models", "variations": [
-      "How would you troubleshoot a measure that's right at row level but wrong in the total?",
-      "Describe the most difficult DAX calculation you've written.",
-      "How many models, fact tables and dimensions did you build to support those reports?",
-      "How do users access the reports? Workspace or apps? How do you manage who sees what (RLS)?",
-      "How do you develop and deploy a report?",
-      "How do you optimize a slow Power BI report?",
-      "Which Microsoft Fabric components have you implemented?",
-      "Rate your Power BI skills from 0 to 10."
-    ]},
-    { "name": "SQL", "variations": [
-      "What's the difference between an inner join and a left join?",
-      "What is a window function and when would you use one?",
-      "Have you optimized a query that wasn't performing well? How?",
-      "Do you use views or materialized views? When?",
-      "How do you find and handle duplicates?",
-      "Do you test queries in a separate environment?"
-    ]},
-    { "name": "Pipelines & warehouse", "variations": [
-      "Walk me through a pipeline from raw source data to metrics.",
-      "What do you call each layer, and what belongs in each?",
-      "Where should transformation logic live: warehouse or BI layer?",
-      "How would you pull data from an API into a database or Google Sheet?",
-      "Someone does a process by hand. How would you automate it?"
-    ]},
-    { "name": "AI & tools", "variations": [
-      "How is AI changing your work? Have you built anything with it?",
-      "What AI tools do you use to support your work?",
-      "What are most people doing wrong when using AI to get work done?",
-      "What tools, platforms and databases have you used?",
-      "How many years of Tableau do you have?",
-      "How have you used Python in your current role?"
-    ]},
-    { "name": "Tell me about a time", "variations": [
-      "Tell me about a time you collaborated really well with others. What did you do?",
-      "Tell me about a time you worked with a difficult person.",
-      "Your work was challenged as incomplete. How did you respond?",
-      "Tell me about a time you took initiative.",
-      "Tell me about a time documentation helped you.",
-      "Tell me about your most complex project or biggest technical challenge."
-    ]},
-    { "name": "Leadership", "variations": [
-      "What's your leadership style?",
-      "Is a team of five the largest you've led?",
-      "You've led a team. Are you OK being an individual contributor?",
-      "Tell me about a time you stepped into a leadership role."
-    ]},
-    { "name": "Strengths, weaknesses, why you", "variations": [
-      "What are your strengths?",
-      "What's your weakness? A skill you're still developing?",
-      "What constructive feedback have you received and how did you act on it?",
-      "What sets you apart from other candidates?",
-      "Why should we hire you?"
-    ]},
-    { "name": "Salary", "variations": [
-      "What are your salary expectations?",
-      "Is that still the range you're looking for?",
-      "Where do you sit on that range realistically?",
-      "What would you need in a package to consider a change?"
-    ]},
-    { "name": "Logistics", "variations": [
-      "How soon can you start?",
-      "Do you have offers elsewhere? What's your timeline?",
-      "Are you subject to a non-compete?",
-      "This is remote with some travel. Does that work?",
-      "Are you authorized to work in the US?"
-    ]},
-    { "name": "Questions for them", "variations": [
-      "What questions do you have for me?",
-      "What does success look like in the first 90 days?",
-      "What's the biggest problem the team is facing today?",
-      "What are the current initiatives?"
-    ]}
+    {"section":"About you","title":"About me","question":"Tell me about yourself.","was":"Tell me about yourself","ways":["Walk me through your background.","Give us a quick introduction of yourself.","Can you give me a brief overview of who you are and what you've done?"]},
+    {"section":"About you","title":"Why I'm leaving","question":"Why are you looking to leave your current role?","was":"Why are you looking / why this role","ways":["What has you looking for a new position right now?","What's making you look for a change?","You're doing well where you are. Why move now?"]},
+    {"section":"About you","title":"What I want next","question":"What are you looking for in your next role?","ways":["What would your ideal next job look like?","What do you want to see in your next role?","What matters most to you in your next position?"]},
+    {"section":"About you","title":"Why this role","question":"Why are you interested in this role?","ways":["What got you interested in this position?","What drew you to this job?","Why did you apply for this role?"]},
+    {"section":"About you","title":"What I know about you","question":"What do you know about our company?","was":"What do you know about us","ways":["What have you learned about us so far?","How much do you know about what we do?","Did you get a chance to look into our company?"]},
+    {"section":"How you work","title":"Prioritizing","question":"How do you prioritize when everything is urgent?","was":"Prioritising","ways":["How do you handle conflicting priorities?","You have two or three projects coming at you at once. How do you handle that?","How do you decide what to work on first?"]},
+    {"section":"How you work","title":"Deadlines and pressure","question":"How do you handle tight deadlines and pressure?","ways":["How do you work when the timeline is really short?","How do you stay on track when you're under pressure?","Tell me about a time you had to deliver under a tight deadline."]},
+    {"section":"Stakeholders and leaders","title":"Exec who won't budge","question":"How do you convince an executive who won't budge?","was":"Selling to an executive who won't budge","ways":["How do you get buy-in from a leader who isn't sold on your idea?","An executive is set on their way and you think it's wrong. What do you do?","How do you get a senior leader to care about your recommendation?"]},
+    {"section":"Stakeholders and leaders","title":"Leaders disagree with my data","question":"What do you do when leadership disagrees with what your data shows?","ways":["What happens if they want you to go in the wrong direction?","The numbers tell a different story than leadership expects. How do you handle it?","Your analysis goes against what a senior leader believes. What do you do?"]},
+    {"section":"Stakeholders and leaders","title":"Asked for one thing, needs another","question":"How do you handle a stakeholder who asks for one thing but needs another?","was":"Stakeholders & requirements","ways":["A leader asked for one report but actually needed something different. What did you do?","How do you find out what a stakeholder really needs?","How do you handle a request that doesn't match the real problem?"]},
+    {"section":"Stakeholders and leaders","title":"New requirements","question":"What's your process when a new requirement comes in?","ways":["Walk me through how you gather requirements.","When someone brings you a new request, what do you do first?","How do you scope a new request?"]},
+    {"section":"Stakeholders and leaders","title":"Changing requirements","question":"How do you handle a stakeholder who keeps changing the requirements?","ways":["What do you do when the scope keeps moving?","How do you manage requests that change halfway through?","How do you push back when the ask keeps changing?"]},
+    {"section":"Getting the numbers right","title":"Checking a report","question":"How do you make sure a report is right before it goes to leadership?","was":"Checking the numbers are right","ways":["How do you validate a dashboard before you share it?","How do you know your numbers are accurate?","What checks do you run before a report goes out?"]},
+    {"section":"Getting the numbers right","title":"Numbers called wrong","question":"The business says your numbers are wrong. How do you look into it?","ways":["Someone says the dashboard doesn't match their numbers. What do you do?","How do you troubleshoot a report people say is off?","A leader tells you the data looks wrong. Walk me through your steps."]},
+    {"section":"Getting the numbers right","title":"Cleaning messy data","question":"How did you turn messy data into clean data you could trust?","ways":["How do you deal with questionable data?","Tell me about a time you had to clean up bad data.","How do you handle data quality issues?"]},
+    {"section":"Dashboards and Power BI","title":"Dashboard end to end","question":"Walk me through a dashboard you built end to end.","was":"Dashboards you built","ways":["Tell me about a dashboard you built and the problem it solved.","What's a report you built from start to finish?","Walk me through one of your dashboards, from the ask to the finished product."]},
+    {"section":"Dashboards and Power BI","title":"How execs used it","question":"How were the executives using your dashboards?","ways":["What did the team actually do with that data?","What decisions came out of your reports?","What action did people take because of your dashboard?"]},
+    {"section":"Dashboards and Power BI","title":"Power BI data models","question":"How do you design your Power BI data models?","was":"Power BI & data models","ways":["How many models, fact tables and dimensions did you build to support those reports?","How is your data model set up?","Walk me through how you structure a Power BI model."]},
+    {"section":"Dashboards and Power BI","title":"Develop and deploy","question":"How do you develop and deploy a Power BI report?","ways":["What does your development and deployment process look like?","How do you take a report from development to the users?","Walk me through how a report goes live."]},
+    {"section":"Dashboards and Power BI","title":"Who sees what","question":"How do you control who sees what in Power BI?","ways":["How do users get to the reports, and how do you manage access?","Have you set up row-level security?","How do you make sure people only see their own data?"]},
+    {"section":"Dashboards and Power BI","title":"Slow Power BI report","question":"How do you speed up a slow Power BI report?","ways":["A report is taking too long to load. What do you do?","How do you optimize Power BI performance?","What do you look at first when a dashboard is slow?"]},
+    {"section":"Dashboards and Power BI","title":"Hardest DAX","question":"What's the hardest DAX calculation you've written?","ways":["Give me an example of a difficult DAX measure and why it was hard.","What's the most complex DAX you've built?","Tell me about a DAX problem that took you a while to solve."]},
+    {"section":"Dashboards and Power BI","title":"Row right, total wrong","question":"A measure is right by row but wrong in the total. How would you fix it?","ways":["How would you troubleshoot that measure?","Your totals don't add up in Power BI. What's going on?","Why would a total show a different number than the rows add up to?"]},
+    {"section":"SQL and pipelines","title":"Slow SQL query","question":"Have you tuned a SQL query that was running slow? How?","was":"SQL","ways":["How do you optimize a slow query?","A query is taking too long. What do you look at?","Tell me about a time you made a query faster."]},
+    {"section":"SQL and pipelines","title":"Inner vs left join","question":"What's the difference between an inner join and a left join?","ways":["When would you use a left join instead of an inner join?","Explain inner and left joins.","How do inner and left joins treat rows that don't match?"]},
+    {"section":"SQL and pipelines","title":"Window functions","question":"When would you use a window function?","ways":["What is a window function?","Give me an example of a window function you've used.","How are window functions different from GROUP BY?"]},
+    {"section":"SQL and pipelines","title":"Pipeline end to end","question":"Walk me through a pipeline from raw data to the metrics people use.","was":"Pipelines & warehouse","ways":["How does data get from the source to your dashboards?","Describe your data pipeline end to end.","What layers does your data go through, and what happens in each?"]},
+    {"section":"SQL and pipelines","title":"Automating manual work","question":"Someone does a process by hand every week. How would you automate it?","ways":["How would you automate a manual process?","The team is slogging through a manual task. How would you help?","Tell me about something you automated."]},
+    {"section":"AI and tools","title":"AI in my work","question":"How is AI changing your work?","was":"AI & tools","ways":["How are you using AI in your job today?","What AI tools do you use to support your work?","Have you built anything with AI?"]},
+    {"section":"AI and tools","title":"What people get wrong with AI","question":"What are most people getting wrong when they use AI at work?","ways":["What mistakes do you see people make with AI?","Where do people go wrong using AI to get work done?","What's the right way to use AI at work?"]},
+    {"section":"AI and tools","title":"My tools","question":"What tools, platforms and databases have you used?","ways":["What's your tech stack?","Which tools are you most comfortable with?","What software and databases have you worked in?"]},
+    {"section":"Teamwork and leading","title":"Great teamwork","question":"Tell me about a time you worked really well with others.","was":"Tell me about a time","ways":["Describe a time you collaborated well with a team.","Give me an example of great teamwork you were part of.","What did you do to make a team project work?"]},
+    {"section":"Teamwork and leading","title":"A difficult person","question":"Tell me about a time you worked with a difficult person.","ways":["How do you handle a hard coworker?","Tell me about a conflict with a colleague and how you handled it.","Have you had a dispute with someone at work? What happened?"]},
+    {"section":"Teamwork and leading","title":"My work was challenged","question":"Tell me about a time your work was challenged.","ways":["Your work was called incomplete. How did you respond?","Tell me about a time someone pushed back on your work.","How do you react when your work gets criticized?"]},
+    {"section":"Teamwork and leading","title":"Leadership style","question":"What's your leadership style?","was":"Leadership","ways":["How would your team describe you as a leader?","How do you lead a team?","What kind of leader are you?"]},
+    {"section":"Teamwork and leading","title":"Back to hands-on work","question":"You've led a team. Are you OK being an individual contributor?","ways":["Are you comfortable going back to hands-on work?","Would you be happy without direct reports?","This role has no team under it. Is that OK for you?"]},
+    {"section":"Why you","title":"Why hire me","question":"Why should we hire you?","was":"Strengths, weaknesses, why you","ways":["What sets you apart from other candidates?","What makes you the right person for this role?","Why you over everyone else we're talking to?"]},
+    {"section":"Why you","title":"Strengths","question":"What are your strengths?","ways":["What are you best at?","What would your manager say you do really well?","What's your biggest strength?"]},
+    {"section":"Why you","title":"Weakness","question":"What's your biggest weakness?","ways":["What's a skill you're still developing?","What area are you working to improve?","What would your manager say you need to work on?"]},
+    {"section":"Pay and logistics","title":"Salary","question":"What are your salary expectations?","was":"Salary","ways":["What are you looking for in pay?","Is that still the range you're looking for?","Where do you realistically sit in that range?"]},
+    {"section":"Pay and logistics","title":"Start date","question":"How soon could you start?","was":"Logistics","ways":["If you got an offer, when could you start?","What's your availability to start?","How much notice do you need to give?"]},
+    {"section":"Pay and logistics","title":"Other offers","question":"Do you have other offers? What's your timeline?","ways":["Are you interviewing anywhere else?","Where are you in your job search?","Is anyone else close to making you an offer?"]},
+    {"section":"Your questions","title":"My questions for them","question":"What questions do you have for us?","was":"Questions for them","ways":["Do you have any questions for me?","Did you have anything for us?","Before we wrap up, is there anything you'd like to ask?"]}
   ]
 }

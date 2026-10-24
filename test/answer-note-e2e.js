@@ -29,10 +29,13 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   // 1. first open seeds the mined groups
   let { j } = await api('GET', '/api/note');
   const nItems = j.groups.reduce((n, g) => n + g.items.length, 0);
-  check(j.id && j.groups.length === 18 && nItems === 94, 'first open: 18 groups, 94 variations seeded', JSON.stringify([j.groups.length, nItems]));
-  check(j.groups[0].name === 'Tell me about yourself' && j.groups[0].items[0].question === 'Tell me about yourself.' && j.groups[0].items[0].version === 0, 'seed order kept, answers empty');
+  check(j.id && j.groups.length === 43 && nItems === 172, 'first open: 43 questions, 172 wordings seeded', JSON.stringify([j.groups.length, nItems]));
+  check(j.groups[0].name === 'About me' && j.groups[0].section === 'About you' && j.groups[0].items[0].question === 'Tell me about yourself.' && j.groups[0].items[0].version === 0, 'seed order kept: short title, section, full question first, answers empty');
+  check(j.settings.seedVersion === 2, 'a fresh note is born on seed v2 (never upgraded again)');
+  const cap = await api('POST', '/api/note/groups/' + j.groups[0].id + '/items', { question: 'A fifth wording' });
+  check(cap.r.status === 400 && /at most 3/.test(cap.j.error || ''), 'a question already holding 3 other ways refuses a 4th', cap.r.status + ' ' + JSON.stringify(cap.j));
   const again = (await api('GET', '/api/note')).j;
-  check(again.id === j.id && again.groups.length === 18, 'second open: same note, not seeded twice');
+  check(again.id === j.id && again.groups.length === 43, 'second open: same note, not seeded twice');
   const g0 = j.groups[0], item = g0.items[0];
 
   // 2. manual save with history + stale write refused
@@ -73,7 +76,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
 
   // 5. groups and variations: add, rename, colour, pin, reorder, delete
   const ng = (await api('POST', '/api/note/groups', { name: 'My extra group' })).j;
-  check(ng.id && ng.name === 'My extra group' && ng.sort_order === 18, 'add group at the end', JSON.stringify(ng));
+  check(ng.id && ng.name === 'My extra group' && ng.sort_order === 43, 'add group at the end', JSON.stringify(ng));
   const ren = (await api('PUT', '/api/note/groups/' + ng.id, { name: 'Renamed group', color: '#2563eb', pinned: true })).j;
   check(ren.name === 'Renamed group' && ren.color === '#2563eb' && ren.pinned === true, 'rename, colour, pin a group');
   let tree = (await api('GET', '/api/note')).j;
@@ -92,7 +95,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const di = await api('DELETE', '/api/note/items/' + ni2.id);
   const dg = await api('DELETE', '/api/note/groups/' + ng.id);
   tree = (await api('GET', '/api/note')).j;
-  check(di.j.removed && dg.j.removed && !tree.groups.some(g => g.id === ng.id) && tree.groups.length === 18, 'delete a variation and a group (its items go with it)');
+  check(di.j.removed && dg.j.removed && !tree.groups.some(g => g.id === ng.id) && tree.groups.length === 43, 'delete a variation and a group (its items go with it)');
   const other = (await pool.query("SELECT i.id FROM answer_note_items i JOIN answer_notes n ON n.id=i.note_id WHERE n.user_id<>$1 LIMIT 1", [u.id])).rows[0];
   if (other) { const x = await api('PUT', '/api/note/items/' + other.id, { answer_html: 'x', baseVersion: 0 }); check(x.r.status === 404, "another user's item → 404"); }
   else check(true, "another user's item → 404 (no other note locally, skipped)");
@@ -100,6 +103,29 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   // 6. settings
   const st = (await api('PUT', '/api/note/settings', { bg: '#101820', theme: 'light', sessionId: sess.id, hacker: 'no' })).j;
   check(st.settings.bg === '#101820' && st.settings.theme === 'light' && st.settings.sessionId === sess.id && st.settings.hacker === undefined && st.settings.seeded === true, 'settings: allow-listed keys merge, seeded flag kept', JSON.stringify(st.settings));
+
+  // 6b. a note seeded with v1 moves to v2 once, through the real route, and keeps everything he wrote
+  const u3e = 'note-upgrade@local.test';
+  let u3 = (await pool.query('SELECT * FROM users WHERE email=$1', [u3e])).rows[0];
+  if (!u3) u3 = (await pool.query("INSERT INTO users (email, name, plan) VALUES ($1,'Upgrade Tester','premium') RETURNING *", [u3e])).rows[0];
+  await pool.query('DELETE FROM answer_notes WHERE user_id=$1', [u3.id]); // local test user only
+  const n3 = (await pool.query(`INSERT INTO answer_notes (user_id, settings) VALUES ($1, '{"seeded": true, "theme": "dark"}') RETURNING id`, [u3.id])).rows[0];
+  const mkG = async (name, so, qs) => { const g = (await pool.query('INSERT INTO answer_note_groups (note_id, name, sort_order) VALUES ($1,$2,$3) RETURNING id', [n3.id, name, so])).rows[0]; const ids = []; for (let k = 0; k < qs.length; k++) ids.push((await pool.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1,$2,$3,$4) RETURNING id', [n3.id, g.id, qs[k], k])).rows[0].id); return { id: g.id, ids }; };
+  const pri = await mkG('Prioritising', 3, ['How do you prioritise?', 'How do you handle conflicting priorities?', 'You have two or three projects coming at once. How do you handle it?', 'How do you prioritise across a global team and multiple regions?', 'How do you handle tight deadlines and pressure?']);
+  await pool.query("UPDATE answer_note_items SET answer_html = '<ul><li>MY-OWN-ANSWER</li></ul>', version = 1 WHERE id = $1", [pri.ids[3]]);
+  const mine = await mkG('My own group', 0, ['My own question']);
+  const t3 = jwt.sign({ userId: u3.id, name: u3.name, email: u3e, isAdmin: false, plan: 'premium', suspended: false }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  const get3 = async () => (await fetch(BASE + '/api/note', { headers: { Authorization: 'Bearer ' + t3 } })).json();
+  const up = await get3();
+  const upPri = up.groups.find(g => g.id === pri.id);
+  const kept = upPri && upPri.items.find(i => i.id === pri.ids[3]);
+  check(up.settings.seedVersion === 2 && up.settings.theme === 'dark', 'v1 note upgraded once, his settings kept', JSON.stringify(up.settings));
+  check(upPri && upPri.name === 'Prioritizing' && upPri.section === 'How you work' && upPri.items[0].question === 'How do you prioritize when everything is urgent?', 'v1 group renamed to the short title, full question first', JSON.stringify(upPri && upPri.items.map(i => i.question)));
+  check(kept && /MY-OWN-ANSWER/.test(kept.answer_html) && kept.question === 'How do you prioritise across a global team and multiple regions?', 'his written answer survived with its own question');
+  check(upPri && upPri.items.length === 4, 'the group now holds 4 wordings', upPri && upPri.items.length);
+  check(up.groups.length === 44 && up.groups.some(g => g.id === mine.id && g.name === 'My own group'), 'the missing seed questions were added, his own group left alone', up.groups.length);
+  const up2 = await get3();
+  check(up2.groups.length === 44 && up2.groups.reduce((n, g) => n + g.items.length, 0) === up.groups.reduce((n, g) => n + g.items.length, 0), 'opening again changes nothing (runs once)');
 
   // 7. no résumé anywhere → a clear refusal, no model call
   const u2e = 'note-noresume@local.test';
