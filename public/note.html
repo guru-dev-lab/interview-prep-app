@@ -14,6 +14,28 @@
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;--note-font:var(--font);--note-size:17px;--side-w:330px;--shadow:0 10px 30px rgba(0,0,0,.14)}
 body.dark{--chrome:#1c1c1e;--side:#242426;--page:#1e1e20;--card:#2a2a2d;--text:#ececee;--muted:#b4b4ba;--dim:#9a9aa1;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.18);
   --accent:#f2c14e;--accent-bg:#f2c14e;--sel:#4a3d17;--sel-line:#8a6d1f;--key:#3a3115;--key-line:#6b5a22;--ok:#5fd08f;--warn:#f0b35a;--bad:#ff8a80;--shadow:0 10px 30px rgba(0,0,0,.5)}
+/* Glass (owner 24 Oct: "the exact type on xHire"): the overlay's own glass, same values as canvas.html: panels tinted
+   rgba(15,15,25,.65) dark / rgba(255,255,255,.65) light, blur(60px) saturate(200%), a thin light border, rounded,
+   on a transparent frameless window. */
+body.glass{--glass-bg:rgba(15,15,25,0.65);--glass-blur:blur(60px) saturate(200%);--glass-border-color:rgba(255,255,255,0.10);
+  --chrome:transparent;--side:transparent;--page:transparent;--card:rgba(255,255,255,.06);--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.16);
+  --text:#ffffff;--muted:#cbd5e1;--dim:#94a3b8;--sel:rgba(124,58,237,.28);--sel-line:rgba(167,139,250,.7);--accent:#c4b5fd;--accent-bg:#a78bfa;
+  --key:rgba(124,58,237,.18);--key-line:rgba(167,139,250,.45);--ok:#34d399;--shadow:0 8px 32px rgba(0,0,0,.5)}
+body.glass:not(.dark){--glass-bg:rgba(255,255,255,0.65);--glass-border-color:rgba(0,0,0,.1);--card:rgba(255,255,255,.5);--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.14);
+  --text:#0f172a;--muted:#334155;--dim:#475569;--sel:rgba(124,58,237,.14);--sel-line:rgba(109,40,217,.55);--accent:#6d28d9;--accent-bg:#c4b5fd;--key:rgba(124,58,237,.1);--key-line:rgba(109,40,217,.3);--ok:#047857}
+html.glass-on,html.glass-on body{background:transparent !important}
+body.glass{padding:4px;gap:4px}
+body.glass .top{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:16px 16px 5px 5px}
+body.glass .main{gap:4px}
+body.glass .side,body.glass .pagewrap{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:6px 6px 14px 14px;overflow:hidden}
+body.glass .resizer{border-left:none;width:4px}
+body.glass .heard{border-radius:10px;border:1px solid var(--key-line)}
+body.glass .sec{background:transparent;backdrop-filter:none}
+body.glass .pop,body.glass .help .box{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color)}
+body.glass .chip.primary,body.glass .way.active .wn{color:#1e1033}
+body.glass .search input,body.glass .job,body.glass .ai .free input{background:rgba(255,255,255,.06)}
+body.glass input::placeholder{color:var(--dim);opacity:1}
+body.glass:not(.dark) .search input,body.glass:not(.dark) .job,body.glass:not(.dark) .ai .free input{background:rgba(255,255,255,.55)}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
 body{background:var(--chrome);color:var(--text);font:14px/1.45 var(--font);display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
@@ -248,6 +270,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   <span class="grow"></span>
   <span class="progress" id="progress"></span>
   <button class="ibtn txt only-full" id="gen-all" title="Write every empty answer in the background">Write all answers</button>
+  <button class="ibtn hidden" id="btn-glass" title="Glass, like the xHire overlay (G)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M7 15l8-8M11 17l6-6" opacity=".7"/></svg><span>Glass</span></button>
   <button class="ibtn" id="btn-fmt" title="Text formatting"><b style="font-size:14px">Aa</b></button>
   <button class="ibtn" id="btn-expand" title="Expand the answer to the whole window (F)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg><span id="expand-lbl">Expand</span></button>
   <button class="ibtn" id="btn-menu" title="More"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
@@ -318,7 +341,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   <b>Keyboard</b><br>
   <kbd>&uarr;</kbd> <kbd>&darr;</kbd> questions &nbsp; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> ways they ask it &nbsp; <kbd>1</kbd> to <kbd>4</kbd> pick a way<br>
   <kbd>/</kbd> search &nbsp; <kbd>F</kbd> expand the answer &nbsp; <kbd>Esc</kbd> back out &nbsp; <kbd>Cmd</kbd>+<kbd>\</kbd> hide the questions<br>
-  <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copy &nbsp; <kbd>Cmd</kbd>+<kbd>G</kbd> write it again &nbsp; <kbd>?</kbd> this help<br><br>
+  <kbd>G</kbd> glass &nbsp; <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copy &nbsp; <kbd>Cmd</kbd>+<kbd>G</kbd> write it again &nbsp; <kbd>?</kbd> this help<br><br>
   <b>During a call</b>: when xHire hears a question, the note marks it on the left, shows it at the top with an Open button, lights up the line to read, and ticks off the lines you have said. Questions not in your note are kept under \"Heard today\". It never switches on its own. Turn it off under the <b>&middot;&middot;&middot;</b> menu.<br><br>
   <span style="color:var(--muted)">Click anywhere in an answer to edit it. Every change saves itself, and the AI never overwrites your words without a copy: History keeps every version.</span>
 </div></div>
@@ -338,6 +361,22 @@ var EMBED = params.get('embed') === '1';
 var WIN = params.get('win') === '1' && !!window.electronAPI; // its own protected window (desktop app 1.1.7+), apart from xHire
 var DESKTOP = !EMBED && !WIN && !!window.electronAPI;      // older desktop app: inside the xHire window
 var CAN_POP = !EMBED && !window.electronAPI;                // a new window is only fine in a browser
+// Glass: only in the note's own desktop window (1.1.10+). The window type is fixed when a window opens, so turning it
+// on or off saves everything first, then the app reopens the note as the other type in the same place.
+var CAN_GLASS = WIN && !!window.electronAPI.noteGlass, glass = false;
+function showGlass(on) { glass = !!on; document.body.classList.toggle('glass', glass); document.documentElement.classList.toggle('glass-on', glass); $('btn-glass').classList.toggle('on', glass); }
+async function toggleGlass() {
+  if (!CAN_GLASS) return;
+  flushEditor();
+  Object.keys(pending).forEach(function (k) { clearTimeout(timers[k]); runSave(k); });
+  for (var i = 0; i < 40 && (Object.keys(pending).length || Object.keys(inflight).length); i++) await new Promise(function (r) { setTimeout(r, 100); });
+  if (Object.keys(pending).length || Object.keys(inflight).length) { toast('Still saving. Try again in a moment.', 2500); return; }
+  window.electronAPI.noteGlass(!glass).catch(function () {});
+}
+if (CAN_GLASS) {
+  document.getElementById('btn-glass').classList.remove('hidden');
+  window.electronAPI.noteGlass().then(function (v) { showGlass(!!v); }).catch(function () {});
+}
 var onTop = true; if (WIN && window.electronAPI.noteOnTop) window.electronAPI.noteOnTop().then(function (v) { if (v !== null && v !== undefined) onTop = !!v; }).catch(function () {});
 var $ = function (id) { return document.getElementById(id); };
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -879,6 +918,7 @@ function popOut(g) {
   if (!w) toast('Your browser blocked the new window', 2500);
 }
 $('btn-pop').onclick = function () { popOut(); };
+$('btn-glass').onclick = function () { toggleGlass(); };
 
 // ===== the ... menu: follow the call, text size, background, theme, help =====
 function setNoteBg(hex) { // his background colour for the note page; the text flips light or dark to stay readable
@@ -897,6 +937,7 @@ $('btn-menu').onclick = function () {
     + '<label class="mi" style="cursor:pointer">Page colour<span class="r"><input type="color" id="pop-bg" value="' + esc((N.settings && N.settings.bg) || (dark ? '#1e1e20' : '#fffdf8')) + '" style="width:30px;height:22px;border:none;background:none;cursor:pointer"></span></label>'
     + '<button class="mi" data-a="bgreset">Reset the page colour</button>'
     + (WIN && window.electronAPI.noteOnTop ? '<button class="mi" data-a="ontop">Keep on top of other windows<span class="r">' + (onTop ? 'On' : 'Off') + '</span></button>' : '')
+    + (CAN_GLASS ? '<button class="mi" data-a="glass">Glass, like the xHire overlay<span class="r">' + (glass ? 'On' : 'Off') + '</span></button>' : '')
     + (document.body.classList.contains('narrow') ? '<button class="mi" data-a="genall">' + (genAll && genAll.running ? 'Stop writing answers' : 'Write all answers') + '</button>' : '')
     + '<div class="hr"></div><button class="mi" data-a="help">Keyboard shortcuts<span class="r">?</span></button>', function (p) {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
@@ -907,6 +948,7 @@ $('btn-menu').onclick = function () {
       else if (a === 'bgreset') { setNoteBg(''); saveSettings({ bg: '' }); closePop(); toast('Page colour reset'); }
       else if (a === 'help') { closePop(); $('help').classList.add('open'); }
       else if (a === 'genall') { closePop(); $('gen-all').click(); }
+      else if (a === 'glass') { closePop(); toggleGlass(); }
       else if (a === 'ontop') { onTop = !onTop; window.electronAPI.noteOnTop(onTop); b.querySelector('.r').textContent = onTop ? 'On' : 'Off'; toast(onTop ? 'The note stays on top' : 'The note behaves like a normal window'); }
     }; });
     var bg = p.querySelector('#pop-bg'); bg.oninput = function () { setNoteBg(this.value); }; bg.onchange = function () { saveSettings({ bg: this.value }); };
@@ -946,6 +988,7 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'ArrowLeft') { e.preventDefault(); moveSel(0, -1); return; }
   if (e.key === 'ArrowRight') { e.preventDefault(); moveSel(0, 1); return; }
   if (e.key.toLowerCase() === 'f' && !SOLO) { setExpand(!expand); return; }
+  if (e.key.toLowerCase() === 'g' && CAN_GLASS) { toggleGlass(); return; }
   if (/^[1-9]$/.test(e.key)) { var g = cur.gid && findGroup(cur.gid); var n = parseInt(e.key, 10) - 1; if (g && g.items[n]) select(g.id, g.items[n].id); }
 });
 
