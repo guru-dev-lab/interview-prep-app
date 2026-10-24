@@ -2,6 +2,7 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session, d
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { createGlobalShortcut } = require('./global-shortcut');
+const { createMacUpdater } = require('./mac-updater');
 
 // Safe logging — prevents EIO crash when stdout pipe is broken
 const _log = (...args) => { try { console.log(...args); } catch(e) {} };
@@ -31,6 +32,22 @@ autoUpdater.on('update-downloaded', (info) => {
 autoUpdater.on('error', (err) => {
   _log('[Update] Error:', err.message);
 });
+
+// Mac: the app is ad-hoc signed (no Apple Developer ID), so electron-updater (Squirrel.Mac) can never install an update.
+// mac-updater.js does it: download the release zip, check it, swap the app when xHire quits. Windows keeps electron-updater.
+let macUpdater = null;
+function startMacUpdater() {
+  macUpdater = createMacUpdater({
+    currentVersion: app.getVersion(), workDir: app.getPath('userData'), log: _log,
+    onAvailable: (v) => { if (mainWindow) mainWindow.webContents.send('update-available', v); },
+    onDownloaded: (v) => { if (mainWindow) mainWindow.webContents.send('update-downloaded', v); },
+  });
+}
+function macBundlePath() { return path.resolve(app.getPath('exe'), '..', '..', '..'); } // .../Xhire.app/Contents/MacOS/Xhire
+function checkForUpdates() {
+  if (process.platform === 'darwin') { if (!macUpdater) startMacUpdater(); return macUpdater.check(); }
+  return autoUpdater.checkForUpdatesAndNotify().catch(e => { _log('[Update] Check failed (offline or no releases):', e.message); });
+}
 
 // Transparency fix — disable hardware acceleration on macOS (required for transparency)
 // On Windows, hardware acceleration is needed for performance but transparency uses a different approach
@@ -151,22 +168,18 @@ app.whenReady().then(() => {
   _log('[Xhire] Platform:', process.platform, '| Electron:', process.versions.electron);
 
   // Check for updates after a short delay (don't slow down startup)
-  setTimeout(() => {
-    autoUpdater.checkForUpdatesAndNotify().catch(e => {
-      _log('[Update] Check failed (offline or no releases):', e.message);
-    });
-  }, 5000);
+  setTimeout(() => { checkForUpdates(); }, 5000);
 
   // Re-check every 2 hours while running
-  setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
-  }, 2 * 60 * 60 * 1000);
+  setInterval(() => { checkForUpdates(); }, 2 * 60 * 60 * 1000);
 });
 
 // Cmd+Q / Dock Quit / system shutdown: mark the quit first, otherwise the window's close handler
 // below treats it as "hide to tray" and cancels the quit
 app.on('before-quit', () => {
   app.isQuitting = true;
+  // Mac: a downloaded update goes in now — the swap script waits for this process to exit, then replaces the app
+  if (macUpdater && macUpdater.ready) macUpdater.install({ bundlePath: macBundlePath(), pid: process.pid, relaunch: false });
 });
 
 // Global Shortcut Mode: hand the keys back to the system on quit
@@ -504,6 +517,19 @@ ipcMain.handle('perm-open-settings', async (_, kind) => {
 });
 
 // macOS applies a new Screen Recording permission only after the app restarts
+// "Restart to update": Mac swaps the app and reopens it; Windows hands over to electron-updater
+ipcMain.handle('install-update', () => {
+  app.isQuitting = true;
+  if (process.platform === 'darwin') {
+    if (!macUpdater || !macUpdater.ready) return false;
+    if (!macUpdater.install({ bundlePath: macBundlePath(), pid: process.pid, relaunch: true })) return false;
+    app.exit(0);
+    return true;
+  }
+  autoUpdater.quitAndInstall();
+  return true;
+});
+
 ipcMain.handle('app-relaunch', () => {
   _log('[Perm] relaunching to apply permission');
   app.isQuitting = true;

@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Auto-update listeners — fires when a new version is available/downloaded
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_, version) => callback(version)),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', (_, version) => callback(version)),
+  installUpdate: () => ipcRenderer.invoke('install-update'), // 1.1.8+: Mac updates itself too (electron/mac-updater.js)
 
   // Mac privacy permissions — check, ask for the mic, open the exact Settings page, restart to apply
   permStatus: () => ipcRenderer.invoke('perm-status'),

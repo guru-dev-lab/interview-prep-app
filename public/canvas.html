@@ -1061,13 +1061,13 @@ if (window.electronAPI) {
     window.electronAPI.onUpdateAvailable(function(version) {
       // Mac can't self-update: releases carry no Mac .zip and the app is ad-hoc signed, so the download never finishes
       // (latest-mac.yml lists DMGs only). Don't claim "downloading" there — point to the install command instead.
-      if (window.electronAPI.isMac) showToast('Update v' + version + ' is out — reinstall from xhire.app/download', 'info', 8000);
+      if (window.electronAPI.isMac && !window.electronAPI.installUpdate) showToast('Update v' + version + ' is out — reinstall from xhire.app/download', 'info', 8000); // app 1.1.7 and older
       else showToast('Update v' + version + ' downloading...', 'info', 4000);
     });
   }
   if (window.electronAPI.onUpdateDownloaded) {
     window.electronAPI.onUpdateDownloaded(function(version) {
-      showToast('v' + version + ' ready — restart to update', 'success', 6000);
+      showToast('v' + version + ' is ready. It installs when you quit xHire', 'success', 8000);
     });
   }
 }
