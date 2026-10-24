@@ -177,7 +177,7 @@ check(N.detailFor('About me') === 'intro' && N.detailFor('about me ') === 'intro
 check(N.detailFor('Great teamwork') === 'story' && N.detailFor('Dashboard end to end') === 'walk' && N.detailFor('Why hire me') === 'hire', 'detailed: stories, walk-throughs and why-hire-me get their paths');
 check(N.detailFor("Why I'm leaving") === '' && N.detailFor('Salary') === '' && N.detailFor('Inner vs left join') === '' && N.detailFor('Fabric architecture') === '', 'detailed: short questions and his own new ones stay short');
 check(N.SEED.groups.filter(g => g.detail).length === 14 && N.SEED.groups.filter(g => g.detail).every(g => N.DETAIL_ARCS[g.detail]), 'detailed: 14 seed questions, every one with a real path');
-check(N.paragraphsToHtml('I am a BI analyst.\nSix years.\n\n• Power BI is my home base.\n\n\n<b>x</b>') === '<p>I am a BI analyst. Six years.</p><p>Power BI is my home base.</p><p>&lt;b&gt;x&lt;/b&gt;</p>', 'detailed: blank lines make paragraphs, stray bullets go, HTML is escaped');
+check(N.paragraphsToHtml('I build reports.\nSeven years.\n\n• I ask what decision comes first.\n\n\n<b>x</b>') === '<p>I build reports. Seven years.</p><p>I ask what decision comes first.</p><p>&lt;b&gt;x&lt;/b&gt;</p>', 'detailed: blank lines make paragraphs, stray bullets go, HTML is escaped');
 
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);
