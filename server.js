@@ -4665,22 +4665,16 @@ wss.on('connection', (ws) => {
         }
         ws._growSayCard = growSayCard; // the Say handler grows its card when they finish during the press
 
+        // The FULL question after its first half made a card. Owner 24 Oct: "it grows if there is more to read.. you dont
+        // want to start speaking on something and it changes and you are lost.. this is app wide". It used to SWAP the card
+        // (a prepared answer or a full rewrite) while he may already be reading it; now it grows like Say and follow-ups:
+        // the lines on screen stay, 1-2 are added for what the rest of the question asked.
         async function upgradeCard(fullQ, cardId) {
-          console.log('[Upgrade] Full question arrived — upgrading card:', fullQ.substring(0, 60));
-          pool.query('UPDATE questions SET text = $1 WHERE id = $2', [fullQ, cardId]).catch(() => {});
-          const lexical = findTopMatches(fullQ, sessionQuestions, questionIndex, 3);
-          let sem = []; try { sem = (await findSemanticMatches(fullQ, sessionQuestions, 3)).filter(m => m.question.id !== cardId && !lexical.some(l => l.question.id === m.question.id)); } catch (e) {}
-          const cands = [...lexical, ...sem].filter(m => m.question.id !== cardId && m.question.answer);
-          const hit = cands.length ? await verifyMatch(fullQ, cands, ws._sessionContext, 1500) : null;
-          if (hit) {
-            console.log('[Upgrade] → prepared answer:', hit.question.text.substring(0, 50));
-            (ws._cardGen = ws._cardGen || new Map()).set(cardId, Symbol('prepared')); // stop the first-half answer writing here
-            const msg = { type: 'live_answer', questionId: cardId, questionText: hit.question.text, answer: displayPrepared(hit.question.answer, hit.question.text), isNew: false };
-            ws.send(JSON.stringify(msg)); broadcastToSession(sessionId, msg, ws);
-            if (hasConversation(ws)) generateLiveAnswer(hit.question.text, sessionId, userId, ws, cardId, false, { bankAnswer: hit.question.answer }).catch(() => {});
-          } else {
-            generateLiveAnswer(fullQ, sessionId, userId, ws, cardId, false, { noStream: true }).catch(() => {});
-          }
+          console.log('[Upgrade] Full question arrived — growing the card on screen:', fullQ.substring(0, 60));
+          pool.query('UPDATE questions SET text = $1 WHERE id = $2', [fullQ, cardId]).catch(e => console.error('[Upgrade] title update failed:', e.message));
+          const sq = sessionQuestions.find(x => x.id === cardId); if (sq) sq.text = fullQ;
+          if (ws._activeAnswer && ws._activeAnswer.id === cardId) await growLiveAnswer(ws, sessionId, ws._activeAnswer, fullQ);
+          else ws._pendingGrow = { id: cardId, q: fullQ, title: fullQ }; // still arriving: grows the moment it finishes
         }
 
         // CO-PILOT DOOR for a heard line (owner, 13 Oct: no card unless someone actually asked, never the same question twice).
