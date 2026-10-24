@@ -63,6 +63,8 @@ body.dark .sec .cnt.done{color:#10301e}
 .row:hover{background:var(--line)}
 .row.active{background:var(--sel);border-color:var(--sel-line)}
 .row.flash{animation:flash 1.4s ease}
+.row.heard-row{box-shadow:inset 3px 0 0 var(--accent);background:var(--key)}
+.row.heard-row .title:after{content:"heard";margin-left:6px;font-size:10.5px;font-weight:700;color:#3b2a00;background:var(--accent-bg);border-radius:6px;padding:1px 5px;vertical-align:1px}
 @keyframes flash{0%{box-shadow:0 0 0 3px var(--accent-bg)}100%{box-shadow:0 0 0 0 transparent}}
 .row .dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex-shrink:0;background:var(--line2)}
 .row .rt{flex:1;min-width:0}
@@ -302,7 +304,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   <kbd>&uarr;</kbd> <kbd>&darr;</kbd> questions &nbsp; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> ways they ask it &nbsp; <kbd>1</kbd> to <kbd>4</kbd> pick a way<br>
   <kbd>/</kbd> search &nbsp; <kbd>F</kbd> expand the answer &nbsp; <kbd>Esc</kbd> back out &nbsp; <kbd>Cmd</kbd>+<kbd>\</kbd> hide the questions<br>
   <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copy &nbsp; <kbd>Cmd</kbd>+<kbd>G</kbd> write it again &nbsp; <kbd>?</kbd> this help<br><br>
-  <b>During a call</b>: when xHire hears a question, the note jumps to the closest one and shows what it heard at the top. Turn it off under the <b>&middot;&middot;&middot;</b> menu.<br><br>
+  <b>During a call</b>: when xHire hears a question, the note marks the closest one on the left and shows it at the top with an Open button. It never switches on its own. Turn it off under the <b>&middot;&middot;&middot;</b> menu.<br><br>
   <span style="color:var(--muted)">Click anywhere in an answer to edit it. Every change saves itself, and the AI never overwrites your words without a copy: History keeps every version.</span>
 </div></div>
 <div class="toast" id="toast"></div>
@@ -448,7 +450,7 @@ async function load() {
   if (!r.ok) { toast(r.json.error || 'Could not load the note', 3000); return; }
   N = r.json; N.groups.forEach(function (g) { g.items = g.items || []; });
   applySettings(); applyDrafts();
-  if (!SOLO) loadJobs();
+  if (!SOLO) await loadJobs().catch(function () {}); // the job at the top is set BEFORE anything is written: opened from a session, it is that session (owner 24 Oct)
   if (SOLO && findGroup(SOLO)) { var sg = findGroup(SOLO); document.title = sg.name + ' | Answer Note'; select(sg.id, (sg.items[0] || {}).id); return; }
   var gs = navGroups();
   var start = lsGet('xhire_note_last'); var it = start && findItem(start);
@@ -492,7 +494,7 @@ function renderList() {
   var gs = visibleGroups();
   if (!gs.length) { host.innerHTML = '<div class="empty">' + (filter ? 'Nothing matches "' + esc(filter) + '".' : 'No questions yet. Add one below.') + '</div>'; return; }
   screenOrder(gs).forEach(function (sec) {
-    var closed = sec.name !== openSec && !filter;
+    var closed = sec.name !== openSec && sec.name !== heardSec && !filter;
     var ready = sec.groups.filter(function (g) { return rowStatus(g).cls === 'done'; }).length;
     var h = document.createElement('div'); h.className = 'sec' + (closed ? ' closed' : ''); h.title = closed ? 'Open this section' : 'Fold this section';
     h.innerHTML = '<span class="bar"></span><span style="min-width:0">' + esc(sec.name) + '</span><span class="cnt' + (ready === sec.groups.length ? ' done' : '') + '" title="' + ready + ' of ' + sec.groups.length + ' questions fully answered">' + ready + '/' + sec.groups.length + '</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
@@ -501,7 +503,7 @@ function renderList() {
     if (closed) return;
     sec.groups.forEach(function (sg) {
       var g = findGroup(sg.id); var st = rowStatus(g);
-      var el = document.createElement('div'); el.className = 'row' + (g.id === cur.gid ? ' active' : ''); el.dataset.gid = g.id;
+      var el = document.createElement('div'); el.className = 'row' + (g.id === cur.gid ? ' active' : '') + (g.id === heardGid ? ' heard-row' : ''); el.dataset.gid = g.id;
       el.innerHTML = '<span class="dot" style="' + (g.color ? 'background:' + g.color : '') + '"></span>'
         + '<div class="rt"><div class="title">' + esc(g.name) + '</div>' + (fullQ(g) && fullQ(g) !== g.name ? '<div class="full">' + esc(fullQ(g)) + '</div>' : '') + '</div>'
         + (g.pinned ? '<span class="pin" title="Pinned">&#9733;</span>' : '')
@@ -746,7 +748,7 @@ async function aiChange(it, mode, instruction) {
   flushEditor();
   busy[it.id] = true; if (cur.iid === it.id) renderAnswer(); else if (cur.gid === it.group_id) renderWays(); renderList();
   try {
-    var r = await api('POST', '/api/note/items/' + it.id + '/generate', { mode: mode, instruction: instruction || '', sessionId: $('job').value || N.settings.sessionId || '' });
+    var r = await api('POST', '/api/note/items/' + it.id + '/generate', { mode: mode, instruction: instruction || '', sessionId: $('job').value || SESSION_PARAM || N.settings.sessionId || '' });
     if (!r.ok) { toast(r.json.error || 'Could not write the answer', 3500); return false; }
     var before = it.versions ? it.versions.length : 0;
     delete it._conflict; lsDel(draftKey(it.id));
@@ -850,7 +852,7 @@ function setNoteBg(hex) { // his background colour for the note page; the text f
 $('btn-menu').onclick = function () {
   if (pop.classList.contains('open')) { closePop(); return; }
   var dark = document.body.classList.contains('dark');
-  openPop($('btn-menu'), '<button class="mi" data-a="follow">Follow the live call<span class="r">' + (follow ? 'On' : 'Off') + '</span></button>'
+  openPop($('btn-menu'), '<button class="mi" data-a="follow">Show what the call hears<span class="r">' + (follow ? 'On' : 'Off') + '</span></button>'
     + '<button class="mi" data-a="theme">' + (dark ? 'Light' : 'Dark') + ' mode</button>'
     + '<div class="mi" style="cursor:default">Text size<span class="r"><button class="chip" data-a="smaller" style="height:26px">A&#8722;</button> <span id="pop-size">' + fontSize + '</span> <button class="chip" data-a="larger" style="height:26px">A+</button></span></div>'
     + '<label class="mi" style="cursor:pointer">Page colour<span class="r"><input type="color" id="pop-bg" value="' + esc((N.settings && N.settings.bg) || (dark ? '#1e1e20' : '#fffdf8')) + '" style="width:30px;height:22px;border:none;background:none;cursor:pointer"></span></label>'
@@ -860,7 +862,7 @@ $('btn-menu').onclick = function () {
     + '<div class="hr"></div><button class="mi" data-a="help">Keyboard shortcuts<span class="r">?</span></button>', function (p) {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
       e.stopPropagation(); var a = b.dataset.a;
-      if (a === 'follow') { follow = !follow; lsSet('xhire_note_follow', follow ? '1' : '0'); b.querySelector('.r').textContent = follow ? 'On' : 'Off'; toast(follow ? 'The note follows the call' : 'The note stays where you put it'); }
+      if (a === 'follow') { follow = !follow; lsSet('xhire_note_follow', follow ? '1' : '0'); b.querySelector('.r').textContent = follow ? 'On' : 'Off'; toast(follow ? 'Questions heard on the call are marked' : 'Questions heard on the call are not marked'); if (!follow) { heardGid = null; heardSec = null; renderList(); $('heard').classList.remove('open'); } }
       else if (a === 'theme') { var d = !document.body.classList.contains('dark'); document.body.classList.toggle('dark', d); lsSet('xhire_note_theme', d ? 'dark' : 'light'); saveSettings({ theme: d ? 'dark' : 'light' }); closePop(); }
       else if (a === 'smaller' || a === 'larger') { fontSize = a === 'smaller' ? Math.max(12, fontSize - 1) : Math.min(36, fontSize + 1); applyFontSize(); $('pop-size').textContent = fontSize; }
       else if (a === 'bgreset') { setNoteBg(''); saveSettings({ bg: '' }); closePop(); toast('Page colour reset'); }
@@ -929,17 +931,16 @@ async function loadCalls() {
   if (!r.ok) { CALLS = { session: null, calls: [], error: r.json.error || 'Could not load your calls' }; renderCallList(); renderCallPage(); return; }
   CALLS = r.json;
   if (!curCall || !CALLS.calls.some(function (c) { return c.id === curCall; })) curCall = CALLS.calls.length ? CALLS.calls[0].id : null;
-  renderCallList(); renderCallPage(); autoNotes();
+  renderCallList(); renderCallPage(); notesForOpenCall();
 }
 function hasNotes(c) { return !!(c.report && Array.isArray(c.report.noteQuestions)); }
 function callMins(c) { return c.ended_at ? Math.max(1, Math.round((new Date(c.ended_at) - new Date(c.started_at)) / 60000)) : 0; }
 function callDate(c, long) { var d = new Date(c.started_at); return d.toLocaleDateString(undefined, long ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
-var autoRunning = false;
-async function autoNotes() { // notes for calls that have none yet, newest first, a few per open, one at a time
-  if (autoRunning || !CALLS) return; autoRunning = true;
-  var todo = CALLS.calls.filter(function (c) { return !hasNotes(c) && c.lines >= 8 && !callBusy[c.id]; }).slice(0, 3);
-  for (var i = 0; i < todo.length; i++) await makeNotes(todo[i], true);
-  autoRunning = false;
+// Owner 24 Oct: AI runs only for what he opens. The call on screen gets its notes the first time it is opened (like a
+// question gets its answer); calls he never opens are never sent to the AI.
+function notesForOpenCall() {
+  var c = CALLS && CALLS.calls.find(function (x) { return x.id === curCall; });
+  if (c && !c.report && c.lines >= 8 && !callBusy[c.id]) makeNotes(c, true);
 }
 async function makeNotes(c, quiet) {
   if (callBusy[c.id] || !CALLS || !CALLS.session) return;
@@ -962,7 +963,7 @@ function renderCallList() {
     var st = callBusy[c.id] ? { cls: '', t: 'making notes' } : hasNotes(c) ? { cls: 'done', t: '\u2713 notes' } : c.lines < 8 ? { cls: '', t: 'too short' } : { cls: '', t: 'no notes' };
     var el = document.createElement('div'); el.className = 'row' + (c.id === curCall ? ' active' : '');
     el.innerHTML = '<span class="dot"></span><div class="rt"><div class="title">' + esc(callDate(c, true)) + '</div><div class="full">' + esc([callMins(c) ? callMins(c) + ' min' : '', c.interviewer, c.stage].filter(Boolean).join(' \u00b7 ') || (c.lines + ' lines')) + '</div></div><span class="st ' + st.cls + '">' + st.t + '</span>';
-    el.onclick = function () { curCall = c.id; document.body.classList.remove('listview'); renderCallList(); renderCallPage(); $('page').scrollTop = 0; };
+    el.onclick = function () { curCall = c.id; document.body.classList.remove('listview'); renderCallList(); renderCallPage(); $('page').scrollTop = 0; notesForOpenCall(); };
     host.appendChild(el);
   });
 }
@@ -1035,14 +1036,21 @@ async function addFromCall(list, btn) {
   renderCallPage();
 }
 
-// ===== live link: the call page posts every detected interviewer question; the note jumps to the closest one =====
+// ===== live link: the call page posts every detected interviewer question. Owner 24 Oct: "I don't want auto
+// switching". The note never moves on its own: the closest question gets a "heard" mark on the left (until the next
+// question), and the bar at the top says what was heard with an Open button. He decides.
+var heardGid = null, heardSec = null;
 function onHeard(text) {
   if (SOLO || !follow || !N || !text) return;
   var m = NoteMatch.closest(N.groups, text);
   var h = $('heard'), t = $('heard-text');
-  if (m) { var g = findGroup(m.groupId); if (m.itemId !== cur.iid) select(m.groupId, m.itemId, { flash: true }); t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> &rarr; <b>' + esc(g ? g.name : m.question) + '</b>'; }
-  else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. Nothing close in the note.';
-  h.classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { h.classList.remove('open'); }, 12000);
+  heardGid = m ? m.groupId : null; heardSec = m && findGroup(m.groupId) ? secOf(findGroup(m.groupId)) : null; renderList(); // its section opens on the left so the mark shows; the answer on screen stays
+  if (m) {
+    var g = findGroup(m.groupId);
+    t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> &rarr; <b>' + esc(g ? g.name : m.question) + '</b>' + (m.groupId !== cur.gid ? ' <button class="chip primary" id="heard-open" style="height:26px;margin-left:6px">Open</button>' : ' <span style="color:var(--muted)">(on screen)</span>');
+    var ob = $('heard-open'); if (ob) ob.onclick = function () { select(m.groupId, m.itemId, { flash: true }); $('heard').classList.remove('open'); };
+  } else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. Nothing close in the note.';
+  h.classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { h.classList.remove('open'); }, 20000);
 }
 $('heard-x').onclick = function () { $('heard').classList.remove('open'); };
 try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (e.data && e.data.type === 'question') onHeard(e.data.text); }; } catch (e) {}
