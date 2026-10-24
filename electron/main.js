@@ -386,6 +386,7 @@ function createOverlay() {
 // One note window; opening it again reuses it. Its size and place are remembered. Nothing inside it can open another
 // window (that window would not be protected).
 let noteWindow = null;
+let stealthOn = true; // the overlay's eye (set-stealth); the note window follows it (owner 24 Oct: "using the eye on xH and it will still not show")
 function noteStateFile() { return path.join(app.getPath('userData'), 'note-window.json'); }
 function readNoteState() { try { return JSON.parse(require('fs').readFileSync(noteStateFile(), 'utf8')) || {}; } catch (e) { return {}; } }
 function saveNoteState(patch) { try { require('fs').writeFileSync(noteStateFile(), JSON.stringify({ ...readNoteState(), ...patch })); } catch (e) { _log('[Note] could not save window state:', e.message); } }
@@ -410,7 +411,7 @@ function openNoteWindow(url) {
     fullscreenable: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },
   });
-  const protect = () => { if (noteWindow && !noteWindow.isDestroyed()) { noteWindow.setContentProtection(true); _log('[Note] content protection on'); } };
+  const protect = () => { if (noteWindow && !noteWindow.isDestroyed()) { noteWindow.setContentProtection(stealthOn); _log('[Note] content protection ' + (stealthOn ? 'on' : 'off (eye is off)')); } };
   if (process.platform === 'win32') setTimeout(protect, 500); else protect();
   noteWindow.setAlwaysOnTop(st.onTop !== false, 'floating');
   noteWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -563,7 +564,14 @@ ipcMain.handle('quit-app', () => {
 // Stealth mode — toggle content protection (hide from screen sharing)
 // Windows quirk: WDA (Windows Display Affinity) needs the window to briefly hide/show
 // for the DWM to pick up the change. Without this, it takes a second click.
+function applyProtection(win, on) { // Windows needs a tiny opacity blip to pick up the change
+  if (!win || win.isDestroyed()) return;
+  win.setContentProtection(!!on);
+  if (process.platform === 'win32') { const o = win.getOpacity(); win.setOpacity(Math.max(0.01, o - 0.01)); setTimeout(() => { if (!win.isDestroyed()) win.setOpacity(o); }, 50); }
+}
 ipcMain.handle('set-stealth', (_, on) => {
+  stealthOn = !!on;
+  if (noteWindow && !noteWindow.isDestroyed()) { applyProtection(noteWindow, stealthOn); _log('[Note] content protection:', stealthOn ? 'ON' : 'OFF', '(follows the eye)'); }
   if (mainWindow) {
     if (process.platform === 'win32') {
       // Windows: force DWM to re-evaluate display affinity

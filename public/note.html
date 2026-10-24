@@ -17,11 +17,11 @@ body.dark{--chrome:#1c1c1e;--side:#242426;--page:#1e1e20;--card:#2a2a2d;--text:#
 /* Glass (owner 24 Oct: "the exact type on xHire"): the overlay's glass build (separate rounded panels with gaps, a thin
    light border, on a transparent frameless window, nothing behind them), with a stronger tint so text reads over a busy
    desktop: he picked style B (dark .86) over .65, and light glass at .9 with dark text (measured over his real desktop). */
-body.glass{--glass-bg:rgba(12,12,20,0.86);--glass-blur:blur(60px) saturate(200%);--glass-border-color:rgba(255,255,255,0.10);
+body.glass{--glass-bg:rgba(12,12,20,var(--ga,0.86));--glass-blur:blur(60px) saturate(200%);--glass-border-color:rgba(255,255,255,0.10);
   --chrome:transparent;--side:transparent;--page:transparent;--card:rgba(255,255,255,.06);--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.16);
   --text:#ffffff;--muted:#cbd5e1;--dim:#94a3b8;--sel:rgba(124,58,237,.28);--sel-line:rgba(167,139,250,.7);--accent:#c4b5fd;--accent-bg:#a78bfa;
   --key:rgba(124,58,237,.18);--key-line:rgba(167,139,250,.45);--ok:#34d399;--shadow:0 8px 32px rgba(0,0,0,.5)}
-body.glass:not(.dark){--glass-bg:rgba(255,255,255,0.9);--glass-border-color:rgba(0,0,0,.12);--card:rgba(255,255,255,.7);--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.14);
+body.glass:not(.dark){--glass-bg:rgba(255,255,255,var(--gal,0.9));--glass-border-color:rgba(0,0,0,.12);--card:rgba(255,255,255,.7);--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.14);
   --text:#0b1020;--muted:#1e293b;--dim:#334155;--sel:rgba(124,58,237,.14);--sel-line:rgba(109,40,217,.55);--accent:#6d28d9;--accent-bg:#c4b5fd;--key:rgba(124,58,237,.1);--key-line:rgba(109,40,217,.3);--ok:#047857}
 html.glass-on,html.glass-on body{background:transparent !important}
 body.glass{padding:4px;gap:4px}
@@ -364,6 +364,15 @@ var CAN_POP = !EMBED && !window.electronAPI;                // a new window is o
 // Glass: only in the note's own desktop window (1.1.10+). The window type is fixed when a window opens, so turning it
 // on or off saves everything first, then the app reopens the note as the other type in the same place.
 var CAN_GLASS = WIN && !!window.electronAPI.noteGlass, glass = false;
+// See-through slider (owner 24 Oct: "add the slider"): 0 = solid, 60 = very see-through. Default 14 = his pick B (.86).
+var seeThrough = 14;
+function setSeeThrough(v, save) {
+  seeThrough = Math.max(0, Math.min(60, parseInt(v, 10) || 0));
+  var a = 1 - seeThrough / 100;
+  document.documentElement.style.setProperty('--ga', a.toFixed(2));
+  document.documentElement.style.setProperty('--gal', Math.min(0.98, a + 0.04).toFixed(2));
+  if (save) saveSettings({ seeThrough: seeThrough });
+}
 function showGlass(on) { glass = !!on; document.body.classList.toggle('glass', glass); document.documentElement.classList.toggle('glass-on', glass); $('btn-glass').classList.toggle('on', glass); }
 async function toggleGlass() {
   if (!CAN_GLASS) return;
@@ -515,6 +524,7 @@ function applySettings() {
   var s = N.settings || {};
   var theme = s.theme || lsGet('xhire_note_theme') || 'light'; document.body.classList.toggle('dark', theme === 'dark');
   setNoteBg(s.bg || '');
+  if (s.seeThrough !== undefined) setSeeThrough(s.seeThrough, false);
   if (s.fontFamily) setFamily(s.fontFamily);
   if (s.fontSize) fontSize = parseInt(s.fontSize, 10) || fontSize;
   document.documentElement.style.setProperty('--note-size', fontSize + 'px'); $('f-size').value = fontSize + 'px';
@@ -937,7 +947,8 @@ $('btn-menu').onclick = function () {
     + '<label class="mi" style="cursor:pointer">Page colour<span class="r"><input type="color" id="pop-bg" value="' + esc((N.settings && N.settings.bg) || (dark ? '#1e1e20' : '#fffdf8')) + '" style="width:30px;height:22px;border:none;background:none;cursor:pointer"></span></label>'
     + '<button class="mi" data-a="bgreset">Reset the page colour</button>'
     + (WIN && window.electronAPI.noteOnTop ? '<button class="mi" data-a="ontop">Keep on top of other windows<span class="r">' + (onTop ? 'On' : 'Off') + '</span></button>' : '')
-    + (CAN_GLASS ? '<button class="mi" data-a="glass">Glass, like the xHire overlay<span class="r">' + (glass ? 'On' : 'Off') + '</span></button>' : '')
+    + (CAN_GLASS ? '<button class="mi" data-a="glass">Glass, like the xHire overlay<span class="r">' + (glass ? 'On' : 'Off') + '</span></button>'
+      + '<div class="mi" style="cursor:default' + (glass ? '' : ';opacity:.5') + '" title="' + (glass ? 'Drag right to see more of what is behind' : 'Turn Glass on to use this') + '">See-through<span class="r"><input type="range" id="pop-see" min="0" max="60" step="2" value="' + seeThrough + '" style="width:120px"' + (glass ? '' : ' disabled') + '></span></div>' : '')
     + (document.body.classList.contains('narrow') ? '<button class="mi" data-a="genall">' + (genAll && genAll.running ? 'Stop writing answers' : 'Write all answers') + '</button>' : '')
     + '<div class="hr"></div><button class="mi" data-a="help">Keyboard shortcuts<span class="r">?</span></button>', function (p) {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
@@ -952,6 +963,7 @@ $('btn-menu').onclick = function () {
       else if (a === 'ontop') { onTop = !onTop; window.electronAPI.noteOnTop(onTop); b.querySelector('.r').textContent = onTop ? 'On' : 'Off'; toast(onTop ? 'The note stays on top' : 'The note behaves like a normal window'); }
     }; });
     var bg = p.querySelector('#pop-bg'); bg.oninput = function () { setNoteBg(this.value); }; bg.onchange = function () { saveSettings({ bg: this.value }); };
+    var see = p.querySelector('#pop-see'); if (see) { see.oninput = function () { setSeeThrough(this.value, false); }; see.onchange = function () { setSeeThrough(this.value, true); }; }
   });
 };
 $('help').onclick = function (e) { if (e.target === this) this.classList.remove('open'); };
