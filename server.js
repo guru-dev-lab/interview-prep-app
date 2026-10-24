@@ -3334,7 +3334,7 @@ app.get('/api/note', authMiddleware, async (req, res) => {
   try { res.json(await noteTree(await loadNote(req.userId))); }
   catch (e) { console.error('[Note] load failed:', e.message); res.status(500).json({ error: e.message }); }
 });
-const NOTE_SETTING_KEYS = ['bg', 'theme', 'fontFamily', 'fontSize', 'sessionId', 'readMode', 'autoGenerate', 'railWidth'];
+const NOTE_SETTING_KEYS = ['bg', 'theme', 'fontFamily', 'fontSize', 'sessionId', 'readMode', 'autoGenerate', 'railWidth', 'seeThrough'];
 app.put('/api/note/settings', authMiddleware, async (req, res) => {
   try {
     const note = await loadNote(req.userId);
