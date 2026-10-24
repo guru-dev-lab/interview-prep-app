@@ -135,5 +135,16 @@ check(qa.skipped.length === 2 && qa.skipped[0].inNote === 'Prioritizing' && qa.s
 check(qa.add.length === 2 && qa.add[0].items.length === 4 && qa.add[0].items[0] === 'Which Microsoft Fabric components have you implemented?', 'from a call: added with the full question first and at most 3 other ways', JSON.stringify(qa.add));
 check(qa.add[1].title === 'gone', 'from a call: a "same as" pointing at a deleted question does not block it');
 
+// "Has he said this line": the rule moved from the overlay's live coach (canvas.html) into note-match.js, unchanged
+const OLD_STOP = {the:1,and:1,for:1,that:1,this:1,with:1,your:1,you:1,they:1,them:1,have:1,has:1,are:1,was:1,were:1,will:1,would:1,from:1,into:1,about:1,what:1,when:1,which:1,their:1,there:1,then:1,been:1,being:1,also:1,more:1,most:1,some:1,such:1,just:1,like:1,here:1,does:1};
+const oldKeys = s => { const o = {}; (String(s).toLowerCase().match(/\b[a-z]{4,}\b/g) || []).forEach(w => { if (!OLD_STOP[w]) o[w] = 1; }); return Object.keys(o).slice(0, 6); };
+const lines = ['I rank work by business impact and the deadline leadership actually needs.', 'At Acme I cut the weekly refresh from 4 hours to 20 minutes for 40 executives.', 'Then I posted the plan so nobody was guessing.', 'SQL', ''];
+const M = require('../public/note-match');
+check(lines.every(l => JSON.stringify(M.pointKeys(l)) === JSON.stringify(oldKeys(l))), 'said rule: same key words as the live coach had');
+const saidW = M.saidWords('so basically I rank everything by business impact and what leadership needs by when');
+check(M.isSaid(M.pointKeys(lines[0]), saidW) && !M.isSaid(M.pointKeys(lines[1]), saidW) && !M.isSaid([], saidW), 'said rule: half the key words heard = said; a line he did not say is not');
+const rk = M.rank(N.seedRows().map((g, i) => ({ id: 'g' + i, name: g.name, items: g.items.map((it, j) => ({ id: i + '-' + j, question: it.question })) })), 'What would you say is your biggest weakness?', 3);
+check(rk.length === 3 && rk[0].score >= rk[1].score && rk[1].score >= rk[2].score, 'rank: best first, n results');
+
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);

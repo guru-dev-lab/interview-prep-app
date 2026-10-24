@@ -64,6 +64,12 @@ body.dark .sec .cnt.done{color:#10301e}
 .row.active{background:var(--sel);border-color:var(--sel-line)}
 .row.flash{animation:flash 1.4s ease}
 .row.heard-row{box-shadow:inset 3px 0 0 var(--accent);background:var(--key)}
+/* live marks on the answer (display only, never saved): the line to read now, and lines he has already said */
+#editor [data-hot]{background:var(--accent-bg);color:#2a1f00;border-radius:6px;box-shadow:0 0 0 4px var(--accent-bg);transition:background .2s}
+#editor [data-said]{opacity:.42}
+#editor li[data-said]::after{content:" \2713";color:var(--ok);font-weight:700}
+.row .askd{font-size:10.5px;font-weight:700;color:var(--accent);margin-left:6px;white-space:nowrap}
+.newq .title{font-weight:600;font-size:13.5px}
 .row.heard-row .title:after{content:"heard";margin-left:6px;font-size:10.5px;font-weight:700;color:#3b2a00;background:var(--accent-bg);border-radius:6px;padding:1px 5px;vertical-align:1px}
 @keyframes flash{0%{box-shadow:0 0 0 3px var(--accent-bg)}100%{box-shadow:0 0 0 0 transparent}}
 .row .dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex-shrink:0;background:var(--line2)}
@@ -304,7 +310,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   <kbd>&uarr;</kbd> <kbd>&darr;</kbd> questions &nbsp; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> ways they ask it &nbsp; <kbd>1</kbd> to <kbd>4</kbd> pick a way<br>
   <kbd>/</kbd> search &nbsp; <kbd>F</kbd> expand the answer &nbsp; <kbd>Esc</kbd> back out &nbsp; <kbd>Cmd</kbd>+<kbd>\</kbd> hide the questions<br>
   <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copy &nbsp; <kbd>Cmd</kbd>+<kbd>G</kbd> write it again &nbsp; <kbd>?</kbd> this help<br><br>
-  <b>During a call</b>: when xHire hears a question, the note marks the closest one on the left and shows it at the top with an Open button. It never switches on its own. Turn it off under the <b>&middot;&middot;&middot;</b> menu.<br><br>
+  <b>During a call</b>: when xHire hears a question, the note marks it on the left, shows it at the top with an Open button, lights up the line to read, and ticks off the lines you have said. Questions not in your note are kept under \"Heard today\". It never switches on its own. Turn it off under the <b>&middot;&middot;&middot;</b> menu.<br><br>
   <span style="color:var(--muted)">Click anywhere in an answer to edit it. Every change saves itself, and the AI never overwrites your words without a copy: History keeps every version.</span>
 </div></div>
 <div class="toast" id="toast"></div>
@@ -450,7 +456,8 @@ async function load() {
   if (!r.ok) { toast(r.json.error || 'Could not load the note', 3000); return; }
   N = r.json; N.groups.forEach(function (g) { g.items = g.items || []; });
   applySettings(); applyDrafts();
-  if (!SOLO) await loadJobs().catch(function () {}); // the job at the top is set BEFORE anything is written: opened from a session, it is that session (owner 24 Oct)
+  if (!SOLO) await loadJobs().catch(function () {});
+  api('GET', '/api/note/asked').then(function (r) { if (r.ok) { ASKED = r.json.counts || {}; renderList(); } }).catch(function () {}); // the job at the top is set BEFORE anything is written: opened from a session, it is that session (owner 24 Oct)
   if (SOLO && findGroup(SOLO)) { var sg = findGroup(SOLO); document.title = sg.name + ' | Answer Note'; select(sg.id, (sg.items[0] || {}).id); return; }
   var gs = navGroups();
   var start = lsGet('xhire_note_last'); var it = start && findItem(start);
@@ -493,6 +500,18 @@ function renderList() {
   var host = $('list'); host.innerHTML = '';
   var gs = visibleGroups();
   if (!gs.length) { host.innerHTML = '<div class="empty">' + (filter ? 'Nothing matches "' + esc(filter) + '".' : 'No questions yet. Add one below.') + '</div>'; return; }
+  if (!filter && heardToday.length) {
+    var hh = document.createElement('div'); hh.className = 'sec'; hh.title = 'Questions heard on your calls today that are not in your note';
+    hh.innerHTML = '<span class="bar" style="background:var(--ok)"></span><span style="min-width:0">Heard today, not in your note</span><span class="cnt">' + heardToday.length + '</span>';
+    host.appendChild(hh);
+    heardToday.forEach(function (q, i) {
+      var el = document.createElement('div'); el.className = 'row newq';
+      el.innerHTML = '<span class="dot" style="background:var(--ok)"></span><div class="rt"><div class="title">' + esc(q.title || 'New question') + '</div><div class="full">' + esc(q.question) + '</div></div><button class="chip" data-i="' + i + '" style="height:26px">+ Add</button><button class="more" style="opacity:1" title="Not needed" data-x="' + i + '">&times;</button>';
+      el.querySelector('[data-i]').onclick = function (e) { e.stopPropagation(); addHeardToday(i, e.currentTarget); };
+      el.querySelector('[data-x]').onclick = function (e) { e.stopPropagation(); heardToday.splice(i, 1); saveHeardToday(); renderList(); };
+      host.appendChild(el);
+    });
+  }
   screenOrder(gs).forEach(function (sec) {
     var closed = sec.name !== openSec && sec.name !== heardSec && !filter;
     var ready = sec.groups.filter(function (g) { return rowStatus(g).cls === 'done'; }).length;
@@ -505,7 +524,7 @@ function renderList() {
       var g = findGroup(sg.id); var st = rowStatus(g);
       var el = document.createElement('div'); el.className = 'row' + (g.id === cur.gid ? ' active' : '') + (g.id === heardGid ? ' heard-row' : ''); el.dataset.gid = g.id;
       el.innerHTML = '<span class="dot" style="' + (g.color ? 'background:' + g.color : '') + '"></span>'
-        + '<div class="rt"><div class="title">' + esc(g.name) + '</div>' + (fullQ(g) && fullQ(g) !== g.name ? '<div class="full">' + esc(fullQ(g)) + '</div>' : '') + '</div>'
+        + '<div class="rt"><div class="title">' + esc(g.name) + (ASKED[g.id] ? '<span class="askd" title="Asked in ' + ASKED[g.id] + ' of your calls">asked ' + ASKED[g.id] + '\u00d7</span>' : '') + '</div>' + (fullQ(g) && fullQ(g) !== g.name ? '<div class="full">' + esc(fullQ(g)) + '</div>' : '') + '</div>'
         + (g.pinned ? '<span class="pin" title="Pinned">&#9733;</span>' : '')
         + '<span class="st ' + st.cls + '" title="Answers written for the ways it gets asked">' + st.text + '</span>'
         + '<button class="more" title="Rename, pin, colour, move, delete">&middot;&middot;&middot;</button>';
@@ -565,6 +584,7 @@ function renderAnswer(force) {
   $('ai').querySelectorAll('[data-mode]').forEach(function (b) { b.disabled = !!busy[it.id] || (b.dataset.mode !== 'regenerate' && !it.answer_html); });
   $('ai-go').disabled = !!busy[it.id];
   renderConflict();
+  markLines();
 }
 
 // ===== selection =====
@@ -597,8 +617,13 @@ function moveSel(dg, di) {
 
 // ===== editor (always editable, like a note) =====
 var ed = $('editor');
-function flushEditor() { var it = curItem(); if (!it || busy[it.id]) return; var html = ed.innerHTML.replace(/^<br>$/, ''); var key = $('key').textContent.trim(); if (html !== (it.answer_html || '') || key !== (it.key_points || '')) { it.answer_html = html; it.key_points = key; writeDraft(it); queueSave('item:' + it.id, saveContent(it), 0); } }
-ed.addEventListener('input', function () { var it = curItem(); if (!it || busy[it.id]) return; it.answer_html = ed.innerHTML.replace(/^<br>$/, ''); writeDraft(it); queueSave('item:' + it.id, saveContent(it)); renderWays(); });
+function editorHtml() { // the answer as he wrote it: the live marks (data-hot / data-said) are display only, never saved
+  if (!ed.querySelector('[data-hot],[data-said]')) return ed.innerHTML.replace(/^<br>$/, '');
+  var c = ed.cloneNode(true); c.querySelectorAll('[data-hot],[data-said]').forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); });
+  return c.innerHTML.replace(/^<br>$/, '');
+}
+function flushEditor() { var it = curItem(); if (!it || busy[it.id]) return; var html = editorHtml(); var key = $('key').textContent.trim(); if (html !== (it.answer_html || '') || key !== (it.key_points || '')) { it.answer_html = html; it.key_points = key; writeDraft(it); queueSave('item:' + it.id, saveContent(it), 0); } }
+ed.addEventListener('input', function () { var it = curItem(); if (!it || busy[it.id]) return; it.answer_html = editorHtml(); writeDraft(it); queueSave('item:' + it.id, saveContent(it)); renderWays(); });
 $('key').addEventListener('input', function () { var it = curItem(); if (!it) return; it.key_points = $('key').textContent.trim(); writeDraft(it); queueSave('item:' + it.id, saveContent(it)); });
 $('key').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ed.focus(); } });
 ed.addEventListener('paste', function (e) { // paste as plain text so outside formatting does not come along
@@ -1039,22 +1064,77 @@ async function addFromCall(list, btn) {
 // ===== live link: the call page posts every detected interviewer question. Owner 24 Oct: "I don't want auto
 // switching". The note never moves on its own: the closest question gets a "heard" mark on the left (until the next
 // question), and the bar at the top says what was heard with an Open button. He decides.
-var heardGid = null, heardSec = null;
+// Owner 24 Oct: "all" of: a smart match (the instant wording guess first, then one small fast check that knows which
+// question it really is), the line to read lit up, the lines he has already said ticked off from his mic, questions
+// not in the note collected for after the call, and how often each was asked. Never switches; nothing waits on it.
+var heardGid = null, heardSec = null, heardText = '', hot = null, saidText = '', heardCtl = null, ASKED = {};
+var heardToday = (function () { try { var d = JSON.parse(lsGet('xhire_note_heard_today') || 'null'); return d && d.day === new Date().toDateString() ? d.list : []; } catch (e) { return []; } })();
+function saveHeardToday() { lsSet('xhire_note_heard_today', JSON.stringify({ day: new Date().toDateString(), list: heardToday })); }
+function showHeard(text, gid, itemId, label) {
+  var t = $('heard-text');
+  if (gid) t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> &rarr; <b>' + esc(label) + '</b>' + (gid !== cur.gid ? ' <button class="chip primary" id="heard-open" style="height:26px;margin-left:6px">Open</button>' : ' <span style="color:var(--muted)">(on screen)</span>');
+  else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. ' + (label ? 'Not in your note yet: kept under "Heard today" on the left.' : 'Nothing close in the note.');
+  var ob = $('heard-open'); if (ob) ob.onclick = function () { select(gid, itemId, { flash: true }); $('heard').classList.remove('open'); };
+  $('heard').classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { $('heard').classList.remove('open'); }, 20000);
+}
+function setHeard(gid) { heardGid = gid; heardSec = gid && findGroup(gid) ? secOf(findGroup(gid)) : null; renderList(); } // its section opens on the left so the mark shows; the answer on screen stays
 function onHeard(text) {
   if (SOLO || !follow || !N || !text) return;
-  var m = NoteMatch.closest(N.groups, text);
-  var h = $('heard'), t = $('heard-text');
-  heardGid = m ? m.groupId : null; heardSec = m && findGroup(m.groupId) ? secOf(findGroup(m.groupId)) : null; renderList(); // its section opens on the left so the mark shows; the answer on screen stays
-  if (m) {
-    var g = findGroup(m.groupId);
-    t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> &rarr; <b>' + esc(g ? g.name : m.question) + '</b>' + (m.groupId !== cur.gid ? ' <button class="chip primary" id="heard-open" style="height:26px;margin-left:6px">Open</button>' : ' <span style="color:var(--muted)">(on screen)</span>');
-    var ob = $('heard-open'); if (ob) ob.onclick = function () { select(m.groupId, m.itemId, { flash: true }); $('heard').classList.remove('open'); };
-  } else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. Nothing close in the note.';
-  h.classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { h.classList.remove('open'); }, 20000);
+  heardText = text; saidText = ''; hot = null; // a new question: ticks start over
+  var m = NoteMatch.closest(N.groups, text); // instant: by wording
+  setHeard(m ? m.groupId : null);
+  showHeard(text, m && m.groupId, m && m.itemId, m ? (findGroup(m.groupId) || {}).name || m.question : '');
+  markLines();
+  smartHeard(text);
+}
+function smartHeard(text) { // ~1 s later: which question it really is + the line to read. The newest question wins.
+  if (heardCtl) try { heardCtl.abort(); } catch (e) {}
+  var ctl = heardCtl = (window.AbortController ? new AbortController() : null);
+  fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, currentGroupId: cur.gid }), signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (!j || text !== heardText) return; // a newer question came in meanwhile
+      if (j.groupId && findGroup(j.groupId)) {
+        setHeard(j.groupId);
+        hot = j.line ? { gid: j.groupId, text: j.line } : null;
+        showHeard(text, j.groupId, j.itemId, j.name);
+        markLines();
+      } else if (j.question) {
+        setHeard(null);
+        if (!heardToday.some(function (q) { return NoteMatch.dice(q.question, j.question) > 0.8; })) { heardToday.unshift({ title: j.title, question: j.question, ts: Date.now() }); heardToday = heardToday.slice(0, 30); saveHeardToday(); renderList(); }
+        showHeard(text, null, null, j.title || 'new');
+      }
+    }).catch(function () {});
+}
+function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
+  if (SOLO || !follow || !N || !text) return;
+  saidText += ' ' + text; markLines();
+}
+function markLines() { // display only: the line to read (data-hot) and lines already said (data-said)
+  var els = ed.querySelectorAll('li, p, h2, h3, pre');
+  els.forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); });
+  if (!els.length || document.activeElement === ed) return; // never while he is typing in it
+  if (saidText) { var said = NoteMatch.saidWords(saidText); els.forEach(function (el) { if (NoteMatch.isSaid(NoteMatch.pointKeys(el.textContent), said)) el.setAttribute('data-said', '1'); }); }
+  if (hot && hot.gid === cur.gid) {
+    var best = null, bs = 0; els.forEach(function (el) { var sc = NoteMatch.dice(hot.text, el.textContent); if (sc > bs) { bs = sc; best = el; } });
+    if (best && bs >= 0.6 && !best.hasAttribute('data-said')) { best.setAttribute('data-hot', '1'); best.scrollIntoView({ block: 'nearest' }); }
+  }
+}
+ed.addEventListener('focus', function () { ed.querySelectorAll('[data-hot],[data-said]').forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); }); });
+ed.addEventListener('blur', function () { markLines(); });
+async function addHeardToday(i, btn) {
+  var q = heardToday[i]; if (!q) return; if (btn) btn.disabled = true;
+  var r = await api('POST', '/api/note/from-call', { questions: [{ title: q.title, question: q.question, ways: [] }], sessionId: $('job').value || SESSION_PARAM || '' }).catch(function () { return { ok: false, json: {} }; }); // the server names the section after the job
+  if (!r.ok) { if (btn) btn.disabled = false; toast(r.json.error || 'Could not add', 2500); return; }
+  r.json.added.forEach(function (g) { N.groups.push(g); });
+  heardToday.splice(i, 1); saveHeardToday(); renderList();
+  toast(r.json.added.length ? 'Added to your note under "' + r.json.added[0].section + '"' : 'Already in your note as ' + (r.json.skipped[0] || {}).inNote, 3000);
 }
 $('heard-x').onclick = function () { $('heard').classList.remove('open'); };
-try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (e.data && e.data.type === 'question') onHeard(e.data.text); }; } catch (e) {}
-window.addEventListener('storage', function (e) { if (e.key === 'xhire_note_q' && e.newValue) { try { var d = JSON.parse(e.newValue); if (Date.now() - (d.ts || 0) < 15000) onHeard(d.text); } catch (_) {} } });
+try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); }; } catch (e) {}
+window.addEventListener('storage', function (e) {
+  if ((e.key === 'xhire_note_q' || e.key === 'xhire_note_said') && e.newValue) { try { var d = JSON.parse(e.newValue); if (Date.now() - (d.ts || 0) < 15000) (e.key === 'xhire_note_q' ? onHeard : onSaid)(d.text); } catch (_) {} }
+});
 
 load().catch(function (e) { console.error('[Note]', e); if (TOKEN) toast('Could not load the note: ' + e.message, 4000); });
 </script>

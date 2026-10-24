@@ -23,6 +23,27 @@
   }
   function score(heard, candidate) { return dice(heard, candidate) * 0.5 + keywordScore(heard, candidate) * 0.5; }
   // groups: [{ id, name, items: [{ id, question }] }] → the best variation (or null below the threshold)
+  // The note's questions best first by wording: the instant guess shown the moment a question is heard, and the
+  // candidates whose answers the smart check (POST /api/note/heard) reads to pick the line to highlight.
+  function rank(groups, heard, n) {
+    var out = [];
+    (groups || []).forEach(function (g) {
+      var best = null;
+      (g.items || []).forEach(function (it) { var s = score(heard, it.question); if (!best || s > best.score) best = { groupId: g.id, itemId: it.id, score: s, question: it.question }; });
+      var gs = score(heard, g.name) * 0.9;
+      if (g.items && g.items.length && (!best || gs > best.score)) best = { groupId: g.id, itemId: g.items[0].id, score: gs, question: g.items[0].question };
+      if (best) out.push(best);
+    });
+    out.sort(function (a, b) { return b.score - a.score; });
+    return out.slice(0, n || 5);
+  }
+  // "Has he said this line yet?" ONE rule for the call overlay's live coach and the note's ticks (moved here from
+  // canvas.html, 24 Oct): a line's key words are its words of 4+ letters minus common ones (first 6), and the line is
+  // said once half of them have come from his mic.
+  var SAID_STOP = {the:1,and:1,for:1,that:1,this:1,with:1,your:1,you:1,they:1,them:1,have:1,has:1,are:1,was:1,were:1,will:1,would:1,from:1,into:1,about:1,what:1,when:1,which:1,their:1,there:1,then:1,been:1,being:1,also:1,more:1,most:1,some:1,such:1,just:1,like:1,here:1,does:1};
+  function pointKeys(s) { var o = {}; (String(s).toLowerCase().match(/\b[a-z]{4,}\b/g) || []).forEach(function (w) { if (!SAID_STOP[w]) o[w] = 1; }); return Object.keys(o).slice(0, 6); }
+  function saidWords(text) { var o = {}; (String(text || '').toLowerCase().match(/\b[a-z]{4,}\b/g) || []).forEach(function (w) { o[w] = 1; }); return o; }
+  function isSaid(keys, said) { if (!keys || !keys.length) return false; var hit = 0; keys.forEach(function (w) { if (said[w]) hit++; }); return hit / keys.length >= 0.5; }
   function closest(groups, heard, threshold) {
     var th = typeof threshold === 'number' ? threshold : 0.4; var best = null;
     (groups || []).forEach(function (g) {
@@ -62,5 +83,5 @@
     return (groups || []).slice().sort(function (a, b) { return ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || ((a.sort_order || 0) - (b.sort_order || 0)) || String(a.created_at || '').localeCompare(String(b.created_at || '')); });
   }
   var SAME_QUESTION = 0.72; // a question from a call this close to one in the note IS that question (not added twice)
-  return { SAME_QUESTION: SAME_QUESTION, dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
+  return { SAME_QUESTION: SAME_QUESTION, rank: rank, pointKeys: pointKeys, saidWords: saidWords, isSaid: isSaid, dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
 });

@@ -590,6 +590,7 @@ body.light-mode .resize-handle{color:#9ca3af}
 body.light-mode .resize-handle:hover{color:#6d28d9}
 </style>
 <script src="/copilot-fingerprint.js"></script>
+<script src="/note-match.js"></script>
 </head>
 <body class="board-closed" style="background:transparent !important">
 <!-- Corner resize grabs — Electron only, hidden in web -->
@@ -961,6 +962,11 @@ function openAnswerNote() {
 function closeAnswerNote() { var p = document.getElementById('note-panel'); if (p) p.remove(); }
 // Every detected interviewer question goes to the note window too (same origin: BroadcastChannel, localStorage as the
 // fallback). Fire-and-forget; the live pipeline never waits on it.
+function tellAnswerNoteSaid(text) { // what HE said (his mic): the note ticks off the lines he has covered
+  if (!text) return;
+  try { new BroadcastChannel('xhire-note').postMessage({ type: 'said', text: text }); } catch (e) {}
+  try { localStorage.setItem('xhire_note_said', JSON.stringify({ text: text, ts: Date.now() })); } catch (e) {}
+}
 function tellAnswerNote(text) {
   if (!text) return;
   try { new BroadcastChannel('xhire-note').postMessage({ type: 'question', text: text }); } catch (e) {}
@@ -1333,7 +1339,7 @@ function connect() {
     // First genuine INTERVIEWER speech (system audio, not your mic/echo) = they've joined → capture names
     if (msg.type === 'interviewer_final' || (msg.type === 'transcript' && !msg.isEcho)) { try { onNameCapActivity(); } catch (e) {} }
     // Live coach reads YOUR mic (read-only, no API) to tick off points as you say them
-    if (msg.type === 'user_transcript' && msg.text) { try { coachHeard(msg.text); } catch (e) {} }
+    if (msg.type === 'user_transcript' && msg.text) { try { coachHeard(msg.text); } catch (e) {} try { tellAnswerNoteSaid(msg.text); } catch (e) {} }
 
     if (msg.type === 'match') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
@@ -2832,8 +2838,7 @@ function toggleLiveCoach() {
 }
 var coach = null; // { qid, points:[{text,key,covered}], said, hideTimer }
 var COACH_HIDE_MS = 22000; // auto-disappear after this long
-var COACH_STOP = {the:1,and:1,for:1,that:1,this:1,with:1,your:1,you:1,they:1,them:1,have:1,has:1,are:1,was:1,were:1,will:1,would:1,from:1,into:1,about:1,what:1,when:1,which:1,their:1,there:1,then:1,been:1,being:1,also:1,more:1,most:1,some:1,such:1,just:1,like:1,here:1,does:1};
-function coachKeys(s){ var o={}; (String(s).toLowerCase().match(/\b[a-z]{4,}\b/g)||[]).forEach(function(w){ if(!COACH_STOP[w]) o[w]=1; }); return Object.keys(o).slice(0,6); }
+function coachKeys(s){ return NoteMatch.pointKeys(s); } // one rule with the Answer Note's ticks (public/note-match.js)
 function coachShow(qid, answerText){
   if(!COACH_ON || !answerText) return;
   var lines = String(answerText).split('\n').map(function(l){ return l.replace(/^[\s>*\-•\d\.\)]+/,'').trim(); })
@@ -2848,9 +2853,9 @@ function coachShow(qid, answerText){
 function coachHeard(text){
   if(!coach || !text) return;
   coach.said += ' ' + text;
-  var said={}; (coach.said.toLowerCase().match(/\b[a-z]{4,}\b/g)||[]).forEach(function(w){ said[w]=1; });
+  var said = NoteMatch.saidWords(coach.said);
   var all=true;
-  coach.points.forEach(function(p){ if(!p.covered && p.key.length){ var hit=0; p.key.forEach(function(w){ if(said[w]) hit++; }); if(hit/p.key.length>=0.5) p.covered=true; } if(!p.covered) all=false; });
+  coach.points.forEach(function(p){ if(!p.covered && NoteMatch.isSaid(p.key, said)) p.covered=true; if(!p.covered) all=false; });
   coachRender();
   if(all){ if(coach.hideTimer) clearTimeout(coach.hideTimer); coach.hideTimer = setTimeout(coachHide, 1500); } // covered everything → fade soon
 }
