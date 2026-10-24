@@ -3379,7 +3379,9 @@ app.post('/api/note/coach', authMiddleware, async (req, res) => {
     noteCoachLast.set(req.userId, now);
     const s = (await pool.query('SELECT * FROM sessions WHERE id = $1 AND user_id = $2', [sid, req.userId])).rows[0];
     if (!s) return res.json({ coach: null });
-    const bank = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 6", [s.id])).rows;
+    // xHire's own earlier answer to THIS question is left out: the strip copied its loose method ("filters") over the expert one (row-level security)
+    const bank = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 12", [s.id])).rows
+      .filter(q => NoteMatchShared.score(text, q.text) < NoteMatchShared.SAME_QUESTION).slice(0, 6);
     const material = `THE JOB: ${s.role || 'this role'} at ${s.company || 'the company'}.\nJOB DESCRIPTION:\n${String(s.jd || 'N/A').slice(0, 3000)}\n\nRESUME:\n${String(s.resume || 'N/A').slice(0, 5000)}\n\nQ&A BANK:\n${bank.map(q => `Q: ${q.text}\nA: ${String(q.answer).slice(0, 400)}`).join('\n\n') || 'N/A'}`;
     const recent = (Array.isArray(req.body?.recent) ? req.body.recent : []).map(q => String(q || '').slice(0, 200)).filter(Boolean).slice(-3);
     // What they said leading up to the question (their company pitch: "say something nice about it first") and, mid-answer,

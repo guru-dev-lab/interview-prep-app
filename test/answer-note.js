@@ -190,5 +190,7 @@ check(N.parseCoach("WANT: Can you push back\nSAY: I would say I've presented a c
 check(JSON.stringify(N.parseCoach('WANT: Fit\nSAY: Thanks for walking me through that. The Tableau move sounds exciting. I led one at R&L Carriers. And more.').lines) === JSON.stringify(['Thanks for walking me through that.', 'The Tableau move sounds exciting.']), 'coach: up to 2 lines, one sentence each');
 check(N.parseCoach('NONE') === null && N.parseCoach('WANT: NONE\nSAY: NONE') === null && N.parseCoach('WANT: sound check, not a real question\nSAY: Yes, I can hear you.') === null && N.parseCoach('{') === null, 'coach: nothing for a plain question or a broken reply');
 check(N.parseCoach('WANT: Fit\nSAY: Yes, that is exactly the kind of work I enjoy, I replaced six Excel workbooks with a cost-per-case model in Power BI.').say === 'Yes, that is exactly the kind of work I enjoy.', 'coach: a long line ends at a natural comma');
+check(N.parseCoach('WANT: One governed report\nSAY: I\'d build one shared model with role-level security by district.').say === "I'd build one shared model with row-level security by district.", 'coach: the expert term is named right (row-level security)');
+check(/never of the method/.test(N.COACH_PROMPT), 'coach: résumé and bank give facts, not the method');
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);
