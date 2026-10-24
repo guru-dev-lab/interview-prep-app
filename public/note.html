@@ -1181,7 +1181,7 @@ var heardGid = null, heardSec = null, heardText = '', hot = null, saidText = '',
 function showHeard(text, gid, itemId, label) {
   var t = $('heard-text');
   if (gid) t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> &rarr; <b>' + esc(label) + '</b>' + (gid !== cur.gid ? ' <button class="chip primary" id="heard-open" style="height:26px;margin-left:6px">Open</button>' : ' <span style="color:var(--muted)">(on screen)</span>');
-  else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. ' + (label ? 'Not in your note yet: kept under "New questions" on the left.' : 'Nothing close in the note.');
+  else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. ' + (label === true ? 'Not in your note yet: kept under "New questions" on the left.' : label ? 'Not in your note yet: adding it to "New questions"...' : 'Nothing close in the note.');
   var ob = $('heard-open'); if (ob) ob.onclick = function () { select(gid, itemId, { flash: true }); $('heard').classList.remove('open'); };
   $('heard').classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { $('heard').classList.remove('open'); }, 20000);
 }
@@ -1222,13 +1222,15 @@ function smartHeard(text) { // ~1 s later: which question it really is + the lin
 var aiSaid = {}, saidTimer = null, saidSent = 0;
 // ===== New questions (owner 24 Oct): a plain section that fills itself from calls; each keeps what xHire answered live
 var NEWQ = 'New questions', pendingLive = [];
+var pendingNew = '';
 function addNewQuestion(title, question) {
   if (!question) return;
+  pendingNew = question;
   var hit = NoteMatch.closest(N.groups, question, NoteMatch.SAME_QUESTION); if (hit) return; // already in the note
   api('POST', '/api/note/from-call', { questions: [{ title: title, question: question, ways: [] }], section: NEWQ }).then(function (r) {
     if (!r.ok) return;
     r.json.added.forEach(function (g) { N.groups.push(g); attachLive(g); });
-    if (r.json.added.length) { setHeard(r.json.added[0].id); toast('New question kept: ' + r.json.added[0].name, 2500); } // its section opens and it is marked heard; what he is reading stays
+    if (r.json.added.length) { setHeard(r.json.added[0].id); toast('New question kept: ' + r.json.added[0].name, 2500); if (question === pendingNew) showHeard(heardText, null, null, true); } // only now is it kept // its section opens and it is marked heard; what he is reading stays
   }).catch(function () {});
 }
 function onLive(question, answer) { // what xHire answered live on the call
@@ -1307,15 +1309,22 @@ var svgCache = {}; // diagram text -> drawn picture, so the live marks (every fe
 function drawDiagrams() {
   var pres = ed.querySelectorAll('pre.diagram'); if (!pres.length || document.activeElement === ed) return;
   if (mermaidState === null) loadMermaid();
+  var fit = Math.round(ed.clientWidth / 100); // pictures are kept per window width: a resize may need the other direction
   pres.forEach(function (p, i) {
-    var src = p.textContent, view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false';
-    if (svgCache[src]) view.innerHTML = svgCache[src];
+    var src = p.textContent, key = src + '|' + fit, view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false';
+    if (svgCache[key]) view.innerHTML = svgCache[key];
     else { var quick = flowView(src); if (quick) view.appendChild(quick); else { p.classList.add('norender'); return; } }
     p.parentNode.insertBefore(view, p.nextSibling);
     lightFlow(view, src);
-    if (svgCache[src] || mermaidState !== 'ready') return; // the steps show now; the full picture comes in when markLines runs after it loads
+    if (svgCache[key] || mermaidState !== 'ready') return; // the steps show now; the full picture comes in when markLines runs after it loads
     var id = 'dg' + Date.now() + i;
-    window.mermaid.render(id, src).then(function (r) { svgCache[src] = r.svg; if (view.isConnected) { view.innerHTML = r.svg; lightFlow(view, src); } }).catch(function () {
+    // A left-to-right flow wider than the answer shrinks to unreadable text (owner's screen, 24 Oct: 8 px boxes): it is
+    // drawn top to bottom instead, so the boxes stay full size. Display only; the saved text keeps its own direction.
+    window.mermaid.render(id, src).then(function (r) {
+      var vb = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+)/.exec(r.svg), w = vb ? parseFloat(vb[1]) : 0, room = (view.clientWidth || ed.clientWidth) - 26;
+      if (w * 0.9 > room && /^\s*(flowchart|graph)\s+(LR|RL)\b/i.test(src)) return window.mermaid.render(id + 't', src.replace(/^(\s*)(flowchart|graph)\s+(LR|RL)\b/i, '$1$2 TB'));
+      return r;
+    }).then(function (r) { svgCache[key] = r.svg; if (view.isConnected) { view.innerHTML = r.svg; lightFlow(view, src); } }).catch(function () {
       var junk = document.getElementById('d' + id); if (junk) junk.remove(); // mermaid leaves its error box in the page; the steps stay
     });
   });
