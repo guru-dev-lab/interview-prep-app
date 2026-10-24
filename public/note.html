@@ -97,6 +97,12 @@ body.dark .sec .cnt.done{color:#10301e}
 #editor:focus pre.diagram,#editor pre.diagram.norender{display:block;background:var(--card);color:var(--text);border:1px dashed var(--line2)}
 #editor .dview{margin:12px 0;padding:12px;border:1px solid var(--line2);border-radius:10px;background:var(--card);overflow-x:auto;text-align:center}
 #editor .dview svg{max-width:100%;height:auto}
+#editor .flow{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+#editor .flayer{border:1px solid var(--line2);border-radius:10px;padding:8px 10px;max-width:100%}
+#editor .ftitle{font-size:12px;font-weight:600;opacity:.75;margin-bottom:6px}
+#editor .frow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px}
+#editor .fbox{border:1px solid var(--line2);border-radius:8px;padding:5px 10px;background:var(--bg,transparent);font-size:14px;font-weight:500}
+#editor .farrow,#editor .fdown{opacity:.6;font-size:15px}
 .newhint{padding:8px 12px 12px 30px;font-size:12.5px;color:var(--muted);line-height:1.45}
 #editor mark[data-pw]{background:none;color:inherit;font-weight:700;border-bottom:2px solid var(--accent-bg);padding:0 1px}
 #editor mark[data-pw][data-pwsaid]{border-bottom-color:var(--ok)}
@@ -1225,24 +1231,80 @@ function attachLive(g) {
   if (!p) return;
   api('POST', '/api/note/items/' + it.id + '/live', { answer: p.a }).then(function (r) { if (r.ok) { Object.assign(it, r.json); if (cur.iid === it.id) renderAnswer(true); renderList(); } }).catch(function () {});
 }
+// Diagrams (owner 24 Oct: "we can not have anything weak for interview"). The flow is drawn on screen from its text,
+// never by AI at call time. Nothing can leave him with raw code: a built-in drawer shows the steps at once, then the
+// full picture (Mermaid, served from xhire.app, loaded as the window opens) replaces it. If that cannot load or cannot
+// read the text, the built-in steps stay.
 var mermaidState = null; // null, 'loading', 'ready', 'failed'
+var MERMAID_SRC = ['/vendor/mermaid-10.9.1.min.js', 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js'];
+function loadMermaid(i) {
+  i = i || 0;
+  if (mermaidState === 'ready' || (mermaidState === 'loading' && !i)) return;
+  if (i >= MERMAID_SRC.length) { mermaidState = 'failed'; return; }
+  mermaidState = 'loading';
+  var sc = document.createElement('script'); sc.src = MERMAID_SRC[i];
+  sc.onload = function () {
+    try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: document.body.classList.contains('dark') || document.body.classList.contains('glass') ? 'dark' : 'neutral', flowchart: { useMaxWidth: true, htmlLabels: false } }); mermaidState = 'ready'; }
+    catch (e) { mermaidState = 'failed'; }
+    if (ed && ed.querySelector('pre.diagram')) markLines();
+  };
+  sc.onerror = function () { sc.remove(); loadMermaid(i + 1); };
+  document.head.appendChild(sc);
+}
+// Built-in drawer: reads the flowchart text (layers = subgraphs, boxes = labelled nodes in the order they appear)
+// and lays it out as layers of boxes joined by arrows. Instant, no library.
+function flowSteps(src) {
+  var labels = {}, order = [], groups = [], g = null, loose = { title: '', ids: [] };
+  String(src || '').split(/\n|;/).forEach(function (raw) {
+    var line = raw.trim(); if (!line || /^(flowchart|graph)\b/i.test(line) || /^(classDef|class|style|linkStyle|%%)/.test(line)) return;
+    var sg = line.match(/^subgraph\s+(.*)$/i);
+    if (sg) { var t = sg[1].trim(), m = t.match(/^[\w-]+\s*\[\s*"?([^"\]]*)"?\s*\]$/); g = { title: (m ? m[1] : t).replace(/^"|"$/g, ''), ids: [] }; groups.push(g); return; }
+    if (/^end$/i.test(line)) { g = null; return; }
+    // a box is id + opener ... matching closer; a label may hold other brackets ("Dataflows (Gen2)"), an unclosed one runs to the next arrow
+    var re = /([A-Za-z0-9_]+)\s*(\[\[|\[\(|\[\/|\[|\(\(|\(|\{\{|\{|>)/g, CLOSE = { '[[': ']]', '[(': ')]', '[/': '/]', '[': ']', '((': '))', '(': ')', '{{': '}}', '{': '}', '>': ']' }, x, seen = false;
+    while ((x = re.exec(line))) {
+      var from = re.lastIndex, to = line.indexOf(CLOSE[x[2]], from), arrow = line.slice(from).search(/\s*(-->|---|-\.->|==>)/);
+      if (to < 0) to = arrow < 0 ? line.length : from + arrow;
+      var label = line.slice(from, to).replace(/^\s*"|"\s*$/g, '').trim();
+      re.lastIndex = Math.min(line.length, to + (line.indexOf(CLOSE[x[2]], from) === to ? CLOSE[x[2]].length : 0));
+      seen = true; if (!labels[x[1]]) { labels[x[1]] = label || x[1]; order.push(x[1]); (g || loose).ids.push(x[1]); }
+    }
+    if (!seen) line.split(/\s*(?:-->|---|-\.->|==>|--[^>-]+-->|-->\|[^|]*\|)\s*/).forEach(function (id) {
+      id = id.replace(/[^\w]/g, ''); if (id && !labels[id] && !/^(end|subgraph)$/i.test(id)) { labels[id] = id; order.push(id); (g || loose).ids.push(id); }
+    });
+  });
+  if (loose.ids.length) groups.unshift(loose);
+  return { groups: groups.filter(function (x) { return x.ids.length; }), labels: labels, count: order.length };
+}
+function flowView(src) {
+  var f = flowSteps(src); if (!f.count) return null;
+  var wrap = document.createElement('div'); wrap.className = 'flow';
+  f.groups.forEach(function (gr, gi) {
+    if (gi) { var dn = document.createElement('div'); dn.className = 'fdown'; dn.textContent = '↓'; wrap.appendChild(dn); }
+    var lay = document.createElement('div'); lay.className = 'flayer';
+    if (gr.title) { var h = document.createElement('div'); h.className = 'ftitle'; h.textContent = gr.title; lay.appendChild(h); }
+    var row = document.createElement('div'); row.className = 'frow';
+    gr.ids.forEach(function (id, ii) {
+      if (ii) { var ar = document.createElement('span'); ar.className = 'farrow'; ar.textContent = '→'; row.appendChild(ar); }
+      var b = document.createElement('span'); b.className = 'fbox'; b.textContent = f.labels[id]; row.appendChild(b);
+    });
+    lay.appendChild(row); wrap.appendChild(lay);
+  });
+  return wrap;
+}
 function drawDiagrams() {
   var pres = ed.querySelectorAll('pre.diagram'); if (!pres.length || document.activeElement === ed) return;
-  if (mermaidState !== 'ready') {
-    if (mermaidState === 'failed') { pres.forEach(function (p) { p.classList.add('norender'); }); return; }
-    if (mermaidState !== 'loading') {
-      mermaidState = 'loading';
-      var sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js';
-      sc.onload = function () { try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: document.body.classList.contains('dark') || document.body.classList.contains('glass') ? 'dark' : 'neutral', flowchart: { useMaxWidth: true, htmlLabels: false } }); mermaidState = 'ready'; } catch (e) { mermaidState = 'failed'; } markLines(); };
-      sc.onerror = function () { mermaidState = 'failed'; markLines(); };
-      document.head.appendChild(sc);
-    }
-    return;
-  }
+  if (mermaidState === null) loadMermaid();
   pres.forEach(function (p, i) {
-    var view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false'; view.textContent = 'Drawing...';
+    var view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false';
+    var quick = flowView(p.textContent);
+    if (quick) view.appendChild(quick); else { view.remove(); p.classList.add('norender'); return; }
     p.parentNode.insertBefore(view, p.nextSibling);
-    window.mermaid.render('dg' + Date.now() + i, p.textContent).then(function (r) { view.innerHTML = r.svg; }).catch(function () { view.remove(); p.classList.add('norender'); });
+    if (mermaidState !== 'ready') return; // the steps show now; the full picture comes in when markLines runs after it loads
+    var id = 'dg' + Date.now() + i;
+    window.mermaid.render(id, p.textContent).then(function (r) { if (view.isConnected) view.innerHTML = r.svg; }).catch(function () {
+      var junk = document.getElementById('d' + id); if (junk) junk.remove(); // mermaid leaves its error box in the page; the steps stay
+    });
   });
 }
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
@@ -1303,6 +1365,7 @@ window.addEventListener('storage', function (e) {
 });
 
 load().catch(function (e) { console.error('[Note]', e); if (TOKEN) toast('Could not load the note: ' + e.message, 4000); });
+setTimeout(loadMermaid, 400); // ready before the first diagram is ever opened
 </script>
 </body>
 </html>
