@@ -56,7 +56,7 @@ svg{display:block}
 .search input:focus{outline:2px solid var(--sel-line);outline-offset:-1px}
 .search .mag{position:absolute;left:10px;top:9px;color:var(--dim)}
 .search .kbd{position:absolute;right:8px;top:7px;font-size:11px;color:var(--dim);border:1px solid var(--line2);border-radius:4px;padding:0 5px}
-.job{height:32px;max-width:240px;padding:0 8px;border:1px solid var(--line2);border-radius:8px;background:var(--page);font-size:13px}
+.job{height:32px;min-width:150px;max-width:340px;flex:0 1 auto;text-overflow:ellipsis;padding:0 8px;border:1px solid var(--line2);border-radius:8px;background:var(--page);font-size:13px}
 .grow{flex:1}
 .progress{font-size:12.5px;color:var(--accent);font-weight:600;white-space:nowrap}
 .state{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);white-space:nowrap;padding:0 4px}
@@ -266,7 +266,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   <button class="ibtn txt hidden" id="btn-home" title="Back to the xHire home screen">&lsaquo; xHire</button>
   <button class="ibtn only-full" id="btn-side" title="Show or hide the questions (Cmd+\)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
   <div class="search only-full"><svg class="mag" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="search" placeholder="Search questions and answers" autocomplete="off"><span class="kbd">/</span></div>
-  <select class="job only-full" id="job" title="The job the answers are written for"><option value="">Answers for: my latest résumé</option></select>
+  <select class="job only-full" id="job" title="Answers are written for: your latest résumé"><option value="">Latest résumé</option></select>
   <span class="grow"></span>
   <span class="progress" id="progress"></span>
   <button class="ibtn txt only-full" id="gen-all" title="Write every empty answer in the background">Write all answers</button>
@@ -535,14 +535,18 @@ function applySettings() {
   $('ways-head').classList.toggle('closed', lsGet('xhire_note_ways_closed') === '1');
 }
 function saveSettings(patch) { Object.assign(N.settings, patch); queueSave('settings', async function () { var r = await api('PUT', '/api/note/settings', patch); if (!r.ok) throw new Error('settings'); }, 300); }
+// The job answers are written for (owner 24 Oct: "picking session should be latest resume"): opened on its own, the note
+// always starts on his latest résumé; opened from a session, that session. A pick in the menu is for this window only;
+// nothing is remembered as a default (a saved pick used to stick to whichever session he once opened it from).
 async function loadJobs() {
   var r = await api('GET', '/api/sessions'); if (!r.ok) return;
-  var sel = $('job'); var want = SESSION_PARAM || (N.settings.sessionId || '');
-  r.json.forEach(function (s) { var o = document.createElement('option'); o.value = s.id; o.textContent = 'Answers for: ' + (s.company || 'Untitled') + (s.role ? ', ' + s.role : ''); sel.appendChild(o); });
-  if (want && [].some.call(sel.options, function (o) { return o.value === want; })) sel.value = want;
-  if (SESSION_PARAM && SESSION_PARAM !== N.settings.sessionId && sel.value === SESSION_PARAM) saveSettings({ sessionId: SESSION_PARAM });
+  var sel = $('job');
+  r.json.forEach(function (s) { var o = document.createElement('option'); o.value = s.id; o.textContent = (s.company || 'Untitled') + (s.role ? ' \u00b7 ' + s.role : ''); sel.appendChild(o); });
+  if (SESSION_PARAM && [].some.call(sel.options, function (o) { return o.value === SESSION_PARAM; })) sel.value = SESSION_PARAM;
+  jobTitle();
 }
-$('job').onchange = function () { saveSettings({ sessionId: $('job').value || '' }); toast('New answers will be written for this job'); CALLS = null; curCall = null; if (view === 'calls') loadCalls(); };
+function jobTitle() { var o = $('job').selectedOptions && $('job').selectedOptions[0]; $('job').title = 'Answers are written for: ' + (o && o.value ? o.textContent : 'your latest résumé'); }
+$('job').onchange = function () { jobTitle(); toast('New answers will be written for ' + ($('job').value ? $('job').selectedOptions[0].textContent : 'your latest résumé')); CALLS = null; curCall = null; if (view === 'calls') loadCalls(); };
 
 // ===== render =====
 function renderAll() { renderList(); renderAnswer(true); }
@@ -836,7 +840,7 @@ async function aiChange(it, mode, instruction) {
   flushEditor();
   busy[it.id] = true; if (cur.iid === it.id) renderAnswer(); else if (cur.gid === it.group_id) renderWays(); renderList();
   try {
-    var r = await api('POST', '/api/note/items/' + it.id + '/generate', { mode: mode, instruction: instruction || '', sessionId: $('job').value || SESSION_PARAM || N.settings.sessionId || '' });
+    var r = await api('POST', '/api/note/items/' + it.id + '/generate', { mode: mode, instruction: instruction || '', sessionId: $('job').value || '' });
     if (!r.ok) { toast(r.json.error || 'Could not write the answer', 3500); return false; }
     var before = it.versions ? it.versions.length : 0;
     delete it._conflict; lsDel(draftKey(it.id));
@@ -1018,7 +1022,7 @@ function setView(v, quiet) {
 }
 $('tab-q').onclick = function () { setView('questions'); };
 $('tab-calls').onclick = function () { setView('calls'); };
-function callSid() { return $('job').value || (N && N.settings.sessionId) || SESSION_PARAM || ''; }
+function callSid() { return $('job').value || ''; } // empty = his latest résumé (the server picks it)
 async function loadCalls() {
   CALLS = null; renderCallList(); renderCallPage();
   var r = await api('GET', '/api/note/calls?sessionId=' + encodeURIComponent(callSid())).catch(function () { return { ok: false, json: {} }; });

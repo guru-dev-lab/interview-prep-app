@@ -3440,7 +3440,7 @@ app.post('/api/note/items/:iid/generate', authMiddleware, async (req, res) => {
     const answerCheck = await checkAnswerLimit(req.userId, req.plan); // same monthly cap as the bank's Generate buttons
     if (!answerCheck.ok) return res.status(403).json({ error: `Monthly answer limit reached (${answerCheck.limit}). Upgrade for more.` });
     const note = await loadNote(req.userId);
-    const session = await noteSessionFor(req.userId, req.body?.sessionId || note.settings?.sessionId);
+    const session = await noteSessionFor(req.userId, req.body?.sessionId); // no job given = his latest résumé (owner 24 Oct), never an old saved pick
     if (!session) return res.status(400).json({ error: 'Add your résumé to a session first. The note writes answers from it.' });
     if (!String(session.resume || '').trim()) return res.status(400).json({ error: 'That session has no résumé. Pick one that does.' });
     const mode = answerNote.MODES[req.body?.mode] ? req.body.mode : 'regenerate';
