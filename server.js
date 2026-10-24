@@ -3080,10 +3080,38 @@ async function loadNote(userId) {
       const gr = await pool.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order) VALUES ($1, $2, $3, $4) RETURNING id', [n.id, g.name, g.section, g.sort_order]);
       for (const it of g.items) { await pool.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4)', [n.id, gr.rows[0].id, it.question, it.sort_order]); items++; }
     }
-    n = (await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"seeded\": true, \"seedVersion\": 2}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0]; // seeded once; deleting every group later does not re-seed
+    n = (await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('seeded', true, 'seedVersion', $2::int) WHERE id = $1 RETURNING *", [n.id, answerNote.SEED.version])).rows[0]; // seeded once; deleting every group later does not re-seed
     console.log(`[Note] Seeded ${items} answers in ${answerNote.seedRows().length} groups for user ${userId}`);
   } else if (n.settings?.seeded && !n.settings?.seedVersion) n = await upgradeNoteSeed(n);
+  else if (n.settings?.seeded && n.settings.seedVersion < answerNote.SEED.version) n = await addNewSeedQuestions(n);
   return n;
+}
+// Questions added to the seed since this note was made (seed "since") go in once, after the last question of their
+// section. One transaction, note row locked (two windows opening together cannot both add them). Nothing is removed.
+async function addNewSeedQuestions(n) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const locked = (await client.query('SELECT * FROM answer_notes WHERE id = $1 FOR UPDATE', [n.id])).rows[0];
+    const from = Number(locked && locked.settings && locked.settings.seedVersion) || 0;
+    if (!locked || from >= answerNote.SEED.version) { await client.query('ROLLBACK'); return locked || n; }
+    const groups = (await client.query('SELECT * FROM answer_note_groups WHERE note_id = $1', [n.id])).rows;
+    const items = (await client.query('SELECT group_id, question FROM answer_note_items WHERE note_id = $1', [n.id])).rows;
+    const plan = answerNote.additionsPlan(groups.map(g => ({ ...g, items: items.filter(i => i.group_id === g.id) })), from);
+    for (const a of plan) {
+      await client.query('UPDATE answer_note_groups SET sort_order = sort_order + 1 WHERE note_id = $1 AND sort_order > $2', [n.id, a.after]);
+      const gr = await client.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order) VALUES ($1, $2, $3, $4) RETURNING id', [n.id, a.name, a.section, a.after + 1]);
+      for (let j = 0; j < a.items.length; j++) await client.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4)', [n.id, gr.rows[0].id, a.items[j], j]);
+    }
+    const out = (await client.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('seedVersion', $2::int) WHERE id = $1 RETURNING *", [n.id, answerNote.SEED.version])).rows[0];
+    await client.query('COMMIT');
+    console.log(`[Note] Added ${plan.length} new questions to note ${n.id} (seed v${from} → v${answerNote.SEED.version}): ${plan.map(a => a.name).join(', ')}`);
+    return out;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(`[Note] Adding new questions failed for note ${n.id}, left as it was: ${e.message}`);
+    return n;
+  } finally { client.release(); }
 }
 // v1 → v2 seed (24 Oct): short titles in sections, the full question under each, at most 3 other ways. Runs once per
 // note, in one transaction, the note row locked so two windows opening together cannot both run it.
@@ -3110,9 +3138,9 @@ async function upgradeNoteSeed(n) {
         for (let j = 0; j < o.items.length; j++) await client.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4)', [n.id, gr.rows[0].id, o.items[j], j]);
       }
     }
-    const out = (await client.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"seedVersion\": 2}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0];
+    const out = (await client.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('seedVersion', $2::int) WHERE id = $1 RETURNING *", [n.id, answerNote.SEED.version])).rows[0]; // upgradePlan already added every current seed question
     await client.query('COMMIT');
-    console.log(`[Note] Upgraded note ${n.id} to seed v2: ${JSON.stringify(count)}`);
+    console.log(`[Note] Upgraded note ${n.id} to seed v${answerNote.SEED.version}: ${JSON.stringify(count)}`);
     return out;
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});

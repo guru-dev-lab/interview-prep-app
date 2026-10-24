@@ -7,7 +7,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
 // Seed (v2, owner 24 Oct): every distinct question its own line, a short title, the full question, at most 3 other ways
 const rows = N.seedRows();
 const nItems = rows.reduce((n, g) => n + g.items.length, 0);
-check(rows.length === 43 && nItems === 172, 'seed: 43 questions, 172 wordings', rows.length + ' ' + nItems);
+check(rows.length === 48 && nItems === 192, 'seed: 48 questions, 192 wordings', rows.length + ' ' + nItems);
 check(rows.every(g => g.items.length >= 1 && g.items.length <= N.MAX_WAYS + 1), 'seed: every question has at most ' + N.MAX_WAYS + ' other ways');
 check(rows[0].name === 'About me' && rows[0].section === 'About you' && rows[0].items[0].question === 'Tell me about yourself.', 'seed: short title, section, full question first');
 check(rows.every(g => g.name.length <= 40 && g.section), 'seed: every title is short and sits in a section', rows.filter(g => g.name.length > 40 || !g.section).map(g => g.name).join(' | '));
@@ -39,8 +39,8 @@ const g1Rows = ops.filter(o => (o.op === 'updateItem' && ['a', 'b', 'c', 'd', 'e
 check(g1Rows.length === 4 && g1Rows.find(o => o.sort_order === 0).question === 'How do you prioritize when everything is urgent?', 'upgrade: 4 wordings, the full question first', JSON.stringify(g1Rows));
 check(del.has('c') && del.size === 1, 'upgrade: only the empty extra row goes', JSON.stringify([...del]));
 check(byId('s1')[0].question === 'What are your salary expectations?' && byId('s2')[0].question === 'What are you looking for in pay?' && ops.filter(o => o.op === 'insertItem' && o.group_id === 'g2').length === 2, 'upgrade: empty rows are reused, the rest inserted');
-check(ops.some(o => o.op === 'insertGroup' && o.name === "Why I'm leaving") && ops.filter(o => o.op === 'insertGroup').length === 43 - 2, 'upgrade: questions not in the old note are added', ops.filter(o => o.op === 'insertGroup').length);
-check(byId('g9').length === 1 && byId('g9')[0].sort_order === 43 && byId('g9')[0].name === undefined, 'upgrade: his own group is left alone, moved below the seed');
+check(ops.some(o => o.op === 'insertGroup' && o.name === "Why I'm leaving") && ops.filter(o => o.op === 'insertGroup').length === 48 - 2, 'upgrade: questions not in the old note are added', ops.filter(o => o.op === 'insertGroup').length);
+check(byId('g9').length === 1 && byId('g9')[0].sort_order === 48 && byId('g9')[0].name === undefined, 'upgrade: his own group is left alone, moved below the seed');
 const tooMany = N.upgradePlan([{ id: 'g', name: 'SQL', items: ['p', 'q', 'r', 's', 't'].map((x, i) => ({ id: x, question: 'q' + x, sort_order: i, answer_html: 'a' })) }]);
 check(tooMany.filter(o => o.op === 'deleteEmptyItem').length === 0 && tooMany.filter(o => o.op === 'updateItem' && 'pqrst'.includes(o.id)).length === 5, 'upgrade: more answered rows than the cap all stay');
 
@@ -155,6 +155,18 @@ check(M.lineSaid(TL[0], 'I rank everything by business impact and the real deadl
 check(M.lineSaid(TL[2], 'and I made sure the whole team saw the plan so no one was left guessing'), 'word forms count (guessing = guess)');
 check(!M.lineSaid(TL[1], 'we use Power BI a lot') && !M.lineSaid(TL[0], 'so at my last company we took that refresh down from four hours to like twenty minutes'), 'only mentioning a tool, or talking about another line, does not tick');
 check(M.powerSaid('20 minutes', 'like twenty minutes') && !M.powerSaid('40 executives', 'forty people'), 'an impressive word turns green only when he says it');
+
+// Seed v3 (24 Oct, owner: "add Agentic AI usage into the AI part"): added once to notes made earlier, after the AI section
+const v2rows = N.seedRows().filter(g => !(N.SEED.groups.find(s => s.title === g.name) || {}).since); // a note made from seed v2
+const v2 = v2rows.map((g, i) => ({ id: 'n' + i, name: g.name, section: g.section, sort_order: i, items: g.items.map(it => ({ question: it.question })) }));
+const add = N.additionsPlan(v2, 2);
+const aiLast = v2.filter(g => g.section === 'AI and tools').pop();
+check(add.length === 5 && add.every(a => a.section === 'AI and tools' && a.items.length === 4), 'v2 note: the 5 Agentic AI questions are added to the AI section', JSON.stringify(add.map(a => a.name)));
+check(add[0].name === 'Agentic AI at work' && add[0].after === aiLast.sort_order && add[1].after === aiLast.sort_order + 1, 'they go right after the last AI question, in order', JSON.stringify(add.map(a => a.after)));
+check(N.additionsPlan(v2, 3).length === 0, 'a note already on v3 gets nothing');
+const hasOne = v2.concat([{ id: 'x', name: 'My agents', section: 'AI and tools', sort_order: 99, items: [{ question: 'How have you used agentic AI in your work?' }] }]);
+check(N.additionsPlan(hasOne, 2).length === 4, 'a question he already has (same wording) is not added again');
+check(N.SEED.groups.every(g => !/\u2014/.test(JSON.stringify(g))) && N.SEED.version === 3, 'seed v3, no em dashes');
 
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);
