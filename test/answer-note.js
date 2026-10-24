@@ -146,5 +146,15 @@ check(M.isSaid(M.pointKeys(lines[0]), saidW) && !M.isSaid(M.pointKeys(lines[1]),
 const rk = M.rank(N.seedRows().map((g, i) => ({ id: 'g' + i, name: g.name, items: g.items.map((it, j) => ({ id: i + '-' + j, question: it.question })) })), 'What would you say is your biggest weakness?', 3);
 check(rk.length === 3 && rk[0].score >= rk[1].score && rk[1].score >= rk[2].score, 'rank: best first, n results');
 
+// Ticks by meaning-ish signals (owner: "I don't go word for word... I dazzle"): word forms, spoken numbers, his numbers/names
+const TL = ['I rank work by business impact and the deadline leadership actually needs.', 'At Acme Logistics I cut the weekly Power BI refresh from 4 hours to 20 minutes for 40 executives.', 'Then I posted the plan in the team channel so nobody was guessing.'];
+check(JSON.stringify(M.powerWords(TL[1])) === JSON.stringify(['4 hours', '20 minutes', '40 executives', 'Acme Logistics', 'Power BI']), 'impressive words: his numbers with units, names and tools', JSON.stringify(M.powerWords(TL[1])));
+check(M.powerWords(TL[0]).length === 0, 'impressive words: none invented for a line without numbers or names');
+check(M.lineSaid(TL[1], 'so at my last company we took that refresh down from four hours to like twenty minutes'), 'paraphrase with spoken numbers ticks the line');
+check(M.lineSaid(TL[0], 'I rank everything by business impact and the real deadline'), 'same point, other words around it, ticks');
+check(M.lineSaid(TL[2], 'and I made sure the whole team saw the plan so no one was left guessing'), 'word forms count (guessing = guess)');
+check(!M.lineSaid(TL[1], 'we use Power BI a lot') && !M.lineSaid(TL[0], 'so at my last company we took that refresh down from four hours to like twenty minutes'), 'only mentioning a tool, or talking about another line, does not tick');
+check(M.powerSaid('20 minutes', 'like twenty minutes') && !M.powerSaid('40 executives', 'forty people'), 'an impressive word turns green only when he says it');
+
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);

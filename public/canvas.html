@@ -2853,9 +2853,9 @@ function coachShow(qid, answerText){
 function coachHeard(text){
   if(!coach || !text) return;
   coach.said += ' ' + text;
-  var said = NoteMatch.saidWords(coach.said);
+  var said = NoteMatch.stems(coach.said); // one rule with the Answer Note: word forms, spoken numbers, his names and tools
   var all=true;
-  coach.points.forEach(function(p){ if(!p.covered && NoteMatch.isSaid(p.key, said)) p.covered=true; if(!p.covered) all=false; });
+  coach.points.forEach(function(p){ if(!p.covered && NoteMatch.lineSaid(p.text, said)) p.covered=true; if(!p.covered) all=false; });
   coachRender();
   if(all){ if(coach.hideTimer) clearTimeout(coach.hideTimer); coach.hideTimer = setTimeout(coachHide, 1500); } // covered everything → fade soon
 }

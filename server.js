@@ -3266,6 +3266,25 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
       : { groupId: null, title: String(j.title || '').trim().slice(0, 60), question: String(j.question || '').trim().slice(0, 300) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Which answer lines he has covered IN MEANING (owner: "I don't go word for word... I dazzle"). The note calls this when
+// he pauses, only for lines its instant check has not ticked yet; one tiny fast-model call, nothing waits on it.
+const noteSaidLast = new Map();
+app.post('/api/note/said', authMiddleware, async (req, res) => {
+  try {
+    const lines = (Array.isArray(req.body?.lines) ? req.body.lines : []).map(l => String(l || '').replace(/\s+/g, ' ').trim().slice(0, 300)).filter(Boolean).slice(0, 12);
+    const said = String(req.body?.said || '').replace(/\s+/g, ' ').trim().slice(-3000);
+    if (!lines.length || said.length < 15) return res.json({ covered: [] });
+    const now = Date.now(); if (now - (noteSaidLast.get(req.userId) || 0) < 1500) return res.status(429).json({ error: 'too fast' });
+    noteSaidLast.set(req.userId, now);
+    const t0 = Date.now();
+    const raw = await callClaude('A candidate is answering an interview question out loud. Below are the points from their prepared answer, numbered, and what they actually said. A point counts as covered when they got its meaning across in any words (a paraphrase, the same example told differently, the same number or result). It does not count if they only touched the topic. Reply with ONE line of JSON only: {"covered": [numbers]}',
+      `POINTS:\n${lines.map((l, i) => `${i + 1}. ${l}`).join('\n')}\n\nTHEY SAID:\n${said}\n\nJSON:`, 60, MODEL_HAIKU, { __tag: 'note-said' });
+    let j = {}; try { j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch (e) {}
+    const covered = (Array.isArray(j.covered) ? j.covered : []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= lines.length).map(n => lines[n - 1]);
+    console.log(`[Note] said ${Date.now() - t0}ms → ${covered.length}/${lines.length} covered`);
+    res.json({ covered });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // How many of his calls asked each note question (from the call notes' "same as"). No AI.
 app.get('/api/note/asked', authMiddleware, async (req, res) => {
   try {
