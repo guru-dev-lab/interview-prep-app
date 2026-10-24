@@ -178,6 +178,8 @@ check(N.detailFor('Great teamwork') === 'story' && N.detailFor('Dashboard end to
 check(N.detailFor("Why I'm leaving") === '' && N.detailFor('Salary') === '' && N.detailFor('Inner vs left join') === '' && N.detailFor('Fabric architecture') === '', 'detailed: short questions and his own new ones stay short');
 check(N.SEED.groups.filter(g => g.detail).length === 14 && N.SEED.groups.filter(g => g.detail).every(g => N.DETAIL_ARCS[g.detail]), 'detailed: 14 seed questions, every one with a real path');
 check(N.paragraphsToHtml('I build reports.\nSeven years.\n\n• I ask what decision comes first.\n\n\n<b>x</b>') === '<p>I build reports. Seven years.</p><p>I ask what decision comes first.</p><p>&lt;b&gt;x&lt;/b&gt;</p>', 'detailed: blank lines make paragraphs, stray bullets go, HTML is escaped');
+check(N.parseForm('story') === 'story' && N.parseForm(' Explain.') === 'explain' && N.parseForm('banana') === 'short' && N.parseForm('') === 'short', 'form: the fast model\'s one word is read; anything else is written short');
+check(N.FORMS.every(f => f === 'short' || f === 'explain' || N.DETAIL_ARCS[f]) && N.FORMS.every(f => N.FORM_LABEL[f]) && N.FORMS.every(f => N.FORM_GUIDE.includes(f + ':')), 'form: every form has a writer, a label and a line in the guide');
 
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);
