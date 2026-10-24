@@ -72,6 +72,10 @@ check(big.versions.length === N.MAX_VERSIONS && big.versions[0].html === 'v5', '
 const dirty = '<p onclick="x()">hi</p><script>alert(1)</script><a href="javascript:evil()">l</a><span style="color:red">ok</span><img src=x onerror=alert(1)>';
 const clean = N.sanitizeHtml(dirty);
 check(!/script|onclick|onerror|javascript:|<img/i.test(clean) && /<span style="color:red">ok<\/span>/.test(clean) && /<a>l<\/a>/.test(clean), 'sanitize: scripts, handlers, bad links and images stripped; formatting kept', clean);
+// study notes: tables and pasted pictures are kept; a picture with an unsafe source is dropped whole
+const rich = N.sanitizeHtml('<table><tr><th>Step</th><td colspan="2">Load</td></tr></table><img src="data:image/png;base64,iVBORw0KGgo=" alt="flow" onerror="x()"><img src="data:text/html;base64,PHNjcmlwdD4="><pre class="diagram">flowchart LR\nA[Sources] --> B[Lakehouse]</pre>');
+check(/<table><tr><th>Step<\/th><td colspan="2">Load<\/td><\/tr><\/table>/.test(rich) && /<img src="data:image\/png;base64,iVBORw0KGgo=" alt="flow">/.test(rich) && (rich.match(/<img/g) || []).length === 1 && /<pre class="diagram">/.test(rich) && !/onerror|text\/html/.test(rich), 'sanitize: tables, a pasted picture and a diagram kept; a bad picture dropped', rich);
+check(N.MODES.rich && N.changeLabel('rich') === 'Study note', 'Study note is an AI mode');
 check(N.htmlToText('<ul><li>One</li><li>Two &amp; three</li></ul><p>Four</p>') === 'One\nTwo & three\nFour', 'htmlToText: lines and entities', N.htmlToText('<ul><li>One</li><li>Two &amp; three</li></ul><p>Four</p>'));
 
 // Writer reply → answer + key points, live layout → editor HTML

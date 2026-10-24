@@ -89,6 +89,15 @@ body.dark .sec .cnt.done{color:#10301e}
 /* live marks on the answer (display only, never saved): the line to read now, and lines he has already said */
 #editor [data-hot]{background:var(--accent-bg);color:#2a1f00;border-radius:6px;box-shadow:0 0 0 4px var(--accent-bg);transition:background .2s}
 #editor [data-said]{opacity:.42}
+#editor table{border-collapse:collapse;width:100%;margin:10px 0;font-size:.92em}
+#editor th,#editor td{border:1px solid var(--line2);padding:7px 10px;text-align:left;vertical-align:top}
+#editor th{background:var(--key);font-weight:700}
+#editor img{max-width:100%;height:auto;border-radius:8px;margin:6px 0;display:block}
+#editor pre.diagram{display:none}
+#editor:focus pre.diagram,#editor pre.diagram.norender{display:block;background:var(--card);color:var(--text);border:1px dashed var(--line2)}
+#editor .dview{margin:12px 0;padding:12px;border:1px solid var(--line2);border-radius:10px;background:var(--card);overflow-x:auto;text-align:center}
+#editor .dview svg{max-width:100%;height:auto}
+.newhint{padding:8px 12px 12px 30px;font-size:12.5px;color:var(--muted);line-height:1.45}
 #editor mark[data-pw]{background:none;color:inherit;font-weight:700;border-bottom:2px solid var(--accent-bg);padding:0 1px}
 #editor mark[data-pw][data-pwsaid]{border-bottom-color:var(--ok)}
 .pwrow{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 12px}
@@ -328,6 +337,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
           <button class="chip" data-mode="shorter" title="Half the lines, same facts">Shorter</button>
           <button class="chip" data-mode="number" title="Work in a real number or example from your résumé">Add a number</button>
           <button class="chip" data-mode="natural" title="More like you talk">Sound like me</button>
+          <button class="chip" data-mode="rich" title="A clean study note: how to say it, a table where it fits, a flow diagram for a process or architecture">Study note</button>
           <button class="chip undo hidden" id="btn-undo" title="Put back what was there before the AI changed it">Undo AI change</button>
           <div class="free"><input id="ai-free" placeholder="Or tell the AI what to change, e.g. lead with the Power BI example"><button class="chip primary" id="ai-go">Go</button></div>
         </div>
@@ -562,18 +572,6 @@ function renderList() {
   var host = $('list'); host.innerHTML = '';
   var gs = visibleGroups();
   if (!gs.length) { host.innerHTML = '<div class="empty">' + (filter ? 'Nothing matches "' + esc(filter) + '".' : 'No questions yet. Add one below.') + '</div>'; return; }
-  if (!filter && heardToday.length) {
-    var hh = document.createElement('div'); hh.className = 'sec'; hh.title = 'Questions heard on your calls today that are not in your note';
-    hh.innerHTML = '<span class="bar" style="background:var(--ok)"></span><span style="min-width:0">Heard today, not in your note</span><span class="cnt">' + heardToday.length + '</span>';
-    host.appendChild(hh);
-    heardToday.forEach(function (q, i) {
-      var el = document.createElement('div'); el.className = 'row newq';
-      el.innerHTML = '<span class="dot" style="background:var(--ok)"></span><div class="rt"><div class="title">' + esc(q.title || 'New question') + '</div><div class="full">' + esc(q.question) + '</div></div><button class="chip" data-i="' + i + '" style="height:26px">+ Add</button><button class="more" style="opacity:1" title="Not needed" data-x="' + i + '">&times;</button>';
-      el.querySelector('[data-i]').onclick = function (e) { e.stopPropagation(); addHeardToday(i, e.currentTarget); };
-      el.querySelector('[data-x]').onclick = function (e) { e.stopPropagation(); heardToday.splice(i, 1); saveHeardToday(); renderList(); };
-      host.appendChild(el);
-    });
-  }
   screenOrder(gs).forEach(function (sec) {
     var closed = sec.name !== openSec && sec.name !== heardSec && !filter;
     var ready = sec.groups.filter(function (g) { return rowStatus(g).cls === 'done'; }).length;
@@ -601,6 +599,13 @@ function renderList() {
       host.appendChild(el);
     });
   });
+  newQuestionsPlaceholder(host);
+}
+function newQuestionsPlaceholder(host) { // the plain section is always there, even before a call has filled it
+  if (filter || N.groups.some(function (g) { return g.section === NEWQ; })) return;
+  var h = document.createElement('div'); h.className = 'sec'; h.innerHTML = '<span class="bar" style="background:var(--ok)"></span><span style="min-width:0">' + NEWQ + '</span><span class="cnt">0</span>';
+  host.appendChild(h);
+  host.insertAdjacentHTML('beforeend', '<div class="newhint">Questions from your calls that are not in your note land here on their own, with what xHire answered. Open one and the note writes it up its own way: tables, and a flow for any process or architecture.</div>');
 }
 function renderWays() {
   var host = $('ways'); host.innerHTML = '';
@@ -662,7 +667,9 @@ function select(gid, iid, opts) {
   if (changed) $('page').scrollTop = 0;
   var ge = document.querySelector('.row[data-gid="' + gid + '"]'); if (ge) ge.scrollIntoView({ block: 'nearest' });
   var it = curItem();
-  if (it && !it.answer_html && !busy[it.id] && !it._autoTried && N.settings.autoGenerate !== false && !(genAll && genAll.running)) { it._autoTried = true; aiChange(it, 'regenerate', ''); } // written the first time it is opened
+  var isNewQ = g && g.section === NEWQ;
+  if (it && isNewQ && (!it.answer_html || it.edited_by === 'call') && !busy[it.id] && !it._autoTried && N.settings.autoGenerate !== false && !(genAll && genAll.running)) { it._autoTried = true; aiChange(it, 'rich', ''); } // a new question: its own study note, built on what xHire said live
+  else if (it && !it.answer_html && !busy[it.id] && !it._autoTried && N.settings.autoGenerate !== false && !(genAll && genAll.running)) { it._autoTried = true; aiChange(it, 'regenerate', ''); } // written the first time it is opened
   if (opts && opts.flash) {
     if (ge) ge.classList.add('flash');
     var te = document.querySelector('.way[data-iid="' + iid + '"]'); if (te) te.classList.add('flash');
@@ -679,7 +686,9 @@ function moveSel(dg, di) {
 
 // ===== editor (always editable, like a note) =====
 var ed = $('editor');
-function clearMarks(root) { // the live marks are display only: the line to read, lines said, and the impressive words
+function clearMarks(root) { // the live marks are display only: the line to read, lines said, the impressive words, drawn diagrams
+  root.querySelectorAll('.dview').forEach(function (d) { d.remove(); });
+  root.querySelectorAll('pre.diagram.norender').forEach(function (p) { p.classList.remove('norender'); });
   root.querySelectorAll('[data-hot],[data-said]').forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); });
   root.querySelectorAll('mark[data-pw]').forEach(function (m) { m.replaceWith(document.createTextNode(m.textContent)); });
   root.normalize();
@@ -693,9 +702,25 @@ function flushEditor() { var it = curItem(); if (!it || busy[it.id]) return; var
 ed.addEventListener('input', function () { var it = curItem(); if (!it || busy[it.id]) return; it.answer_html = editorHtml(); writeDraft(it); queueSave('item:' + it.id, saveContent(it)); renderWays(); });
 $('key').addEventListener('input', function () { var it = curItem(); if (!it) return; it.key_points = $('key').textContent.trim(); writeDraft(it); queueSave('item:' + it.id, saveContent(it)); });
 $('key').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ed.focus(); } });
-ed.addEventListener('paste', function (e) { // paste as plain text so outside formatting does not come along
-  e.preventDefault(); var t = (e.clipboardData || window.clipboardData).getData('text/plain'); document.execCommand('insertText', false, t);
+ed.addEventListener('paste', function (e) { // a picture goes in as an image; text as plain text so outside formatting does not come along
+  e.preventDefault(); var cd = e.clipboardData || window.clipboardData;
+  var img = [].find.call(cd.files || [], function (f) { return /^image\//.test(f.type); });
+  if (img) { insertImage(img); return; }
+  document.execCommand('insertText', false, cd.getData('text/plain'));
 });
+ed.addEventListener('drop', function (e) { var f = [].find.call((e.dataTransfer && e.dataTransfer.files) || [], function (x) { return /^image\//.test(x.type); }); if (!f) return; e.preventDefault(); ed.focus(); insertImage(f); });
+function insertImage(file) { // shrunk to 1200 px wide so the note stays light
+  var rd = new FileReader();
+  rd.onload = function () {
+    var im = new Image(); im.onload = function () {
+      var w = Math.min(1200, im.width), h = Math.round(im.height * w / im.width), c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(im, 0, 0, w, h);
+      document.execCommand('insertHTML', false, '<img src="' + c.toDataURL('image/jpeg', 0.85) + '" alt="picture">');
+      ed.dispatchEvent(new Event('input'));
+    }; im.src = rd.result;
+  };
+  rd.readAsDataURL(file);
+}
 try { document.execCommand('styleWithCSS', false, true); } catch (e) {}
 $('fmt').addEventListener('mousedown', function (e) { if (e.target.closest('button')) e.preventDefault(); }); // keep the selection
 $('fmt').querySelectorAll('button[data-cmd]').forEach(function (b) { b.onclick = function () { ed.focus(); document.execCommand(b.dataset.cmd, false, null); ed.dispatchEvent(new Event('input')); }; });
@@ -881,7 +906,7 @@ $('gen-all').onclick = async function () {
   if (!todo.length) { toast('Every answer is already written'); return; }
   genAll = { running: true, total: todo.length, done: 0, failed: 0, stop: false }; $('gen-all').textContent = 'Stop';
   var next = 0;
-  async function worker() { while (next < todo.length && !genAll.stop) { var it = todo[next++]; it._autoTried = true; var ok = await aiChange(it, 'regenerate', ''); if (ok) genAll.done++; else genAll.failed++; $('progress').textContent = genAll.done + ' of ' + genAll.total + ' written' + (genAll.failed ? ', ' + genAll.failed + ' failed' : ''); if (genAll.failed >= 3 && !genAll.done) genAll.stop = true; } }
+  async function worker() { while (next < todo.length && !genAll.stop) { var it = todo[next++]; it._autoTried = true; var gg = findGroup(it.group_id); var ok = await aiChange(it, gg && gg.section === NEWQ ? 'rich' : 'regenerate', ''); /* new questions get their study note */ if (ok) genAll.done++; else genAll.failed++; $('progress').textContent = genAll.done + ' of ' + genAll.total + ' written' + (genAll.failed ? ', ' + genAll.failed + ' failed' : ''); if (genAll.failed >= 3 && !genAll.done) genAll.stop = true; } }
   await Promise.all([worker(), worker()]);
   var msg = genAll.stop ? 'Stopped at ' + genAll.done + ' of ' + genAll.total : 'Done: ' + genAll.done + ' answers written' + (genAll.failed ? ', ' + genAll.failed + ' failed' : '');
   genAll.running = false; $('gen-all').textContent = 'Write all answers'; $('progress').textContent = ''; toast(msg, 3500);
@@ -1141,12 +1166,10 @@ async function addFromCall(list, btn) {
 // question it really is), the line to read lit up, the lines he has already said ticked off from his mic, questions
 // not in the note collected for after the call, and how often each was asked. Never switches; nothing waits on it.
 var heardGid = null, heardSec = null, heardText = '', hot = null, saidText = '', heardCtl = null, ASKED = {};
-var heardToday = (function () { try { var d = JSON.parse(lsGet('xhire_note_heard_today') || 'null'); return d && d.day === new Date().toDateString() ? d.list : []; } catch (e) { return []; } })();
-function saveHeardToday() { lsSet('xhire_note_heard_today', JSON.stringify({ day: new Date().toDateString(), list: heardToday })); }
 function showHeard(text, gid, itemId, label) {
   var t = $('heard-text');
   if (gid) t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> &rarr; <b>' + esc(label) + '</b>' + (gid !== cur.gid ? ' <button class="chip primary" id="heard-open" style="height:26px;margin-left:6px">Open</button>' : ' <span style="color:var(--muted)">(on screen)</span>');
-  else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. ' + (label ? 'Not in your note yet: kept under "Heard today" on the left.' : 'Nothing close in the note.');
+  else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. ' + (label ? 'Not in your note yet: kept under "New questions" on the left.' : 'Nothing close in the note.');
   var ob = $('heard-open'); if (ob) ob.onclick = function () { select(gid, itemId, { flash: true }); $('heard').classList.remove('open'); };
   $('heard').classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { $('heard').classList.remove('open'); }, 20000);
 }
@@ -1174,12 +1197,54 @@ function smartHeard(text) { // ~1 s later: which question it really is + the lin
         markLines();
       } else if (j.question) {
         setHeard(null);
-        if (!heardToday.some(function (q) { return NoteMatch.dice(q.question, j.question) > 0.8; })) { heardToday.unshift({ title: j.title, question: j.question, ts: Date.now() }); heardToday = heardToday.slice(0, 30); saveHeardToday(); renderList(); }
+        addNewQuestion(j.title, j.question);
         showHeard(text, null, null, j.title || 'new');
       }
     }).catch(function () {});
 }
 var aiSaid = {}, saidTimer = null, saidSent = 0;
+// ===== New questions (owner 24 Oct): a plain section that fills itself from calls; each keeps what xHire answered live
+var NEWQ = 'New questions', pendingLive = [];
+function addNewQuestion(title, question) {
+  if (!question) return;
+  var hit = NoteMatch.closest(N.groups, question, NoteMatch.SAME_QUESTION); if (hit) return; // already in the note
+  api('POST', '/api/note/from-call', { questions: [{ title: title, question: question, ways: [] }], section: NEWQ }).then(function (r) {
+    if (!r.ok) return;
+    r.json.added.forEach(function (g) { N.groups.push(g); attachLive(g); });
+    if (r.json.added.length) { setHeard(r.json.added[0].id); toast('New question kept: ' + r.json.added[0].name, 2500); } // its section opens and it is marked heard; what he is reading stays
+  }).catch(function () {});
+}
+function onLive(question, answer) { // what xHire answered live on the call
+  if (SOLO || !N || !question || !answer) return;
+  pendingLive.unshift({ q: question, a: answer, ts: Date.now() }); pendingLive = pendingLive.slice(0, 20);
+  N.groups.filter(function (g) { return g.section === NEWQ; }).forEach(attachLive);
+}
+function attachLive(g) {
+  var it = g.items[0]; if (!it || it.answer_html) return;
+  var p = pendingLive.find(function (x) { return NoteMatch.dice(x.q, it.question) > 0.5 || NoteMatch.score(x.q, it.question) > 0.55; });
+  if (!p) return;
+  api('POST', '/api/note/items/' + it.id + '/live', { answer: p.a }).then(function (r) { if (r.ok) { Object.assign(it, r.json); if (cur.iid === it.id) renderAnswer(true); renderList(); } }).catch(function () {});
+}
+var mermaidState = null; // null, 'loading', 'ready', 'failed'
+function drawDiagrams() {
+  var pres = ed.querySelectorAll('pre.diagram'); if (!pres.length || document.activeElement === ed) return;
+  if (mermaidState !== 'ready') {
+    if (mermaidState === 'failed') { pres.forEach(function (p) { p.classList.add('norender'); }); return; }
+    if (mermaidState !== 'loading') {
+      mermaidState = 'loading';
+      var sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js';
+      sc.onload = function () { try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: document.body.classList.contains('dark') || document.body.classList.contains('glass') ? 'dark' : 'neutral', flowchart: { useMaxWidth: true, htmlLabels: false } }); mermaidState = 'ready'; } catch (e) { mermaidState = 'failed'; } markLines(); };
+      sc.onerror = function () { mermaidState = 'failed'; markLines(); };
+      document.head.appendChild(sc);
+    }
+    return;
+  }
+  pres.forEach(function (p, i) {
+    var view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false'; view.textContent = 'Drawing...';
+    p.parentNode.insertBefore(view, p.nextSibling);
+    window.mermaid.render('dg' + Date.now() + i, p.textContent).then(function (r) { view.innerHTML = r.svg; }).catch(function () { view.remove(); p.classList.add('norender'); });
+  });
+}
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
   if (SOLO || !follow || !N || !text) return;
   saidText += ' ' + text; markLines();
@@ -1214,7 +1279,8 @@ function wrapPower(el, words, said) { // bold the impressive words inside a line
 }
 function markLines() { // display only: the line to read (data-hot), lines already said (data-said), the impressive words
   clearMarks(ed);
-  var els = ed.querySelectorAll('li, p, h2, h3, pre'), said = saidText ? NoteMatch.stems(saidText) : null, all = [];
+  drawDiagrams();
+  var els = [].filter.call(ed.querySelectorAll('li, p, h2, h3, pre'), function (el) { return !el.classList.contains('diagram'); }), said = saidText ? NoteMatch.stems(saidText) : null, all = [];
   els.forEach(function (el) { NoteMatch.powerWords(el.textContent).forEach(function (w) { if (all.indexOf(w) < 0) all.push(w); }); });
   $('pwrow').innerHTML = all.slice(0, 8).map(function (w) { return '<span class="' + (said && NoteMatch.powerSaid(w, said) ? 'said' : '') + '">' + esc(w) + '</span>'; }).join('');
   if (!els.length || document.activeElement === ed) return; // never while he is typing in it
@@ -1230,16 +1296,8 @@ function markLines() { // display only: the line to read (data-hot), lines alrea
 }
 ed.addEventListener('focus', function () { clearMarks(ed); });
 ed.addEventListener('blur', function () { markLines(); });
-async function addHeardToday(i, btn) {
-  var q = heardToday[i]; if (!q) return; if (btn) btn.disabled = true;
-  var r = await api('POST', '/api/note/from-call', { questions: [{ title: q.title, question: q.question, ways: [] }], sessionId: $('job').value || SESSION_PARAM || '' }).catch(function () { return { ok: false, json: {} }; }); // the server names the section after the job
-  if (!r.ok) { if (btn) btn.disabled = false; toast(r.json.error || 'Could not add', 2500); return; }
-  r.json.added.forEach(function (g) { N.groups.push(g); });
-  heardToday.splice(i, 1); saveHeardToday(); renderList();
-  toast(r.json.added.length ? 'Added to your note under "' + r.json.added[0].section + '"' : 'Already in your note as ' + (r.json.skipped[0] || {}).inNote, 3000);
-}
 $('heard-x').onclick = function () { $('heard').classList.remove('open'); };
-try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); }; } catch (e) {}
+try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); else if (e.data.type === 'live') onLive(e.data.question, e.data.answer); }; } catch (e) {}
 window.addEventListener('storage', function (e) {
   if ((e.key === 'xhire_note_q' || e.key === 'xhire_note_said') && e.newValue) { try { var d = JSON.parse(e.newValue); if (Date.now() - (d.ts || 0) < 15000) (e.key === 'xhire_note_q' ? onHeard : onSaid)(d.text); } catch (_) {} }
 });
