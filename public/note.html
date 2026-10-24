@@ -1186,8 +1186,13 @@ function showHeard(text, gid, itemId, label) {
   $('heard').classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { $('heard').classList.remove('open'); }, 20000);
 }
 function setHeard(gid) { heardGid = gid; heardSec = gid && findGroup(gid) ? secOf(findGroup(gid)) : null; renderList(); } // its section opens on the left so the mark shows; the answer on screen stays
+// xHire tells the note twice on purpose (BroadcastChannel + a localStorage backup). Owner 24 Oct "New questions not
+// working": the second copy aborted the first check, then the server refused it as too fast, so the answer was lost.
+// Each message now counts once.
+var seenIn = {};
+function firstTime(kind, text) { var k = kind + '|' + text, now = Date.now(); if (seenIn[k] && now - seenIn[k] < 8000) return false; seenIn[k] = now; return true; }
 function onHeard(text) {
-  if (SOLO || !follow || !N || !text) return;
+  if (SOLO || !follow || !N || !text || !firstTime('q', text)) return;
   heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; // a new question: ticks start over
   var m = NoteMatch.closest(N.groups, text); // instant: by wording
   setHeard(m ? m.groupId : null);
@@ -1328,7 +1333,7 @@ function lightFlow(view, src) {
   for (var j = last + 1; j < nodes.length; j++) if (!nodes[j].classList.contains('lit')) { nodes[j].classList.add('next'); break; }
 }
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
-  if (SOLO || !follow || !N || !text) return;
+  if (SOLO || !follow || !N || !text || !firstTime('s', text)) return;
   saidText += ' ' + text; markLines();
   clearTimeout(saidTimer); saidTimer = setTimeout(checkSaidByMeaning, 2200); // when he pauses
 }
