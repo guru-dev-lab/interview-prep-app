@@ -103,6 +103,12 @@ body.dark .sec .cnt.done{color:#10301e}
 #editor .frow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px}
 #editor .fbox{border:1px solid var(--line2);border-radius:8px;padding:5px 10px;background:var(--bg,transparent);font-size:14px;font-weight:500}
 #editor .farrow,#editor .fdown{opacity:.6;font-size:15px}
+#editor .fbox,#editor g.node rect,#editor g.node polygon{transition:fill .25s,background .25s,stroke .25s}
+#editor .fbox.lit{background:#d6f5df;border-color:#22a559;color:#0f5a2c}
+#editor g.node.lit rect,#editor g.node.lit polygon,#editor g.node.lit circle{fill:#d6f5df!important;stroke:#22a559!important;stroke-width:2px!important}
+#editor g.node.lit text,#editor g.node.lit tspan{fill:#0f5a2c!important}
+#editor .fbox.next{border:2px solid #e0a800;box-shadow:0 0 0 3px rgba(224,168,0,.18)}
+#editor g.node.next rect,#editor g.node.next polygon,#editor g.node.next circle{stroke:#e0a800!important;stroke-width:3px!important}
 .newhint{padding:8px 12px 12px 30px;font-size:12.5px;color:var(--muted);line-height:1.45}
 #editor mark[data-pw]{background:none;color:inherit;font-weight:700;border-bottom:2px solid var(--accent-bg);padding:0 1px}
 #editor mark[data-pw][data-pwsaid]{border-bottom-color:var(--ok)}
@@ -1292,20 +1298,34 @@ function flowView(src) {
   });
   return wrap;
 }
+var svgCache = {}; // diagram text -> drawn picture, so the live marks (every few words he says) never redraw or flicker
 function drawDiagrams() {
   var pres = ed.querySelectorAll('pre.diagram'); if (!pres.length || document.activeElement === ed) return;
   if (mermaidState === null) loadMermaid();
   pres.forEach(function (p, i) {
-    var view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false';
-    var quick = flowView(p.textContent);
-    if (quick) view.appendChild(quick); else { view.remove(); p.classList.add('norender'); return; }
+    var src = p.textContent, view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false';
+    if (svgCache[src]) view.innerHTML = svgCache[src];
+    else { var quick = flowView(src); if (quick) view.appendChild(quick); else { p.classList.add('norender'); return; } }
     p.parentNode.insertBefore(view, p.nextSibling);
-    if (mermaidState !== 'ready') return; // the steps show now; the full picture comes in when markLines runs after it loads
+    lightFlow(view, src);
+    if (svgCache[src] || mermaidState !== 'ready') return; // the steps show now; the full picture comes in when markLines runs after it loads
     var id = 'dg' + Date.now() + i;
-    window.mermaid.render(id, p.textContent).then(function (r) { if (view.isConnected) view.innerHTML = r.svg; }).catch(function () {
+    window.mermaid.render(id, src).then(function (r) { svgCache[src] = r.svg; if (view.isConnected) { view.innerHTML = r.svg; lightFlow(view, src); } }).catch(function () {
       var junk = document.getElementById('d' + id); if (junk) junk.remove(); // mermaid leaves its error box in the page; the steps stay
     });
   });
+}
+// Walking the flow live (owner 24 Oct: "light up"): boxes he has talked through light up, the next one is outlined,
+// so he always sees where he is in the explanation. Same rule as the answer's ticks (NoteMatch.lineSaid).
+function lightFlow(view, src) {
+  var f = flowSteps(src), order = [];
+  f.groups.forEach(function (g) { g.ids.forEach(function (id) { order.push(f.labels[id].toLowerCase()); }); });
+  var at = function (n) { var t = n.textContent.trim().toLowerCase(), k = order.indexOf(t); return k < 0 ? 999 : k; };
+  var nodes = [].slice.call(view.querySelectorAll('g.node, .fbox')).sort(function (a, b) { return at(a) - at(b); });
+  var said = saidText ? NoteMatch.stems(saidText) : null, last = -1;
+  nodes.forEach(function (n, i) { n.classList.remove('lit', 'next'); if (said && NoteMatch.lineSaid(n.textContent.trim(), said)) { n.classList.add('lit'); last = i; } });
+  if (last < 0) return;
+  for (var j = last + 1; j < nodes.length; j++) if (!nodes[j].classList.contains('lit')) { nodes[j].classList.add('next'); break; }
 }
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
   if (SOLO || !follow || !N || !text) return;
