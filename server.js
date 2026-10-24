@@ -3367,6 +3367,29 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
 });
 // Which answer lines he has covered IN MEANING (owner: "I don't go word for word... I dazzle"). The note calls this when
 // he pauses, only for lines its instant check has not ticked yet; one tiny fast-model call, nothing waits on it.
+// Live coach: what they are really after + one line to say (lib COACH_PROMPT). One small fast call per question heard,
+// only for a job he picked in the note (owner: never generate for a job he has not opened). Nothing when plain.
+const noteCoachLast = new Map();
+app.post('/api/note/coach', authMiddleware, async (req, res) => {
+  try {
+    const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    const sid = String(req.body?.sessionId || '');
+    if (text.length < 8 || !isValidUUID(sid)) return res.json({ coach: null });
+    const now = Date.now(); if (now - (noteCoachLast.get(req.userId) || 0) < 700) return res.status(429).json({ error: 'too fast' });
+    noteCoachLast.set(req.userId, now);
+    const s = (await pool.query('SELECT * FROM sessions WHERE id = $1 AND user_id = $2', [sid, req.userId])).rows[0];
+    if (!s) return res.json({ coach: null });
+    const bank = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 6", [s.id])).rows;
+    const material = `THE JOB: ${s.role || 'this role'} at ${s.company || 'the company'}.\nJOB DESCRIPTION:\n${String(s.jd || 'N/A').slice(0, 3000)}\n\nRESUME:\n${String(s.resume || 'N/A').slice(0, 5000)}\n\nQ&A BANK:\n${bank.map(q => `Q: ${q.text}\nA: ${String(q.answer).slice(0, 400)}`).join('\n\n') || 'N/A'}`;
+    const recent = (Array.isArray(req.body?.recent) ? req.body.recent : []).map(q => String(q || '').slice(0, 200)).filter(Boolean).slice(-3);
+    const t0 = Date.now(), coachFast = process.env.NOTE_COACH_MODEL === 'haiku';
+    const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: answerNote.COACH_PROMPT }],
+      `${recent.length ? 'ASKED EARLIER IN THIS CALL:\n' + recent.join('\n') + '\n\n' : ''}INTERVIEWER JUST ASKED: ${text}`, 160, coachFast ? MODEL_HAIKU : MODEL_SONNET, Object.assign({ __tag: 'note-coach' }, coachFast ? { temperature: 0 } : { thinking: { type: 'disabled' } })); // Sonnet 5: no temperature; thinking ate the whole budget (stop=max_tokens, no text)
+    const coach = answerNote.parseCoach(raw);
+    console.log(`[Note] coach ${Date.now() - t0}ms → ${coach ? 'want "' + coach.want + '"' : 'nothing shown (' + String(raw || '').replace(/\s+/g, ' ').slice(0, 120) + ')'} q="${text.slice(0, 50)}"`);
+    res.json({ coach });
+  } catch (e) { console.error('[Note] coach failed:', e.message); res.status(500).json({ error: e.message }); }
+});
 const noteSaidLast = new Map();
 app.post('/api/note/said', authMiddleware, async (req, res) => {
   try {
