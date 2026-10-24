@@ -102,7 +102,7 @@ body.edit:not(.read) .fmt{display:flex}
 .fmt .sep{width:1px;height:20px;background:var(--line);margin:0 3px}
 .fmt .cw{height:30px;width:34px;border:1px solid var(--line);border-radius:7px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font:700 12px Inter,sans-serif;position:relative}
 .fmt .cw u{text-decoration-thickness:3px}
-.editor{min-height:200px;padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);font-family:var(--note-font);font-size:var(--note-size);line-height:1.6;outline:none;color:var(--text)}
+.editor{min-height:200px;padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--note-card,var(--bg2));font-family:var(--note-font);font-size:var(--note-size);line-height:1.6;outline:none;color:var(--note-fg,var(--text))}
 body.edit:not(.read) .editor{border-radius:0 0 10px 10px;border-top:none}
 body.edit .editor:focus{border-color:var(--accent)}
 .editor ul,.editor ol{padding-left:1.3em;margin:4px 0}
@@ -620,13 +620,13 @@ $('btn-edit').onclick = function () { setEdit(!editMode); };
 function setRead(on) { readMode = on; document.body.classList.toggle('read', on); $('btn-read').classList.toggle('on', on); saveSettings({ readMode: on }); }
 $('btn-read').onclick = function () { setRead(!readMode); };
 $('btn-theme').onclick = function () { var light = !document.body.classList.contains('light'); document.body.classList.toggle('light', light); $('btn-theme').textContent = light ? 'Dark' : 'Light'; lsSet('xhire_theme', light ? 'light' : 'dark'); saveSettings({ theme: light ? 'light' : 'dark' }); };
-// the note background is his choice; the heading and KEY text flip light/dark to stay readable on it
+// the note background is his choice: the answer box takes it too (a light or dark wash over it), and the text flips light/dark to stay readable
 function setNoteBg(hex) {
   var root = document.documentElement.style;
-  if (!hex) { root.removeProperty('--note-bg'); root.removeProperty('--note-fg'); return; }
+  if (!hex) { root.removeProperty('--note-bg'); root.removeProperty('--note-fg'); root.removeProperty('--note-card'); return; }
   root.setProperty('--note-bg', hex); $('note-bg').value = hex;
   var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-  if (m) { var lum = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255; root.setProperty('--note-fg', lum > 0.55 ? '#111827' : '#f1f5f9'); }
+  if (m) { var lum = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255; root.setProperty('--note-fg', lum > 0.55 ? '#111827' : '#f1f5f9'); root.setProperty('--note-card', lum > 0.55 ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.25)'); }
 }
 $('note-bg').oninput = function () { setNoteBg(this.value); };
 $('note-bg').onchange = function () { saveSettings({ bg: this.value }); };
