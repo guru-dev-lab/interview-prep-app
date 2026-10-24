@@ -942,14 +942,22 @@ isElectronMode = params.get('electron') === '1' || !!(window.electronAPI && wind
 // Load current answer style for this session
 if (SESSION_ID && TOKEN) loadAnswerStyle();
 
-// Answer Note (23 Oct): its own window from the server page /note; opened for this session's job.
-// Desktop: window.open from the overlay makes a normal always-on-top window (no app build); browser: a new tab.
+// Answer Note (owner 24 Oct: "should use same hidden app like the xHire desktop"): during a call it is a PANEL inside
+// this overlay, so it is hidden from screen sharing exactly like the answers (a window.open window is not protected).
+// The call keeps running underneath; the note's Close (or Esc) brings the answers back.
 if (window.electronAPI) { var _bn = document.getElementById('btn-note'); if (_bn) _bn.style.display = ''; }
 function openAnswerNote() {
-  var url = location.origin + '/note?token=' + encodeURIComponent(TOKEN) + (SESSION_ID ? '&session=' + encodeURIComponent(SESSION_ID) : '');
-  if (isElectronMode) window.open(url, 'xhire-note', 'width=1040,height=720,alwaysOnTop=yes,title=Answer Note');
-  else window.open(url, 'xhire-note');
+  var url = location.origin + '/note?embed=1&token=' + encodeURIComponent(TOKEN) + (SESSION_ID ? '&session=' + encodeURIComponent(SESSION_ID) : '');
+  if (!window.electronAPI) { window.open(url.replace('embed=1&', ''), 'xhire-note'); return; }
+  var p = document.getElementById('note-panel');
+  if (p) { closeAnswerNote(); return; } // the toolbar button toggles it
+  var tb = document.querySelector('.toolbar'); var top = tb ? Math.round(tb.getBoundingClientRect().bottom) + 4 : 44;
+  p = document.createElement('div'); p.id = 'note-panel'; p.className = 'note-panel';
+  p.style.cssText = 'position:fixed;left:4px;right:4px;bottom:4px;top:' + top + 'px;z-index:9500;border-radius:10px;overflow:hidden;background:#f3f2ee;box-shadow:0 8px 30px rgba(0,0,0,.35);-webkit-app-region:no-drag';
+  p.innerHTML = '<iframe title="Answer Note" src="' + url.replace(/"/g, '&quot;') + '" style="width:100%;height:100%;border:0;display:block"></iframe>';
+  document.body.appendChild(p);
 }
+function closeAnswerNote() { var p = document.getElementById('note-panel'); if (p) p.remove(); }
 // Every detected interviewer question goes to the note window too (same origin: BroadcastChannel, localStorage as the
 // fallback). Fire-and-forget; the live pipeline never waits on it.
 function tellAnswerNote(text) {
@@ -2551,7 +2559,7 @@ var overlayDiag = { lagMax: 0, pingMax: 0, pingAvg: 0, pingN: 0, grabMax: 0, gra
 (function clickThroughTransparentParts() {
   var api = window.electronAPI;
   if (!api || !api.setClickThrough) return;
-  var SOLID = '.toolbar, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .copilot-float.show, .copilot-capture-list, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle'; // .copilot-float.show added 3 Oct: the pill was click-through (owner: "nothing on it is clickable")
+  var SOLID = '.toolbar, .note-panel, .panel:not(.board-hidden), .board-toggle-pill, .config-float.show, .copilot-float.show, .copilot-capture-list, .settings-overlay, .copilot-gear-overlay, .perm-panel, #xhire-toast, [id^="cr-"], .resize-handle'; // .copilot-float.show added 3 Oct: the pill was click-through (owner: "nothing on it is clickable")
   var through = null, pending = false, lastEvt = null;
   // "Sometimes not moveable" (owner, 4 Oct): the flip to solid used to wait for the next animation frame + one IPC round
   // trip after the pointer reached the toolbar. A grab inside that gap went to the app behind and the drag never
