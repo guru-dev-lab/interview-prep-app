@@ -188,5 +188,6 @@ check(/word for word/.test(N.READ_ALOUD), 'read aloud: the writers get the rule'
 // Live coach (owner 24 Oct): one line on what they want, one line to say; nothing for a plain question.
 check(JSON.stringify(N.parseCoach("WANT: Can you push back\nSAY: I would say I've presented a cost-per-case model to finance leaders that replaced their Excel workbooks, so I'm comfortable raising issues.")) === JSON.stringify({ want: 'Can you push back', say: "I've presented a cost-per-case model to finance leaders that replaced their Excel workbooks." }), 'coach: read-aloud line, one breath');
 check(N.parseCoach('NONE') === null && N.parseCoach('WANT: NONE\nSAY: NONE') === null && N.parseCoach('WANT: sound check, not a real question\nSAY: Yes, I can hear you.') === null && N.parseCoach('{') === null, 'coach: nothing for a plain question or a broken reply');
+check(N.parseCoach('WANT: Fit\nSAY: Yes, that is exactly the kind of work I enjoy, I replaced six Excel workbooks with a cost-per-case model in Power BI.').say === 'Yes, that is exactly the kind of work I enjoy.', 'coach: a long line ends at a natural comma');
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);

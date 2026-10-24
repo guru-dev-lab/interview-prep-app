@@ -967,6 +967,11 @@ function tellAnswerNoteSaid(text) { // what HE said (his mic): the note ticks of
   try { new BroadcastChannel('xhire-note').postMessage({ type: 'said', text: text }); } catch (e) {}
   try { localStorage.setItem('xhire_note_said', JSON.stringify({ text: text, ts: Date.now() })); } catch (e) {}
 }
+function tellAnswerNoteThem(text) { // what THEY said (system audio, final, not echo): the note's coach hears the lead-up to a question
+  if (!text) return;
+  try { new BroadcastChannel('xhire-note').postMessage({ type: 'them', text: text }); } catch (e) {}
+  try { localStorage.setItem('xhire_note_them', JSON.stringify({ text: text, ts: Date.now() })); } catch (e) {}
+}
 function tellAnswerNote(text) {
   if (!text) return;
   try { new BroadcastChannel('xhire-note').postMessage({ type: 'question', text: text }); } catch (e) {}
@@ -1339,6 +1344,7 @@ function connect() {
     // First genuine INTERVIEWER speech (system audio, not your mic/echo) = they've joined → capture names
     if (msg.type === 'interviewer_final' || (msg.type === 'transcript' && !msg.isEcho)) { try { onNameCapActivity(); } catch (e) {} }
     // Live coach reads YOUR mic (read-only, no API) to tick off points as you say them
+    if (msg.type === 'transcript' && msg.isFinal && !msg.isEcho && msg.text) { try { tellAnswerNoteThem(msg.text); } catch (e) {} }
     if (msg.type === 'user_transcript' && msg.text) { try { coachHeard(msg.text); } catch (e) {} try { tellAnswerNoteSaid(msg.text); } catch (e) {} }
 
     if (msg.type === 'match') {

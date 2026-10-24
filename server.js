@@ -3382,11 +3382,15 @@ app.post('/api/note/coach', authMiddleware, async (req, res) => {
     const bank = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 6", [s.id])).rows;
     const material = `THE JOB: ${s.role || 'this role'} at ${s.company || 'the company'}.\nJOB DESCRIPTION:\n${String(s.jd || 'N/A').slice(0, 3000)}\n\nRESUME:\n${String(s.resume || 'N/A').slice(0, 5000)}\n\nQ&A BANK:\n${bank.map(q => `Q: ${q.text}\nA: ${String(q.answer).slice(0, 400)}`).join('\n\n') || 'N/A'}`;
     const recent = (Array.isArray(req.body?.recent) ? req.body.recent : []).map(q => String(q || '').slice(0, 200)).filter(Boolean).slice(-3);
+    // What they said leading up to the question (their company pitch: "say something nice about it first") and, mid-answer,
+    // what he has said so far (the coach then gives the one thing to ADD).
+    const theySaid = String(req.body?.theySaid || '').replace(/\s+/g, ' ').trim().slice(-1500), youSaid = String(req.body?.youSaid || '').replace(/\s+/g, ' ').trim().slice(-1500);
+    const shown = (Array.isArray(req.body?.shown) ? req.body.shown : []).map(t => String(t || '').slice(0, 200)).filter(Boolean).slice(-4);
     const t0 = Date.now(), coachFast = process.env.NOTE_COACH_MODEL === 'haiku';
     const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: answerNote.COACH_PROMPT }],
-      `${recent.length ? 'ASKED EARLIER IN THIS CALL:\n' + recent.join('\n') + '\n\n' : ''}INTERVIEWER JUST ASKED: ${text}`, 160, coachFast ? MODEL_HAIKU : MODEL_SONNET, Object.assign({ __tag: 'note-coach' }, coachFast ? { temperature: 0 } : { thinking: { type: 'disabled' } })); // Sonnet 5: no temperature; thinking ate the whole budget (stop=max_tokens, no text)
+      `${recent.length ? 'ASKED EARLIER IN THIS CALL:\n' + recent.join('\n') + '\n\n' : ''}${theySaid ? 'THE INTERVIEWER SAID, LEADING UP TO NOW:\n' + theySaid + '\n\n' : ''}INTERVIEWER JUST ASKED: ${text}\n\n${youSaid ? 'THE CANDIDATE HAS SAID SO FAR:\n' + youSaid : 'The candidate has not started answering.'}${shown.length ? '\n\nALREADY SUGGESTED FOR THIS QUESTION (never repeat these or their facts; give a new point or NONE):\n' + shown.join('\n') : ''}`, 160, coachFast ? MODEL_HAIKU : MODEL_SONNET, Object.assign({ __tag: 'note-coach' }, coachFast ? { temperature: 0 } : { thinking: { type: 'disabled' } })); // Sonnet 5: no temperature; thinking ate the whole budget (stop=max_tokens, no text)
     const coach = answerNote.parseCoach(raw);
-    console.log(`[Note] coach ${Date.now() - t0}ms → ${coach ? 'want "' + coach.want + '"' : 'nothing shown (' + String(raw || '').replace(/\s+/g, ' ').slice(0, 120) + ')'} q="${text.slice(0, 50)}"`);
+    console.log(`[Note] coach${youSaid ? ' add' : ''} ${Date.now() - t0}ms → ${coach ? 'want "' + coach.want + '"' : 'nothing shown (' + String(raw || '').replace(/\s+/g, ' ').slice(0, 120) + ')'} q="${text.slice(0, 50)}"`);
     res.json({ coach });
   } catch (e) { console.error('[Note] coach failed:', e.message); res.status(500).json({ error: e.message }); }
 });
