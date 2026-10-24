@@ -71,6 +71,27 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const other = await fetch(BASE + '/api/note/calls/' + call.id, { headers: { Authorization: 'Bearer ' + jwt.sign({ userId: '00000000-0000-0000-0000-000000000000' }, process.env.JWT_SECRET) } });
   check(other.status === 404 || other.status === 401 || other.status === 403, "someone else cannot read this call", other.status);
 
-  console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note calls e2e, ${pass} checks, 1 model call)`);
+  // how often each question was asked (no AI)
+  const asked = (await api('GET', '/api/note/asked')).j;
+  const prio = tree.groups.find(g => g.name === 'Prioritizing');
+  check(asked.counts && asked.counts[prio.id] === 1, 'Prioritizing shows asked once (from the call notes)', JSON.stringify(asked));
+
+  // the smart check during a call (3 small model calls): reworded question, a follow-up's line, a new question
+  await api('PUT', '/api/note/items/' + prio.items[0].id, { answer_html: '<ul><li>I rank work by business impact and the real deadline.</li><li>I agree the order with the managers in one short call.</li><li>The result: all three reports shipped on time and the VP made it our standard intake.</li></ul>', baseVersion: prio.items[0].version });
+  const weak = tree.groups.find(g => g.name === 'Weakness');
+  let t2 = Date.now(); const h1 = await api('POST', '/api/note/heard', { text: "so what would you say is something you're still not great at?" }); const ms1 = Date.now() - t2;
+  check(h1.j.groupId === weak.id, 'reworded: "something you are still not great at" is Weakness (' + ms1 + ' ms)', JSON.stringify(h1.j));
+  await new Promise(r => setTimeout(r, 800));
+  t2 = Date.now(); const h2 = await api('POST', '/api/note/heard', { text: 'Okay and what was the outcome of doing it that way?', currentGroupId: prio.id }); const ms2 = Date.now() - t2;
+  check(h2.j.groupId === prio.id && /result|shipped|standard/i.test(h2.j.line || ''), 'follow-up: stays on Prioritizing and lights the result line (' + ms2 + ' ms)', JSON.stringify(h2.j));
+  await new Promise(r => setTimeout(r, 800));
+  t2 = Date.now(); const h3 = await api('POST', '/api/note/heard', { text: 'How would you set up an on-call rotation for the data platform team?' }); const ms3 = Date.now() - t2;
+  check(!h3.j.groupId && h3.j.question && h3.j.title, 'new question: not in the note, comes back with a title and clean wording (' + ms3 + ' ms)', JSON.stringify(h3.j));
+  console.log('   smart check times: ' + [ms1, ms2, ms3].join(' / ') + ' ms');
+  await new Promise(r => setTimeout(r, 800));
+  const both = await Promise.all([api('POST', '/api/note/heard', { text: 'what are your salary expectations for this role?' }), api('POST', '/api/note/heard', { text: 'and when could you start if we made an offer?' })]);
+  check(both.map(x => x.r.status).sort().join() === '200,429', 'two checks at the same moment: one runs, the other is refused (no pile-up)', both.map(x => x.r.status).join());
+
+  console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note calls e2e, ${pass} checks, 5 model calls)`);
   await pool.end(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

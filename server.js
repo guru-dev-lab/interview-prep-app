@@ -14,6 +14,7 @@ const stringSimilarity = require('string-similarity');
 const meetingCopilot = require('./lib/meeting-copilot');
 const assessment = require('./lib/assessment'); // desktop Assessment: carry-over notes, title lock, who sees it // meeting co-pilot logic (call log, prompts, budget)
 const answerNote = require('./lib/answer-note'); // Answer Note (23 Oct): seed, version history, search, AI change modes
+const NoteMatchShared = require('./public/note-match'); // same ranking the note page shows
 // Import only the submodules we need — avoid loading SentimentAnalyzer which has ESM-only deps
 const TfIdf = require('natural/lib/natural/tfidf/tfidf');
 const PorterStemmer = require('natural/lib/natural/stemmers/porter_stemmer');
@@ -3212,7 +3213,8 @@ app.get('/api/note/calls/:tid', authMiddleware, async (req, res) => {
 app.post('/api/note/from-call', authMiddleware, async (req, res) => {
   try {
     const note = await loadNote(req.userId);
-    const section = String(req.body?.section || 'From my calls').trim().slice(0, 80);
+    let section = String(req.body?.section || '').trim().slice(0, 80);
+    if (!section) { const ses = await noteSessionFor(req.userId, String(req.body?.sessionId || '')); section = ses && ses.company ? ('From calls: ' + ses.company).slice(0, 80) : 'From my calls'; } // no job picked: his latest job, like the answers
     const tree = await noteTree(note);
     const out = answerNote.questionsToAdd(tree.groups, req.body?.questions);
     const added = [];
@@ -3225,6 +3227,56 @@ app.post('/api/note/from-call', authMiddleware, async (req, res) => {
     }
     console.log(`[Note] From a call: added ${added.length}, already in the note ${out.skipped.length}, section "${section}"`);
     res.json({ added, skipped: out.skipped });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---- Smart call (owner, 24 Oct): "use voice from interview to highlight where it is possible to get the answer",
+// "no auto switching", "very fast so anything to delay is not needed". The note calls this AFTER it already showed
+// its instant wording guess; it never touches the live answer path. One small fast-model call: which note question
+// this IS (wording alone cannot tell, measured), which line of that answer to highlight, and for a question not in
+// the note, a short title + clean wording so it can be added after the call.
+const noteHeardLast = new Map(); // userId → time of the last check (one at a time per user, newest wins on the page)
+app.post('/api/note/heard', authMiddleware, async (req, res) => {
+  try {
+    const text = String(req.body?.text || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    if (text.length < 8) return res.json({ groupId: null });
+    const now = Date.now(); if (now - (noteHeardLast.get(req.userId) || 0) < 700) return res.status(429).json({ error: 'too fast' });
+    noteHeardLast.set(req.userId, now);
+    const note = await loadNote(req.userId);
+    const groups = (await noteTree(note)).groups.filter(g => g.items.length);
+    if (!groups.length) return res.json({ groupId: null });
+    const ranked = NoteMatchShared.rank(groups, text, 3).map(r => groups.find(g => g.id === r.groupId));
+    const cur = groups.find(g => g.id === req.body?.currentGroupId);
+    const withAnswers = [...new Set([cur, ...ranked].filter(Boolean))].map(g => ({ g, it: g.items.find(i => i.answer_html) })).filter(x => x.it).slice(0, 4);
+    const list = groups.map((g, i) => `${i + 1}. ${g.items[0].question}`).join('\n');
+    const answers = withAnswers.map(x => `ANSWER TO ${groups.indexOf(x.g) + 1}:\n` + answerNote.htmlToText(x.it.answer_html).split('\n').map((l, j) => `  L${j + 1}. ${l}`).join('\n')).join('\n\n');
+    const system = [
+      Object.assign({ type: 'text', text: `The candidate's prepared questions, numbered:\n${list}` }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }),
+      { type: 'text', text: 'An interviewer just said the text below, live on a call. Reply with ONE line of JSON only:\n{"q": <the number of the prepared question it asks, same intent in any wording, a follow-up on one counts as that one; 0 if none>, "line": <for that question, the number L of the answer line that best answers exactly what was asked, 0 if no answer shown>, "title": "<2 to 4 word label, only when q is 0>", "question": "<the question as one clean sentence, only when q is 0>"}\nIf the text is small talk or not a question, use q 0 and leave title and question empty.' },
+    ];
+    const t0 = Date.now();
+    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}INTERVIEWER: ${text}\n\nJSON:`, 120, MODEL_HAIKU, { __tag: 'note-heard' });
+    let j = {}; try { j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch (e) {}
+    const g = groups[(parseInt(j.q, 10) || 0) - 1] || null;
+    const src = g && withAnswers.find(x => x.g.id === g.id);
+    const lines = src ? answerNote.htmlToText(src.it.answer_html).split('\n') : [];
+    const line = lines[(parseInt(j.line, 10) || 0) - 1] || '';
+    console.log(`[Note] heard ${Date.now() - t0}ms → ${g ? '"' + g.name + '"' + (line ? ' line ' + j.line : '') : 'not in the note'} q="${text.slice(0, 50)}"`);
+    res.json(g ? { groupId: g.id, itemId: (src ? src.it.id : g.items[0].id), name: g.name, line }
+      : { groupId: null, title: String(j.title || '').trim().slice(0, 60), question: String(j.question || '').trim().slice(0, 300) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// How many of his calls asked each note question (from the call notes' "same as"). No AI.
+app.get('/api/note/asked', authMiddleware, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT report FROM live_transcripts WHERE user_id = $1 AND report IS NOT NULL', [req.userId]);
+    const counts = {};
+    for (const row of r.rows) {
+      let rep = row.report; if (typeof rep === 'string') { try { rep = JSON.parse(rep); } catch (e) { continue; } }
+      const ids = new Set((Array.isArray(rep && rep.noteQuestions) ? rep.noteQuestions : []).map(q => q && q.sameAs && q.sameAs.id).filter(Boolean));
+      ids.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+    }
+    res.json({ counts });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
