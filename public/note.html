@@ -1224,8 +1224,9 @@ function onThem(text) {
   if (SOLO || !text || !firstTime('t', text)) return;
   themText = (themText + ' ' + text).slice(-2500); lastThemAt = Date.now();
   if (heardText && heardText.indexOf(text.trim()) < 0) themAfter += ' ' + text;
-  // they are talking again: a line on screen for the moment before is stale (it never sits there)
-  if (coachNow && !coachNow.add && Date.now() - coachNow.at > 1500 && text.trim().split(/\s+/).length >= 4) hideCoach();
+  // Owner: lines on screen only GROW, never swap ("you dont want to start speaking on something and it changes").
+  // Once he is answering, more talk from them clears only a line he has not started saying.
+  if (coachNow && saidText.length >= 20 && !coachSaid.trim() && Date.now() - coachNow.at > 1500 && text.trim().split(/\s+/).length >= 4) hideCoach();
   // Owner 24 Oct: "What cant it fire same time the xHire fires?" / "1.2 can be long". It does fire at once. When the
   // interviewer keeps going before he answers (xHire flagged the first half), the strip is redone from the WHOLE
   // question 0.7 s after they stop, like xHire grows its card.
@@ -1233,13 +1234,14 @@ function onThem(text) {
     clearTimeout(coachWait); var key = heardText;
     coachWait = setTimeout(function () {
       if (key !== heardText || saidText.length >= 20) return;
-      coachQ = (key + ' ' + themAfter.trim()).slice(-600); coachShown = [];
-      coachFor(coachQ, false, true, key);
+      coachQ = (key + ' ' + themAfter.trim()).slice(-600);
+      if (coachNow) coachFor(coachQ, false, true, key, true); // a line is up: add under it for the rest of the question
+      else { coachShown = []; coachFor(coachQ, false, true, key); }
     }, COACH_QUIET);
   }
 }
 var COACH_QUIET = 700, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '';
-function coachFor(text, add, retry, key) {
+function coachFor(text, add, retry, key, grow) {
   key = key || text;
   if (!add && !retry) { hideCoach(); coachAdds = 0; coachShown = []; heardAt = Date.now(); }
   var sid = $('job') && $('job').value; if (!sid) return;
@@ -1249,16 +1251,24 @@ function coachFor(text, add, retry, key) {
   coachLast = Date.now(); var asked = saidText;
   fetch(location.origin + '/api/note/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, sessionId: sid, recent: recent, theySaid: themText, youSaid: add ? saidText : '', shown: coachShown }), signal: ctl ? ctl.signal : undefined })
     .then(function (r) { // two questions within 0.7 s: the server refuses the second as too fast, so it asks once more
-      if (r.status === 429 && !retry) { setTimeout(function () { if (key === heardText) coachFor(text, add, true, key); }, 800); return null; }
+      if (r.status === 429 && !retry) { setTimeout(function () { if (key === heardText) coachFor(text, add, true, key, grow); }, 800); return null; }
       return r.ok ? r.json() : null;
     })
-    .then(function (j) { if (j && j.coach && key === heardText && (!add || !coachNow)) showCoach(j.coach, add); })
+    .then(function (j) { if (j && j.coach && key === heardText) { if (grow && coachNow) growCoach(j.coach); else if (!add || !coachNow) showCoach(j.coach, add); } })
     .catch(function () {});
 }
 function showCoach(c, add) {
   coachNow = c; c.add = !!add; c.at = Date.now(); coachSaid = ''; coachShown.push(c.say); $('coach-lbl').textContent = add ? 'Add:' : 'They want:'; $('coach-want').textContent = c.want;
   $('coach-say').innerHTML = (c.lines && c.lines.length ? c.lines : [c.say]).map(function (l) { return '<div>' + esc(l) + '</div>'; }).join(''); // one line per sentence
   $('coach').classList.remove('done'); $('coach').classList.add('show');
+  clearTimeout(coachT); coachT = setTimeout(hideCoach, 45000);
+}
+function growCoach(c) { // the lines on screen stay; new ones go under them (at most 3 in all)
+  var host = $('coach-say'), have = [].map.call(host.children, function (d) { return d.textContent; });
+  (c.lines && c.lines.length ? c.lines : [c.say]).forEach(function (l) {
+    if (host.children.length < 3 && have.indexOf(l) < 0) { var d = document.createElement('div'); d.textContent = l; host.appendChild(d); }
+  });
+  coachShown.push(c.say); $('coach').classList.remove('done');
   clearTimeout(coachT); coachT = setTimeout(hideCoach, 45000);
 }
 function hideCoach() { coachNow = null; clearTimeout(coachT); $('coach').classList.remove('show'); }
