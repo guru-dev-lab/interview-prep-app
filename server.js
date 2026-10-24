@@ -3270,7 +3270,7 @@ async function pickAnswerForm(groupName, question) {
   if (answerFormSeen.has(k)) return answerFormSeen.get(k);
   const t0 = Date.now();
   let form = 'short';
-  try { form = answerNote.parseForm(await callClaude(answerNote.FORM_GUIDE, 'QUESTION: ' + q, 8, MODEL_HAIKU, { __tag: 'note-form' })); }
+  try { form = answerNote.parseForm(await callClaude(answerNote.FORM_GUIDE, 'QUESTION: ' + q, 8, MODEL_HAIKU, { __tag: 'note-form', temperature: 0 })); }
   catch (e) { console.error('[Note] form pick failed, writing it short:', e.message); return 'short'; }
   if (answerFormSeen.size > 2000) answerFormSeen.clear();
   answerFormSeen.set(k, form);
@@ -3352,7 +3352,9 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
     ];
     const t0 = Date.now();
     const onScreen = cur ? `QUESTION ON SCREEN: ${groups.indexOf(cur) + 1}\n` : '';
-    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}INTERVIEWER: ${text}\n\nJSON:`, 120, MODEL_HAIKU, { __tag: 'note-heard' });
+    // Owner 24 Oct live: the same question went to "Prioritizing" once and to New questions the next time. A matcher must
+    // give the same answer every time, so no sampling randomness here (and in the form picker).
+    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}INTERVIEWER: ${text}\n\nJSON:`, 120, MODEL_HAIKU, { __tag: 'note-heard', temperature: 0 });
     let j = {}; try { j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch (e) {}
     const g = groups[(parseInt(j.q, 10) || 0) - 1] || null;
     const src = g && withAnswers.find(x => x.g.id === g.id);
