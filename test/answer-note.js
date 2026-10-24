@@ -185,5 +185,8 @@ check(N.FORMS.every(f => f === 'short' || f === 'explain' || N.DETAIL_ARCS[f]) &
 check(N.dropStageTalk("<li>I'll say this happened at R&L.</li><li>I would say that my strength is clean data.</li><li>Mention that usage tripled.</li>") === "<li>This happened at R&L.</li><li>My strength is clean data.</li><li>Usage tripled.</li>", 'read aloud: stage words go, the words stay');
 check(["I said no to the request.", "I can say yes to that.", "I'll walk you through the pipeline.", "What I'd say to a new analyst is simple."].every(t => N.dropStageTalk(t) === t), 'read aloud: real speech is left alone');
 check(/word for word/.test(N.READ_ALOUD), 'read aloud: the writers get the rule');
+// Live coach (owner 24 Oct): one line on what they want, one line to say; nothing for a plain question.
+check(JSON.stringify(N.parseCoach("WANT: Can you push back\nSAY: I would say I've presented a cost-per-case model to finance leaders that replaced their Excel workbooks, so I'm comfortable raising issues.")) === JSON.stringify({ want: 'Can you push back', say: "I've presented a cost-per-case model to finance leaders that replaced their Excel workbooks." }), 'coach: read-aloud line, one breath');
+check(N.parseCoach('NONE') === null && N.parseCoach('WANT: NONE\nSAY: NONE') === null && N.parseCoach('WANT: sound check, not a real question\nSAY: Yes, I can hear you.') === null && N.parseCoach('{') === null, 'coach: nothing for a plain question or a broken reply');
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);
