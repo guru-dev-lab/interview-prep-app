@@ -1393,6 +1393,7 @@ function connect() {
       }
     }
     else if (msg.type === 'live_answer') {
+      try { if (msg.questionText && msg.answer) new BroadcastChannel('xhire-note').postMessage({ type: 'live', question: msg.questionText, answer: msg.answer }); } catch (e) {} // the Answer Note keeps it on a new question
       // CRITICAL: Check if we already have a card with very similar question text
       // If so, UPDATE that card instead of creating a duplicate
       var existingCard = null;

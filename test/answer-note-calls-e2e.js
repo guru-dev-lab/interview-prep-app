@@ -100,6 +100,27 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const ms4 = Date.now() - t2;
   check(sd.r.status === 200 && sd.j.covered.length === 2 && !sd.j.covered.some(l => /result/i.test(l)), 'paraphrase: the two points he made are covered, the result he never said is not (' + ms4 + ' ms)', JSON.stringify(sd.j));
 
-  console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note calls e2e, ${pass} checks, 6 model calls)`);
+  // New questions (owner 24 Oct): caught from a call, xHire's live answer kept, then its own study note (2 model calls, better model)
+  const nq = await api('POST', '/api/note/from-call', { questions: [{ title: 'Fabric architecture', question: 'Can you walk me through the architecture of the Microsoft Fabric solution you built?' }], section: 'New questions' });
+  const nqItem = nq.j.added[0].items[0];
+  check(nq.j.added[0].section === 'New questions', 'a question from the call lands in the plain New questions section');
+  const live = await api('POST', '/api/note/items/' + nqItem.id + '/live', { answer: '• I built dataflows that land raw data in a lakehouse\n• Then a semantic model feeds the Power BI reports' });
+  check(live.j.edited_by === 'call' && /lakehouse/.test(live.j.answer_html), 'what xHire said live is kept on it', JSON.stringify(live.j).slice(0, 200));
+  const again2 = await api('POST', '/api/note/items/' + nqItem.id + '/live', { answer: 'something else' });
+  check(/lakehouse/.test(again2.j.answer_html) && !/something else/.test(again2.j.answer_html), 'a second live answer never overwrites it');
+  t2 = Date.now();
+  const study = await api('POST', '/api/note/items/' + nqItem.id + '/generate', { mode: 'rich', sessionId: sess.id });
+  const msS = Date.now() - t2; const sh = study.j.answer_html || '';
+  check(study.r.status === 200 && /<pre class="diagram">[\s\S]*flowchart/.test(sh), 'architecture question: the study note draws the flow (' + msS + ' ms)', sh.slice(0, 600));
+  check(/<h3>/.test(sh) && /<li>/.test(sh) && study.j.key_points && study.j.versions.some(v => v.by === 'call'), 'it has sections, bullets, a KEY, and the live answer is in History', JSON.stringify({ key: study.j.key_points, v: study.j.versions.map(v => v.by) }));
+  check(!/<script|onerror|\u2014/.test(sh), 'clean HTML, no em dashes');
+  const story = (await api('POST', '/api/note/from-call', { questions: [{ title: 'Revenue mismatch story', question: 'Tell me about a time finance and operations reported different revenue numbers and how you fixed it.' }], section: 'New questions' })).j.added[0].items[0];
+  t2 = Date.now();
+  const st2 = await api('POST', '/api/note/items/' + story.id + '/generate', { mode: 'rich', sessionId: sess.id });
+  const msT = Date.now() - t2;
+  check(st2.r.status === 200 && /<table>/.test(st2.j.answer_html || ''), 'a story question gets a table (' + msT + ' ms)', (st2.j.answer_html || '').slice(0, 500));
+  console.log('   study note times: ' + msS + ' / ' + msT + ' ms');
+
+  console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note calls e2e, ${pass} checks, 8 model calls)`);
   await pool.end(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

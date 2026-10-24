@@ -103,7 +103,7 @@
   // Editor HTML → plain lines (search, copy, the writer's CURRENT ANSWER block). Same rule in the page and on the server.
   function htmlToText(html) {
     return String(html || '')
-      .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6]|\/pre)\s*>/gi, '\n')
+      .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6]|\/pre|\/tr)\s*>/gi, '\n').replace(/<\s*\/t[dh]\s*>/gi, ' | ')
       .replace(/<[^>]+>/g, '')
       .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
       .split('\n').map(function (l) { return l.trim(); }).filter(Boolean).join('\n');

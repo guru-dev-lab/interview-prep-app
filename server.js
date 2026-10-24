@@ -3327,6 +3327,47 @@ app.get('/api/note/asked', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---- New questions (owner, 24 Oct): "we should have one that is plain.. when [the note] finds a question, especially
+// the one xHire got.. it should pick it up, and answer its own way.. be more clean, can put table, can draw, use image".
+// The note adds a question heard on a call to the plain "New questions" section (from-call route), keeps what xHire
+// answered live (below), and on first open writes a study note: clean HTML with a table where one fits and a diagram
+// (Mermaid, drawn by the page) where a flow fits. The better model: this is the note he studies before the next round.
+async function generateStudyNote(session, userId, item) {
+  const question = String(item.question || '').trim();
+  const bankRows = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 8", [session.id])).rows;
+  const material = `THE CANDIDATE AND THE JOB:\nTHIS NOTE IS FOR: ${session.role || 'this role'} at ${session.company || 'the company'}.\n\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (the candidate's real experience):\n${bankRows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n') || 'N/A'}`;
+  const rules = `You write a clean study note the candidate reads before the next interview, on how to answer one question well. Output an HTML fragment ONLY (no markdown, no code fences), using only these tags: h3, p, b, i, ul, li, table, thead, tbody, tr, th, td, and ONE <pre class="diagram">...</pre> holding a Mermaid flowchart.
+FLOW (owner: "if explain something more like process, steps, for example Fabric architecture"): whenever the answer explains a process, steps, a pipeline, a workflow or an architecture, ALWAYS draw it: "flowchart LR", short node labels (2 to 4 words), up to 10 nodes, one "subgraph" per layer when there are layers (for example Microsoft Fabric: Sources -> Data Factory pipelines -> OneLake Lakehouse -> Warehouse -> Semantic model -> Power BI reports). Plain node ids (A, B, C), labels in square brackets, no special characters inside labels. No diagram for a pure opinion or a yes/no answer.
+Layout:
+<p><b>One-line takeaway: the point to land.</b></p>
+<h3>How to say it</h3> 3 to 5 short bullets in the first person, the way they would say it out loud.
+A <table> where it makes things clearer: for any "tell me about a time" or story question ALWAYS a STAR table (Situation, Task, Action, Result); steps for a process; before/after numbers; or a comparison.
+<h3>If they push</h3> 1 or 2 follow-ups they may ask, each with a one-line answer.
+Rules: only facts from the resume, Q&A bank and what was said on the call; never invent a number, tool, employer or title. If the resume has no exact match, never say they have not done it: answer confidently from the closest real experience in the resume (the same skill, a similar situation) and tell it as their story. Plain words, no em dashes, no buzzwords.
+Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`;
+  const said = answerNote.htmlToText(item.answer_html);
+  const user = `QUESTION: ${question}\n${said ? `\nWHAT XHIRE SAID LIVE ON THE CALL (rough, build on it):\n${said}\n` : ''}\nWrite the study note now.`;
+  const t0 = Date.now();
+  const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1800, MODEL_SONNET, { __tag: 'note-study' });
+  const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/^\s*```(?:html)?\s*/i, '').replace(/```\s*$/m, ''));
+  const html = answerNote.sanitizeHtml(answer.replace(/```(?:html)?/gi, '').trim());
+  console.log(`[Note] study note ${Date.now() - t0}ms table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} q="${question.slice(0, 50)}"`);
+  if (!answerNote.htmlToText(html)) throw new Error('The writer gave no usable study note. Try again.');
+  return { answerHtml: html, keyPoints };
+}
+// What xHire answered live for a new question, kept on it (only while it is still empty; never over his words).
+app.post('/api/note/items/:iid/live', authMiddleware, async (req, res) => {
+  try {
+    const item = await ownNoteItem(req.userId, req.params.iid);
+    if (!item) return res.status(404).json({ error: 'Question not found' });
+    const text = String(req.body?.answer || '').trim().slice(0, 6000);
+    if (!text) return res.status(400).json({ error: 'No answer' });
+    if (answerNote.htmlToText(item.answer_html)) return res.json(noteItemOut(item)); // already has an answer: leave it
+    const change = answerNote.applyChange(item, { answer_html: answerNote.answerToHtml(text) }, { by: 'call', label: 'What xHire said on the call' });
+    res.json(noteItemOut(change.changed ? await writeNoteItem(item, change) : item));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Note page — served no-store like the launcher (Electron must always get the latest)
 app.get('/note', (req, res) => { res.set('Cache-Control', 'no-store, no-cache, must-revalidate'); res.sendFile(path.join(__dirname, 'public', 'note.html')); });
 
@@ -3446,7 +3487,7 @@ app.post('/api/note/items/:iid/generate', authMiddleware, async (req, res) => {
     const mode = answerNote.MODES[req.body?.mode] ? req.body.mode : 'regenerate';
     const custom = String(req.body?.instruction || '').trim();
     if (mode === 'custom' && !custom) return res.status(400).json({ error: 'Say how to change it.' });
-    const out = await generateNoteAnswer(session, req.userId, item, mode, custom);
+    const out = mode === 'rich' ? await generateStudyNote(session, req.userId, item) : await generateNoteAnswer(session, req.userId, item, mode, custom);
     const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label: answerNote.changeLabel(mode, custom) });
     const saved = change.changed ? await writeNoteItem(item, change) : item;
     res.json(Object.assign(noteItemOut(saved), { job: { id: session.id, company: session.company, role: session.role } }));
