@@ -310,7 +310,8 @@ function renderNoteCard() {
 }
 function openNote() { // owner 24 Oct: hidden from screen sharing like xHire itself, so it opens IN this protected window
   var url = SERVER + '/note?token=' + encodeURIComponent(authToken);
-  if (window.electronAPI) window.electronAPI.loadCanvas(url);
+  if (window.electronAPI && window.electronAPI.openNote) window.electronAPI.openNote(url + '&win=1'); // 1.1.7+: its own window, hidden from screen share
+  else if (window.electronAPI) window.electronAPI.loadCanvas(url); // older app: inside this protected window (never an unprotected one)
   else window.open(url, 'xhire-note');
 }
 

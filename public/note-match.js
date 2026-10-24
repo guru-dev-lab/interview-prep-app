@@ -61,5 +61,6 @@
   function sortGroups(groups) {
     return (groups || []).slice().sort(function (a, b) { return ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || ((a.sort_order || 0) - (b.sort_order || 0)) || String(a.created_at || '').localeCompare(String(b.created_at || '')); });
   }
-  return { dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
+  var SAME_QUESTION = 0.72; // a question from a call this close to one in the note IS that question (not added twice)
+  return { SAME_QUESTION: SAME_QUESTION, dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
 });

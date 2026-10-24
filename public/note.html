@@ -81,6 +81,31 @@ body.compact .row{padding:6px 8px 6px 10px}
 .side-foot{padding:8px;border-top:1px solid var(--line);display:flex;gap:6px}
 .side-foot .ibtn{flex:1}
 .empty{padding:36px 18px;text-align:center;color:var(--muted);font-size:14px;line-height:1.6}
+/* Questions | Calls */
+.vtabs{display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--line2);flex-shrink:0}
+.vtabs button{flex:1;height:30px;border-radius:8px;font-weight:650;font-size:13px;color:var(--muted)}
+.vtabs button:hover{background:var(--line)}
+.vtabs button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+body.calls .side-foot{display:none}
+/* a call's notes */
+.csec{border:1px solid var(--line2);border-radius:10px;margin-bottom:12px;background:var(--card)}
+.csec .ch{display:flex;align-items:center;gap:8px;padding:10px 14px;font-weight:700;font-size:14px;cursor:pointer;user-select:none}
+.csec .ch .cnt{font-size:10.5px;font-weight:700;color:var(--muted);background:var(--line);border-radius:8px;padding:1px 6px}
+.csec .ch .chev{margin-left:auto;color:var(--dim);transition:transform .15s}
+.csec.closed .ch .chev{transform:rotate(-90deg)}
+.csec.closed .cb{display:none}
+.csec .cb{padding:0 14px 12px;font-size:14.5px;line-height:1.55}
+.csec .cb ul{padding-left:1.15em}.csec .cb li{margin:5px 0}.csec .cb li::marker{color:var(--accent)}
+.qline{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
+.qline:first-child{border-top:none}
+.qline .qt{flex:1;min-width:0}
+.qline .qt b{display:block;font-size:12px;color:var(--muted);font-weight:650}
+.qline .innote{font-size:12px;color:var(--ok);font-weight:650;white-space:nowrap;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.convo .l{padding:5px 0;border-top:1px solid var(--line)}
+.convo .l:first-child{border-top:none}
+.convo .who{font-size:11.5px;font-weight:750;color:var(--accent);margin-right:6px}
+.convo .you .who{color:var(--ok)}
+.callmeta{font-size:13px;color:var(--muted);margin:-8px 0 14px}
 /* page */
 .pagewrap{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;background:var(--page)}
 .page{flex:1;overflow-y:auto;min-height:0}
@@ -215,6 +240,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
 <div class="heard" id="heard"><span id="heard-text"></span><button class="x" id="heard-x" title="Dismiss">&times;</button></div>
 <div class="main" id="main">
   <aside class="side" id="side">
+    <div class="vtabs only-full"><button id="tab-q" class="on" title="Your questions and answers">Questions</button><button id="tab-calls" title="Notes from your calls for this job">Calls</button></div>
     <div class="list" id="list"></div>
     <div class="side-foot"><button class="ibtn txt" id="add-group">+ New question</button><button class="ibtn txt" id="btn-compact" title="Show titles only, to see everything at a glance">Titles only</button></div>
   </aside>
@@ -222,6 +248,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   <section class="pagewrap">
     <div class="page" id="page"><div class="sheet">
       <div class="empty" id="empty">Pick a question on the left.</div>
+      <div id="call-wrap" class="hidden"></div>
       <div id="answer-wrap" class="hidden">
         <div class="crumb"><span id="crumb-sec"></span><span id="crumb-dot">&middot;</span><b id="crumb-title"></b><span class="grow"></span>
           <button class="ibtn" id="btn-copy" title="Copy the question and answer (Cmd+Shift+C)">Copy</button>
@@ -291,8 +318,10 @@ var SOLO = params.get('solo') || '';               // a popped-out window: one q
 // window of its own (a new window is NOT protected): from the home screen it fills the protected xHire window
 // (DESKTOP), during a call it is a panel inside the call overlay (EMBED). Pop out is a browser-only extra.
 var EMBED = params.get('embed') === '1';
-var DESKTOP = !EMBED && !!window.electronAPI;
-var CAN_POP = !EMBED && !DESKTOP;
+var WIN = params.get('win') === '1' && !!window.electronAPI; // its own protected window (desktop app 1.1.7+), apart from xHire
+var DESKTOP = !EMBED && !WIN && !!window.electronAPI;      // older desktop app: inside the xHire window
+var CAN_POP = !EMBED && !window.electronAPI;                // a new window is only fine in a browser
+var onTop = true; if (WIN && window.electronAPI.noteOnTop) window.electronAPI.noteOnTop().then(function (v) { if (v !== null && v !== undefined) onTop = !!v; }).catch(function () {});
 var $ = function (id) { return document.getElementById(id); };
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -446,7 +475,7 @@ async function loadJobs() {
   if (want && [].some.call(sel.options, function (o) { return o.value === want; })) sel.value = want;
   if (SESSION_PARAM && SESSION_PARAM !== N.settings.sessionId && sel.value === SESSION_PARAM) saveSettings({ sessionId: SESSION_PARAM });
 }
-$('job').onchange = function () { saveSettings({ sessionId: $('job').value || '' }); toast('New answers will be written for this job'); };
+$('job').onchange = function () { saveSettings({ sessionId: $('job').value || '' }); toast('New answers will be written for this job'); CALLS = null; curCall = null; if (view === 'calls') loadCalls(); };
 
 // ===== render =====
 function renderAll() { renderList(); renderAnswer(true); }
@@ -458,6 +487,7 @@ function rowStatus(g) {
   return { cls: '', text: done + '/' + g.items.length };
 }
 function renderList() {
+  if (view === 'calls') { renderCallList(); return; }
   var host = $('list'); host.innerHTML = '';
   var gs = visibleGroups();
   if (!gs.length) { host.innerHTML = '<div class="empty">' + (filter ? 'Nothing matches "' + esc(filter) + '".' : 'No questions yet. Add one below.') + '</div>'; return; }
@@ -514,6 +544,8 @@ function renderWays() {
   $('ways-hint').textContent = g.items.length > 1 ? '(' + g.items.length + ', press 1 to ' + g.items.length + ')' : '';
 }
 function renderAnswer(force) {
+  if (view === 'calls') { $('answer-wrap').classList.add('hidden'); $('empty').classList.add('hidden'); renderCallPage(); return; }
+  $('call-wrap').classList.add('hidden');
   var it = curItem(); var g = cur.gid && findGroup(cur.gid);
   $('empty').classList.toggle('hidden', !!it); $('answer-wrap').classList.toggle('hidden', !it);
   if (!it) { $('empty').textContent = g ? 'This question has no wording yet. Add one.' : 'Pick a question on the left.'; return; }
@@ -535,6 +567,7 @@ function renderAnswer(force) {
 
 // ===== selection =====
 function select(gid, iid, opts) {
+  if (view !== 'questions') setView('questions', true);
   flushEditor();
   var changed = cur.iid !== (iid || null);
   cur.gid = gid; cur.iid = iid || null;
@@ -822,6 +855,7 @@ $('btn-menu').onclick = function () {
     + '<div class="mi" style="cursor:default">Text size<span class="r"><button class="chip" data-a="smaller" style="height:26px">A&#8722;</button> <span id="pop-size">' + fontSize + '</span> <button class="chip" data-a="larger" style="height:26px">A+</button></span></div>'
     + '<label class="mi" style="cursor:pointer">Page colour<span class="r"><input type="color" id="pop-bg" value="' + esc((N.settings && N.settings.bg) || (dark ? '#1e1e20' : '#fffdf8')) + '" style="width:30px;height:22px;border:none;background:none;cursor:pointer"></span></label>'
     + '<button class="mi" data-a="bgreset">Reset the page colour</button>'
+    + (WIN && window.electronAPI.noteOnTop ? '<button class="mi" data-a="ontop">Keep on top of other windows<span class="r">' + (onTop ? 'On' : 'Off') + '</span></button>' : '')
     + (document.body.classList.contains('narrow') ? '<button class="mi" data-a="genall">' + (genAll && genAll.running ? 'Stop writing answers' : 'Write all answers') + '</button>' : '')
     + '<div class="hr"></div><button class="mi" data-a="help">Keyboard shortcuts<span class="r">?</span></button>', function (p) {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
@@ -832,6 +866,7 @@ $('btn-menu').onclick = function () {
       else if (a === 'bgreset') { setNoteBg(''); saveSettings({ bg: '' }); closePop(); toast('Page colour reset'); }
       else if (a === 'help') { closePop(); $('help').classList.add('open'); }
       else if (a === 'genall') { closePop(); $('gen-all').click(); }
+      else if (a === 'ontop') { onTop = !onTop; window.electronAPI.noteOnTop(onTop); b.querySelector('.r').textContent = onTop ? 'On' : 'Off'; toast(onTop ? 'The note stays on top' : 'The note behaves like a normal window'); }
     }; });
     var bg = p.querySelector('#pop-bg'); bg.oninput = function () { setNoteBg(this.value); }; bg.onchange = function () { saveSettings({ bg: this.value }); };
   });
@@ -864,6 +899,7 @@ document.addEventListener('keydown', function (e) {
   if (inText || meta) return;
   if (e.key === '/') { e.preventDefault(); if (expand) setExpand(false); setSide(true); $('search').focus(); $('search').select(); return; }
   if (e.key === '?') { $('help').classList.toggle('open'); return; }
+  if (view === 'calls') return;
   if (e.key === 'ArrowUp') { e.preventDefault(); if (!SOLO) moveSel(-1, 0); return; }
   if (e.key === 'ArrowDown') { e.preventDefault(); if (!SOLO) moveSel(1, 0); return; }
   if (e.key === 'ArrowLeft') { e.preventDefault(); moveSel(0, -1); return; }
@@ -871,6 +907,133 @@ document.addEventListener('keydown', function (e) {
   if (e.key.toLowerCase() === 'f' && !SOLO) { setExpand(!expand); return; }
   if (/^[1-9]$/.test(e.key)) { var g = cur.gid && findGroup(cur.gid); var n = parseInt(e.key, 10) - 1; if (g && g.items[n]) select(g.id, g.items[n].id); }
 });
+
+// ===== Calls (owner, 24 Oct): "take note of what was said on the call, so next time I can read it and build more
+// questions from it for the same session". The notes are the call report (one place on the server); calls without
+// notes get them made on their own, newest first. A question from a call is added to the note with one click (or
+// all at once), each as a short title + the full question + up to 3 rewordings; one already in the note is shown as
+// such and never added twice (the server decides with the same matcher).
+var view = 'questions', CALLS = null, curCall = null, callBusy = {}, callConvo = {}, callClosed = { convo: true }, callQs = {};
+function setView(v, quiet) {
+  view = v; document.body.classList.toggle('calls', v === 'calls');
+  $('tab-q').classList.toggle('on', v === 'questions'); $('tab-calls').classList.toggle('on', v === 'calls');
+  if (v === 'calls') { flushEditor(); if (!CALLS) loadCalls(); else { renderCallList(); renderCallPage(); } }
+  else if (!quiet) renderAll();
+}
+$('tab-q').onclick = function () { setView('questions'); };
+$('tab-calls').onclick = function () { setView('calls'); };
+function callSid() { return $('job').value || (N && N.settings.sessionId) || SESSION_PARAM || ''; }
+async function loadCalls() {
+  CALLS = null; renderCallList(); renderCallPage();
+  var r = await api('GET', '/api/note/calls?sessionId=' + encodeURIComponent(callSid())).catch(function () { return { ok: false, json: {} }; });
+  if (!r.ok) { CALLS = { session: null, calls: [], error: r.json.error || 'Could not load your calls' }; renderCallList(); renderCallPage(); return; }
+  CALLS = r.json;
+  if (!curCall || !CALLS.calls.some(function (c) { return c.id === curCall; })) curCall = CALLS.calls.length ? CALLS.calls[0].id : null;
+  renderCallList(); renderCallPage(); autoNotes();
+}
+function hasNotes(c) { return !!(c.report && Array.isArray(c.report.noteQuestions)); }
+function callMins(c) { return c.ended_at ? Math.max(1, Math.round((new Date(c.ended_at) - new Date(c.started_at)) / 60000)) : 0; }
+function callDate(c, long) { var d = new Date(c.started_at); return d.toLocaleDateString(undefined, long ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+var autoRunning = false;
+async function autoNotes() { // notes for calls that have none yet, newest first, a few per open, one at a time
+  if (autoRunning || !CALLS) return; autoRunning = true;
+  var todo = CALLS.calls.filter(function (c) { return !hasNotes(c) && c.lines >= 8 && !callBusy[c.id]; }).slice(0, 3);
+  for (var i = 0; i < todo.length; i++) await makeNotes(todo[i], true);
+  autoRunning = false;
+}
+async function makeNotes(c, quiet) {
+  if (callBusy[c.id] || !CALLS || !CALLS.session) return;
+  callBusy[c.id] = true; renderCallList(); if (curCall === c.id) renderCallPage();
+  var r = await api('POST', '/api/sessions/' + CALLS.session.id + '/transcripts/' + c.id + '/report').catch(function () { return { ok: false, json: {} }; });
+  delete callBusy[c.id];
+  if (r.ok && r.json.report) c.report = r.json.report; else if (!quiet || curCall === c.id) toast(r.json.error || 'Could not make notes for this call', 3000);
+  renderCallList(); if (curCall === c.id) renderCallPage();
+}
+function renderCallList() {
+  if (view !== 'calls') return;
+  var host = $('list'); host.innerHTML = '';
+  if (!CALLS) { host.innerHTML = '<div class="empty">Loading your calls...</div>'; return; }
+  if (!CALLS.session) { host.innerHTML = '<div class="empty">' + esc(CALLS.error || 'Pick the job at the top to see its calls.') + '</div>'; return; }
+  var h = document.createElement('div'); h.className = 'sec';
+  h.innerHTML = '<span class="bar"></span><span style="min-width:0">' + esc(CALLS.session.company || 'This job') + (CALLS.session.role ? ', ' + esc(CALLS.session.role) : '') + '</span><span class="cnt">' + CALLS.calls.length + '</span>';
+  host.appendChild(h);
+  if (!CALLS.calls.length) { host.insertAdjacentHTML('beforeend', '<div class="empty">No calls for this job yet. After a call, its notes show up here.</div>'); return; }
+  CALLS.calls.forEach(function (c) {
+    var st = callBusy[c.id] ? { cls: '', t: 'making notes' } : hasNotes(c) ? { cls: 'done', t: '\u2713 notes' } : c.lines < 8 ? { cls: '', t: 'too short' } : { cls: '', t: 'no notes' };
+    var el = document.createElement('div'); el.className = 'row' + (c.id === curCall ? ' active' : '');
+    el.innerHTML = '<span class="dot"></span><div class="rt"><div class="title">' + esc(callDate(c, true)) + '</div><div class="full">' + esc([callMins(c) ? callMins(c) + ' min' : '', c.interviewer, c.stage].filter(Boolean).join(' \u00b7 ') || (c.lines + ' lines')) + '</div></div><span class="st ' + st.cls + '">' + st.t + '</span>';
+    el.onclick = function () { curCall = c.id; document.body.classList.remove('listview'); renderCallList(); renderCallPage(); $('page').scrollTop = 0; };
+    host.appendChild(el);
+  });
+}
+function qBlock(key, list) {
+  callQs[key] = list;
+  if (!list.length) return '<div class="note" style="color:var(--muted)">None in this call.</div>';
+  var fresh = 0;
+  var rows = list.map(function (q, i) {
+    var g = (q.sameAs && q.sameAs.id && findGroup(q.sameAs.id)) || null; // the notes say which note question it is
+    if (!g) { var hit = NoteMatch.closest(N.groups, q.question, NoteMatch.SAME_QUESTION); g = hit && findGroup(hit.groupId); }
+    if (!g) fresh++;
+    return '<div class="qline"><div class="qt">' + (q.title ? '<b>' + esc(q.title) + '</b>' : '') + esc(q.question) + '</div>'
+      + (g ? '<span class="innote" data-goto="' + esc(g.id) + '" title="Open it in your note">In your note: ' + esc(g.name) + '</span>' : '<button class="chip" data-add="' + key + ':' + i + '">+ Add</button>') + '</div>';
+  }).join('');
+  return rows + (fresh > 1 ? '<div style="padding-top:8px"><button class="chip primary" data-addall="' + key + '">Add all ' + fresh + ' to my note</button></div>' : '');
+}
+function csec(key, title, count, body) {
+  return '<div class="csec' + (callClosed[key] ? ' closed' : '') + '" data-sec="' + key + '"><div class="ch">' + esc(title) + (count !== null ? ' <span class="cnt">' + count + '</span>' : '') + '<svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div><div class="cb">' + body + '</div></div>';
+}
+function ul(items) { items = (items || []).filter(Boolean); return items.length ? '<ul>' + items.map(function (x) { return '<li>' + esc(typeof x === 'string' ? x : (x.question || JSON.stringify(x))) + '</li>'; }).join('') + '</ul>' : '<div style="color:var(--muted)">Nothing noted.</div>'; }
+function renderCallPage() {
+  var wrap = $('call-wrap'); if (view !== 'calls') { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  if (!CALLS) { wrap.innerHTML = '<div class="empty">Loading your calls...</div>'; return; }
+  var c = CALLS.calls.find(function (x) { return x.id === curCall; });
+  if (!c) { wrap.innerHTML = '<div class="empty">' + (CALLS.session ? 'No calls for this job yet. When you take a call with xHire, what was asked and said is noted here, so you can read it before the next round and add the questions to your note.' : esc(CALLS.error || 'Pick the job at the top to see its calls.')) + '</div>'; return; }
+  var head = '<div class="crumb"><span>' + esc(CALLS.session.company || 'This job') + '</span><span>&middot;</span><b>' + esc(CALLS.session.role || 'Call') + '</b><span class="grow"></span>'
+    + (hasNotes(c) && !callBusy[c.id] ? '<button class="ibtn" id="call-redo" title="Read the call again and rewrite these notes">Make the notes again</button>' : '') + '</div>'
+    + '<div class="h1">Call on ' + esc(callDate(c, true)) + '</div><div class="callmeta">' + esc([callMins(c) ? callMins(c) + ' minutes' : '', c.interviewer, c.stage].filter(Boolean).join(' \u00b7 ')) + '</div>';
+  var body;
+  if (callBusy[c.id]) body = '<div class="empty">Reading the call and making your notes. This takes a few seconds...</div>';
+  else if (!c.report) body = '<div class="empty">' + (c.lines < 3 ? 'This call is too short to make notes from.' : 'No notes for this call yet.<br><br><button class="chip primary" id="call-make">Make notes from this call</button>') + '</div>';
+  else {
+    var rep = c.report;
+    var asked = Array.isArray(rep.noteQuestions) ? rep.noteQuestions : (rep.questionsAsked || []).map(function (q) { return { title: '', question: String(q), ways: [] }; });
+    var next = Array.isArray(rep.likelyNext) ? rep.likelyNext : [];
+    body = (rep.summary ? '<p style="font-size:15px;line-height:1.6;margin-bottom:14px">' + esc(rep.summary) + '</p>' : '')
+      + (!hasNotes(c) ? '<div class="conflict open" style="background:var(--key);border-color:var(--key-line)">These are older notes without the questions split out. <button class="chip primary" id="call-redo2">Update them</button></div>' : '')
+      + csec('asked', 'What they asked', asked.length, qBlock('asked', asked))
+      + csec('next', 'Likely next questions', next.length, qBlock('next', next))
+      + csec('them', 'What you learned about them', null, ul((rep.aboutThem || []).concat(rep.interviewerSignals || [])))
+      + csec('said', 'What you said', null, ul(rep.candidateSaid || rep.candidateStrengths || []))
+      + csec('prep', 'Prepare for next time', null, ul((rep.nextCallPrep || []).concat(rep.areasToImprove || [], rep.actionItems || [])))
+      + csec('convo', 'Full conversation', null, callConvo[c.id] ? callConvo[c.id].map(function (l) { return '<div class="l ' + l.who + '"><span class="who">' + (l.who === 'you' ? 'You' : 'Them') + '</span>' + esc(l.text) + '</div>'; }).join('') || 'Nothing was captured.' : 'Loading...');
+  }
+  wrap.innerHTML = head + '<div class="convo-host">' + body + '</div>';
+  wrap.querySelectorAll('.csec .ch').forEach(function (h) { h.onclick = function () { var k = h.parentNode.dataset.sec; callClosed[k] = !h.parentNode.classList.contains('closed'); h.parentNode.classList.toggle('closed', callClosed[k]); if (k === 'convo' && !callClosed[k]) loadConvo(c); }; });
+  wrap.querySelectorAll('[data-add]').forEach(function (b) { b.onclick = function () { var k = b.dataset.add.split(':'); addFromCall([callQs[k[0]][+k[1]]], b); }; });
+  wrap.querySelectorAll('[data-addall]').forEach(function (b) { b.onclick = function () { addFromCall(callQs[b.dataset.addall], b); }; });
+  wrap.querySelectorAll('[data-goto]').forEach(function (s) { s.onclick = function () { var g = findGroup(s.dataset.goto); if (g) select(g.id, (g.items[0] || {}).id); }; });
+  var mk = $('call-make'); if (mk) mk.onclick = function () { makeNotes(c); };
+  var rd = $('call-redo'); if (rd) rd.onclick = function () { makeNotes(c); };
+  var rd2 = $('call-redo2'); if (rd2) rd2.onclick = function () { makeNotes(c); };
+  if (c.report && !callClosed.convo) loadConvo(c);
+}
+async function loadConvo(c) {
+  if (callConvo[c.id]) return;
+  var r = await api('GET', '/api/note/calls/' + c.id).catch(function () { return { ok: false, json: {} }; });
+  callConvo[c.id] = r.ok ? r.json.lines : [{ who: 'them', text: r.json.error || 'Could not load the conversation.' }];
+  if (curCall === c.id) renderCallPage();
+}
+async function addFromCall(list, btn) {
+  if (!list || !list.length) return;
+  if (btn) btn.disabled = true;
+  var section = 'From calls: ' + ((CALLS.session && CALLS.session.company) || 'this job');
+  var r = await api('POST', '/api/note/from-call', { questions: list, section: section }).catch(function () { return { ok: false, json: {} }; });
+  if (!r.ok) { if (btn) btn.disabled = false; toast(r.json.error || 'Could not add to the note', 3000); return; }
+  r.json.added.forEach(function (g) { N.groups.push(g); });
+  toast((r.json.added.length ? 'Added ' + r.json.added.length + ' to your note under "' + section + '"' : 'Nothing new') + (r.json.skipped.length ? '. ' + r.json.skipped.length + ' already in it' : ''), 3500);
+  renderCallPage();
+}
 
 // ===== live link: the call page posts every detected interviewer question; the note jumps to the closest one =====
 function onHeard(text) {

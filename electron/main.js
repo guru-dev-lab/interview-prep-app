@@ -366,7 +366,56 @@ function createOverlay() {
   _log('[Xhire] Overlay window created');
 }
 
+// ===== ANSWER NOTE WINDOW (owner, 24 Oct) =====
+// "I NEED IT SEPARATE ... not moving with xHire if I change or swipe window": the note is its OWN window, apart from
+// the overlay. It stays on the desktop/space where he put it (NOT on all workspaces, unlike the overlay), floats above
+// the call while "Keep on top" is on, and is hidden from screen sharing exactly like the overlay (content protection).
+// One note window; opening it again reuses it. Its size and place are remembered. Nothing inside it can open another
+// window (that window would not be protected).
+let noteWindow = null;
+function noteStateFile() { return path.join(app.getPath('userData'), 'note-window.json'); }
+function readNoteState() { try { return JSON.parse(require('fs').readFileSync(noteStateFile(), 'utf8')) || {}; } catch (e) { return {}; } }
+function saveNoteState(patch) { try { require('fs').writeFileSync(noteStateFile(), JSON.stringify({ ...readNoteState(), ...patch })); } catch (e) { _log('[Note] could not save window state:', e.message); } }
+function openNoteWindow(url) {
+  if (typeof url !== 'string' || url.indexOf(SERVER_URL + '/note?') !== 0) { _log('[Note] refused to open', String(url).slice(0, 80)); return false; }
+  if (noteWindow && !noteWindow.isDestroyed()) {
+    noteWindow.loadURL(url); noteWindow.show(); noteWindow.focus();
+    _log('[Note] reused the note window');
+    return true;
+  }
+  const st = readNoteState(); const b = st.bounds || {};
+  const wa = screen.getPrimaryDisplay().workArea;
+  const onScreen = b.width && screen.getAllDisplays().some(d => b.x >= d.workArea.x - 50 && b.y >= d.workArea.y - 50 && b.x < d.workArea.x + d.workArea.width - 80 && b.y < d.workArea.y + d.workArea.height - 80);
+  noteWindow = new BrowserWindow({
+    width: onScreen ? b.width : Math.min(1040, wa.width - 80), height: onScreen ? b.height : Math.min(740, wa.height - 80),
+    ...(onScreen ? { x: b.x, y: b.y } : {}),
+    minWidth: 360, minHeight: 320, title: 'Answer Note', show: false, backgroundColor: '#f3f2ee',
+    fullscreenable: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },
+  });
+  const protect = () => { if (noteWindow && !noteWindow.isDestroyed()) { noteWindow.setContentProtection(true); _log('[Note] content protection on'); } };
+  if (process.platform === 'win32') setTimeout(protect, 500); else protect();
+  noteWindow.setAlwaysOnTop(st.onTop !== false, 'floating');
+  noteWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  noteWindow.webContents.on('will-navigate', (e, to) => { if (to.indexOf(SERVER_URL + '/note') !== 0) { e.preventDefault(); _log('[Note] blocked navigation away from the note'); } });
+  noteWindow.once('ready-to-show', () => { noteWindow.show(); noteWindow.focus(); });
+  const keep = () => { if (noteWindow && !noteWindow.isDestroyed()) saveNoteState({ bounds: noteWindow.getBounds() }); };
+  noteWindow.on('moved', keep); noteWindow.on('resized', keep); noteWindow.on('close', keep);
+  noteWindow.on('closed', () => { noteWindow = null; });
+  noteWindow.loadURL(url);
+  _log('[Note] opened the note window', onScreen ? '(remembered place)' : '(default place)', 'onTop=' + (st.onTop !== false));
+  return true;
+}
+
 // ===== IPC HANDLERS =====
+ipcMain.handle('open-note', (_, url) => openNoteWindow(url));
+ipcMain.handle('note-on-top', (_, on) => {
+  if (!noteWindow || noteWindow.isDestroyed()) return null;
+  if (on === undefined || on === null) return noteWindow.isAlwaysOnTop();
+  noteWindow.setAlwaysOnTop(!!on, 'floating'); saveNoteState({ onTop: !!on });
+  _log('[Note] keep on top:', !!on);
+  return !!on;
+});
 
 // Opacity control from renderer
 // True window bounds (the renderer's window.screenX/outerWidth go stale after moves/resizes — 3 Oct)
