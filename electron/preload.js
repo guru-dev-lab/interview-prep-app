@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Answer Note: its own window, hidden from screen sharing like the overlay (1.1.7+). Pages check it exists first.
   openNote: (url) => ipcRenderer.invoke('open-note', url),
   noteOnTop: (on) => ipcRenderer.invoke('note-on-top', on),
+  noteGlass: (on) => ipcRenderer.invoke('note-glass', on), // 1.1.10+: the note as a glass window, like the overlay
 
   // Platform info
   platform: process.platform,

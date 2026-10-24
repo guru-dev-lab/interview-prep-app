@@ -399,10 +399,14 @@ function openNoteWindow(url) {
   const st = readNoteState(); const b = st.bounds || {};
   const wa = screen.getPrimaryDisplay().workArea;
   const onScreen = b.width && screen.getAllDisplays().some(d => b.x >= d.workArea.x - 50 && b.y >= d.workArea.y - 50 && b.x < d.workArea.x + d.workArea.width - 80 && b.y < d.workArea.y + d.workArea.height - 80);
+  // Glass (owner 24 Oct: "make it glassy toggle", "the exact type on xHire"): the same window type as the overlay,
+  // frameless and transparent, so the page's tinted glass panels show the desktop through them.
+  const glass = !!st.glass;
   noteWindow = new BrowserWindow({
     width: onScreen ? b.width : Math.min(1040, wa.width - 80), height: onScreen ? b.height : Math.min(740, wa.height - 80),
     ...(onScreen ? { x: b.x, y: b.y } : {}),
-    minWidth: 360, minHeight: 320, title: 'Answer Note', show: false, backgroundColor: '#f3f2ee',
+    minWidth: 360, minHeight: 320, title: 'Answer Note', show: false,
+    ...(glass ? { transparent: true, frame: false, hasShadow: false, backgroundColor: '#00000000' } : { backgroundColor: '#f3f2ee' }),
     fullscreenable: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, backgroundThrottling: false },
   });
@@ -416,12 +420,25 @@ function openNoteWindow(url) {
   noteWindow.on('moved', keep); noteWindow.on('resized', keep); noteWindow.on('close', keep);
   noteWindow.on('closed', () => { noteWindow = null; });
   noteWindow.loadURL(url);
-  _log('[Note] opened the note window', onScreen ? '(remembered place)' : '(default place)', 'onTop=' + (st.onTop !== false));
+  _log('[Note] opened the note window', onScreen ? '(remembered place)' : '(default place)', 'onTop=' + (st.onTop !== false), 'glass=' + glass);
   return true;
 }
 
 // ===== IPC HANDLERS =====
 ipcMain.handle('open-note', (_, url) => openNoteWindow(url));
+// Glass on/off: saved, then the note reopens as the other window type in the same place (the page saves first).
+ipcMain.handle('note-glass', (_, on) => {
+  if (on === undefined || on === null) return !!readNoteState().glass;
+  if (!!on === !!readNoteState().glass) return !!on;
+  saveNoteState({ glass: !!on });
+  if (noteWindow && !noteWindow.isDestroyed()) {
+    const url = noteWindow.webContents.getURL(); saveNoteState({ bounds: noteWindow.getBounds() });
+    const old = noteWindow; noteWindow = null; old.destroy();
+    openNoteWindow(url);
+  }
+  _log('[Note] glass:', !!on);
+  return !!on;
+});
 ipcMain.handle('note-on-top', (_, on) => {
   if (!noteWindow || noteWindow.isDestroyed()) return null;
   if (on === undefined || on === null) return noteWindow.isAlwaysOnTop();
