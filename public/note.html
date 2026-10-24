@@ -1211,7 +1211,8 @@ function onHeard(text) {
   showHeard(text, m && m.groupId, m && m.itemId, m ? (findGroup(m.groupId) || {}).name || m.question : '');
   markLines();
   smartHeard(text);
-  coachWhenDone(text);
+  clearTimeout(coachWait); themAfter = ''; coachQ = text;
+  coachFor(text); // at once, the same moment xHire answers
 }
 // Live coach: the very next thing to say, as a subtitle over the answer. Before he answers: how to open (owner 24 Oct:
 // "throwing in jokes, or greeting.. or thanking them.. if they explained everything about their company i need to say
@@ -1225,21 +1226,19 @@ function onThem(text) {
   if (heardText && heardText.indexOf(text.trim()) < 0) themAfter += ' ' + text;
   // they are talking again: a line on screen for the moment before is stale (it never sits there)
   if (coachNow && !coachNow.add && Date.now() - coachNow.at > 1500 && text.trim().split(/\s+/).length >= 4) hideCoach();
+  // Owner 24 Oct: "What cant it fire same time the xHire fires?" / "1.2 can be long". It does fire at once. When the
+  // interviewer keeps going before he answers (xHire flagged the first half), the strip is redone from the WHOLE
+  // question 0.7 s after they stop, like xHire grows its card.
+  if (heardText && saidText.length < 20 && Date.now() - heardAt < 20000 && themAfter.trim()) {
+    clearTimeout(coachWait); var key = heardText;
+    coachWait = setTimeout(function () {
+      if (key !== heardText || saidText.length >= 20) return;
+      coachQ = (key + ' ' + themAfter.trim()).slice(-600); coachShown = [];
+      coachFor(coachQ, false, true, key);
+    }, COACH_QUIET);
+  }
 }
-// Owner 24 Oct: highlight only, so nothing jumps on a wrong or half question. The strip waits the same way: xHire can
-// flag a question from its first half, so the strip comes once the interviewer has been quiet for 1.2 s and uses all
-// they said (the rest of the question too). A typed question has no one talking, so it comes at once.
-var COACH_QUIET = 1200, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '';
-function coachWhenDone(text) {
-  hideCoach(); clearTimeout(coachWait); themAfter = ''; var t0 = Date.now();
-  (function check() {
-    if (text !== heardText) return; // a newer question took over
-    var quiet = Date.now() - lastThemAt;
-    if (quiet < COACH_QUIET && Date.now() - t0 < 15000) { coachWait = setTimeout(check, COACH_QUIET - quiet + 50); return; }
-    coachQ = themAfter.trim() ? (text + ' ' + themAfter.trim()).slice(-600) : text;
-    coachFor(coachQ, false, false, text);
-  })();
-}
+var COACH_QUIET = 700, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '';
 function coachFor(text, add, retry, key) {
   key = key || text;
   if (!add && !retry) { hideCoach(); coachAdds = 0; coachShown = []; heardAt = Date.now(); }
