@@ -92,6 +92,14 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const both = await Promise.all([api('POST', '/api/note/heard', { text: 'what are your salary expectations for this role?' }), api('POST', '/api/note/heard', { text: 'and when could you start if we made an offer?' })]);
   check(both.map(x => x.r.status).sort().join() === '200,429', 'two checks at the same moment: one runs, the other is refused (no pile-up)', both.map(x => x.r.status).join());
 
-  console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note calls e2e, ${pass} checks, 5 model calls)`);
+  // ticks by meaning on a pause (1 model call): a pure paraphrase is covered, a line he never got to is not
+  await new Promise(r => setTimeout(r, 1600));
+  t2 = Date.now();
+  const sd = await api('POST', '/api/note/said', { lines: ['I rank work by business impact and the real deadline.', 'I agree the order with the managers in one short call.', 'The result: all three reports shipped on time and the VP made it our standard intake.'],
+    said: "honestly I look at what moves the needle most for the business and when the leaders truly need it, and then I just grab the managers for like ten minutes and we settle who goes first" });
+  const ms4 = Date.now() - t2;
+  check(sd.r.status === 200 && sd.j.covered.length === 2 && !sd.j.covered.some(l => /result/i.test(l)), 'paraphrase: the two points he made are covered, the result he never said is not (' + ms4 + ' ms)', JSON.stringify(sd.j));
+
+  console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note calls e2e, ${pass} checks, 6 model calls)`);
   await pool.end(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -67,6 +67,14 @@ body.dark .sec .cnt.done{color:#10301e}
 /* live marks on the answer (display only, never saved): the line to read now, and lines he has already said */
 #editor [data-hot]{background:var(--accent-bg);color:#2a1f00;border-radius:6px;box-shadow:0 0 0 4px var(--accent-bg);transition:background .2s}
 #editor [data-said]{opacity:.42}
+#editor mark[data-pw]{background:none;color:inherit;font-weight:700;border-bottom:2px solid var(--accent-bg);padding:0 1px}
+#editor mark[data-pw][data-pwsaid]{border-bottom-color:var(--ok)}
+.pwrow{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 12px}
+.pwrow:empty{display:none}
+.pwrow span{font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:12px;background:var(--card);border:1px solid var(--key-line);color:var(--text)}
+.pwrow span.said{border-color:var(--ok);color:var(--ok)}
+.pwrow span.said:after{content:" \2713"}
+body.expand .pwrow span,body.solo .pwrow span{font-size:14px}
 #editor li[data-said]::after{content:" \2713";color:var(--ok);font-weight:700}
 .row .askd{font-size:10.5px;font-weight:700;color:var(--accent);margin-left:6px;white-space:nowrap}
 .newq .title{font-weight:600;font-size:13.5px}
@@ -268,6 +276,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
         <div class="ways" id="ways"></div>
         <div class="conflict" id="conflict"><span id="conflict-text"></span><button class="chip" id="conflict-theirs">Use that version</button><button class="chip primary" id="conflict-mine">Keep mine</button></div>
         <div class="key" id="keybox"><span class="lbl">KEY</span><div class="kp" id="key" contenteditable="true" spellcheck="false"></div></div>
+        <div class="pwrow" id="pwrow" title="The words in this answer that impress: your numbers, names and tools. They turn green when you say them."></div>
         <div class="fmt hidden" id="fmt">
           <select id="f-family" title="Font"><option value="system">System</option><option value="Georgia">Georgia</option><option value="Arial">Arial</option><option value="Verdana">Verdana</option><option value="Times New Roman">Times</option><option value="Courier New">Courier</option></select>
           <select id="f-size" title="Size"><option value="14px">14</option><option value="15px">15</option><option value="16px">16</option><option value="17px">17</option><option value="18px">18</option><option value="20px">20</option><option value="24px">24</option><option value="28px">28</option></select>
@@ -617,9 +626,14 @@ function moveSel(dg, di) {
 
 // ===== editor (always editable, like a note) =====
 var ed = $('editor');
-function editorHtml() { // the answer as he wrote it: the live marks (data-hot / data-said) are display only, never saved
-  if (!ed.querySelector('[data-hot],[data-said]')) return ed.innerHTML.replace(/^<br>$/, '');
-  var c = ed.cloneNode(true); c.querySelectorAll('[data-hot],[data-said]').forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); });
+function clearMarks(root) { // the live marks are display only: the line to read, lines said, and the impressive words
+  root.querySelectorAll('[data-hot],[data-said]').forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); });
+  root.querySelectorAll('mark[data-pw]').forEach(function (m) { m.replaceWith(document.createTextNode(m.textContent)); });
+  root.normalize();
+}
+function editorHtml() { // the answer as he wrote it: never with the live marks
+  if (!ed.querySelector('[data-hot],[data-said],mark[data-pw]')) return ed.innerHTML.replace(/^<br>$/, '');
+  var c = ed.cloneNode(true); clearMarks(c);
   return c.innerHTML.replace(/^<br>$/, '');
 }
 function flushEditor() { var it = curItem(); if (!it || busy[it.id]) return; var html = editorHtml(); var key = $('key').textContent.trim(); if (html !== (it.answer_html || '') || key !== (it.key_points || '')) { it.answer_html = html; it.key_points = key; writeDraft(it); queueSave('item:' + it.id, saveContent(it), 0); } }
@@ -1080,7 +1094,7 @@ function showHeard(text, gid, itemId, label) {
 function setHeard(gid) { heardGid = gid; heardSec = gid && findGroup(gid) ? secOf(findGroup(gid)) : null; renderList(); } // its section opens on the left so the mark shows; the answer on screen stays
 function onHeard(text) {
   if (SOLO || !follow || !N || !text) return;
-  heardText = text; saidText = ''; hot = null; // a new question: ticks start over
+  heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; // a new question: ticks start over
   var m = NoteMatch.closest(N.groups, text); // instant: by wording
   setHeard(m ? m.groupId : null);
   showHeard(text, m && m.groupId, m && m.itemId, m ? (findGroup(m.groupId) || {}).name || m.question : '');
@@ -1106,21 +1120,56 @@ function smartHeard(text) { // ~1 s later: which question it really is + the lin
       }
     }).catch(function () {});
 }
+var aiSaid = {}, saidTimer = null, saidSent = 0;
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
   if (SOLO || !follow || !N || !text) return;
   saidText += ' ' + text; markLines();
+  clearTimeout(saidTimer); saidTimer = setTimeout(checkSaidByMeaning, 2200); // when he pauses
 }
-function markLines() { // display only: the line to read (data-hot) and lines already said (data-said)
-  var els = ed.querySelectorAll('li, p, h2, h3, pre');
-  els.forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); });
+function checkSaidByMeaning() { // paraphrase: one tiny check on a pause, only for lines still open, only if he said more since
+  if (!saidText || saidText.length === saidSent) return;
+  var said = NoteMatch.stems(saidText);
+  var open = [].map.call(ed.querySelectorAll('li, p'), function (el) { return el.textContent.trim(); }).filter(function (t) { return t.split(/\s+/).length >= 4 && !aiSaid[t] && !NoteMatch.lineSaid(t, said); });
+  if (!open.length) return;
+  saidSent = saidText.length; var asked = saidText;
+  fetch(location.origin + '/api/note/said', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ lines: open, said: saidText }) })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { if (!j || asked !== saidText.slice(0, asked.length)) return; (j.covered || []).forEach(function (t) { aiSaid[t] = 1; }); markLines(); })
+    .catch(function () {});
+}
+function wrapPower(el, words, said) { // bold the impressive words inside a line (text nodes only; the line's own formatting stays)
+  if (!words.length) return;
+  var re = new RegExp('(' + words.map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).sort(function (a, b) { return b.length - a.length; }).join('|') + ')', 'g');
+  var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), nodes = [], n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  nodes.forEach(function (tn) {
+    var parts = tn.nodeValue.split(re); if (parts.length < 2) return;
+    var frag = document.createDocumentFragment();
+    parts.forEach(function (part, i) {
+      if (!part) return;
+      if (i % 2) { var m = document.createElement('mark'); m.setAttribute('data-pw', '1'); if (said && NoteMatch.powerSaid(part, said)) m.setAttribute('data-pwsaid', '1'); m.textContent = part; frag.appendChild(m); }
+      else frag.appendChild(document.createTextNode(part));
+    });
+    tn.parentNode.replaceChild(frag, tn);
+  });
+}
+function markLines() { // display only: the line to read (data-hot), lines already said (data-said), the impressive words
+  clearMarks(ed);
+  var els = ed.querySelectorAll('li, p, h2, h3, pre'), said = saidText ? NoteMatch.stems(saidText) : null, all = [];
+  els.forEach(function (el) { NoteMatch.powerWords(el.textContent).forEach(function (w) { if (all.indexOf(w) < 0) all.push(w); }); });
+  $('pwrow').innerHTML = all.slice(0, 8).map(function (w) { return '<span class="' + (said && NoteMatch.powerSaid(w, said) ? 'said' : '') + '">' + esc(w) + '</span>'; }).join('');
   if (!els.length || document.activeElement === ed) return; // never while he is typing in it
-  if (saidText) { var said = NoteMatch.saidWords(saidText); els.forEach(function (el) { if (NoteMatch.isSaid(NoteMatch.pointKeys(el.textContent), said)) el.setAttribute('data-said', '1'); }); }
+  els.forEach(function (el) {
+    var txt = el.textContent.trim();
+    if (said && (NoteMatch.lineSaid(txt, said) || aiSaid[txt])) el.setAttribute('data-said', '1');
+    wrapPower(el, NoteMatch.powerWords(txt), said);
+  });
   if (hot && hot.gid === cur.gid) {
     var best = null, bs = 0; els.forEach(function (el) { var sc = NoteMatch.dice(hot.text, el.textContent); if (sc > bs) { bs = sc; best = el; } });
     if (best && bs >= 0.6 && !best.hasAttribute('data-said')) { best.setAttribute('data-hot', '1'); best.scrollIntoView({ block: 'nearest' }); }
   }
 }
-ed.addEventListener('focus', function () { ed.querySelectorAll('[data-hot],[data-said]').forEach(function (el) { el.removeAttribute('data-hot'); el.removeAttribute('data-said'); }); });
+ed.addEventListener('focus', function () { clearMarks(ed); });
 ed.addEventListener('blur', function () { markLines(); });
 async function addHeardToday(i, btn) {
   var q = heardToday[i]; if (!q) return; if (btn) btn.disabled = true;

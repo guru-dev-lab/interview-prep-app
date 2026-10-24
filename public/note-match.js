@@ -44,6 +44,50 @@
   function pointKeys(s) { var o = {}; (String(s).toLowerCase().match(/\b[a-z]{4,}\b/g) || []).forEach(function (w) { if (!SAID_STOP[w]) o[w] = 1; }); return Object.keys(o).slice(0, 6); }
   function saidWords(text) { var o = {}; (String(text || '').toLowerCase().match(/\b[a-z]{4,}\b/g) || []).forEach(function (w) { o[w] = 1; }); return o; }
   function isSaid(keys, said) { if (!keys || !keys.length) return false; var hit = 0; keys.forEach(function (w) { if (said[w]) hit++; }); return hit / keys.length >= 0.5; }
+  // Owner 24 Oct: "I don't go word for word sometimes... I dazzle". So a line counts as said by MEANING-ish signals, not
+  // its exact words: word forms ("ranking" = "rank"), spoken numbers ("four hours" = "4 hours"), and his real numbers,
+  // names and tools (what he keeps however he phrases it). The note adds an AI check on his pauses for pure paraphrase.
+  var NUMW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, hundred: 100, thousand: 1000 };
+  function stem(w) { if (w.length <= 4 || /^\d/.test(w)) return w; return w.replace(/iz(e|es|ing|ed|ation)$/, 'is$1').replace(/(ations|ation|ings|ing|ies|ied|ers|er|ed|es|ly|s)$/, '').replace(/(.)\1$/, '$1'); }
+  function stems(text) {
+    var o = {};
+    String(text || '').toLowerCase().replace(/(\d),(\d)/g, '$1$2').split(/[^a-z0-9.]+/).forEach(function (t) {
+      t = t.replace(/^\.+|\.+$/g, ''); if (!t) return;
+      if (NUMW[t]) { o[String(NUMW[t])] = 1; return; }
+      if (/^\d/.test(t)) { o[t.replace(/\.0+$/, '')] = 1; return; }
+      if (t.length >= 4 && !SAID_STOP[t]) o[stem(t)] = 1;
+    });
+    return o;
+  }
+  // The words that impress: his numbers with their unit ("4 hours", "40 executives", "35%", "$1.2M") and his names and
+  // tools (capitalised words that do not start a sentence, short all-caps terms: "Power BI", "Acme", "SQL", "DAX").
+  function powerWords(text) {
+    var t = String(text || ''), out = [], seen = {};
+    function add(s) { s = s.trim().replace(/[.,;:!?)]+$/, ''); var k = s.toLowerCase(); if (s.length > 1 && !seen[k]) { seen[k] = 1; out.push(s); } }
+    (t.match(/\$?\d[\d,.]*(?:\s?(?:%|x\b|k\b|m\b|million|billion|percent|hours?|minutes?|days?|weeks?|months?|years?|[a-z]{3,12}s\b))?/gi) || []).forEach(add);
+    var toks = t.split(/(\s+)/), run = [], start = true;
+    var flush = function () { if (run.length) add(run.join(' ')); run = []; };
+    toks.forEach(function (tok) {
+      if (/^\s+$/.test(tok)) return;
+      var w = tok.replace(/^[("']+|[)"',.;:!?]+$/g, '');
+      var cap = /^[A-Z][A-Za-z0-9&+.-]*$/.test(w) && w !== 'I' && !start, caps = /^[A-Z]{2,6}s?$/.test(w);
+      if ((cap || caps) && !/^(The|A|An|At|In|On|My|We|Our|Then|And|But|So|For|With|When)$/.test(w)) run.push(w); else flush();
+      start = /[.!?:]$/.test(tok);
+    });
+    flush();
+    return out.slice(0, 6);
+  }
+  function lineSaid(line, saidText) { // ONE rule for the overlay's live coach and the note's ticks
+    var said = typeof saidText === 'object' ? saidText : stems(saidText), L = stems(line);
+    var keys = Object.keys(L).filter(function (k) { return !/^\d/.test(k); }).slice(0, 8), nums = Object.keys(L).filter(function (k) { return /^\d/.test(k); });
+    var hitK = keys.filter(function (k) { return said[k]; }).length, hitN = nums.filter(function (k) { return said[k]; }).length;
+    if (keys.length && hitK / keys.length >= 0.4) return true;          // most of the line's words, in any form
+    if (hitN && hitK >= 1) return true;                                 // one of his real numbers + another word of the line
+    var names = powerWords(line).filter(function (p) { return !/\d/.test(p); });
+    var hitP = names.filter(function (p) { var s = stems(p); return Object.keys(s).length && Object.keys(s).every(function (k) { return said[k]; }); }).length;
+    return !!(hitP && hitK >= 2);                                       // a name or tool he used + two more of the line's words
+  }
+  function powerSaid(word, saidText) { var said = typeof saidText === 'object' ? saidText : stems(saidText), s = stems(word); var ks = Object.keys(s); return !!ks.length && ks.every(function (k) { return said[k]; }); }
   function closest(groups, heard, threshold) {
     var th = typeof threshold === 'number' ? threshold : 0.4; var best = null;
     (groups || []).forEach(function (g) {
@@ -83,5 +127,5 @@
     return (groups || []).slice().sort(function (a, b) { return ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || ((a.sort_order || 0) - (b.sort_order || 0)) || String(a.created_at || '').localeCompare(String(b.created_at || '')); });
   }
   var SAME_QUESTION = 0.72; // a question from a call this close to one in the note IS that question (not added twice)
-  return { SAME_QUESTION: SAME_QUESTION, rank: rank, pointKeys: pointKeys, saidWords: saidWords, isSaid: isSaid, dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
+  return { SAME_QUESTION: SAME_QUESTION, rank: rank, pointKeys: pointKeys, saidWords: saidWords, isSaid: isSaid, stems: stems, powerWords: powerWords, lineSaid: lineSaid, powerSaid: powerSaid, dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
 });
