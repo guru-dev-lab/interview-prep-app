@@ -315,7 +315,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   </aside>
   <div class="resizer" id="resizer" title="Drag to resize. Double-click to hide."></div>
   <section class="pagewrap">
-    <div class="coach" id="coach" title="Click to hide"><div class="cw"><b>They want:</b><span id="coach-want"></span></div><div class="cs" id="coach-say"></div></div>
+    <div class="coach" id="coach" title="Click to hide"><div class="cw"><b id="coach-lbl">They want:</b><span id="coach-want"></span></div><div class="cs" id="coach-say"></div></div>
     <div class="page" id="page"><div class="sheet">
       <div class="empty" id="empty">Pick a question on the left.</div>
       <div id="call-wrap" class="hidden"></div>
@@ -1211,28 +1211,53 @@ function onHeard(text) {
   smartHeard(text);
   coachFor(text);
 }
-// Live coach: what they are really after + one line to say, as a subtitle over the answer. It comes with a question that
-// has something behind it, goes green and fades once he has said it, and leaves on the next question, after 45 s, or
-// on a click. Only for the job picked at the top (never an AI call for a job he has not opened).
-var coachCtl = null, coachNow = null, coachT = null, recentQs = [];
-function coachFor(text) {
-  hideCoach();
+// Live coach: the very next thing to say, as a subtitle over the answer. Before he answers: how to open (owner 24 Oct:
+// "throwing in jokes, or greeting.. or thanking them.. if they explained everything about their company i need to say
+// something nice about it first"), from what they said leading up to the question. While he answers and pauses: the one
+// thing to ADD. It fades as soon as he has said part of it; it also leaves on the next question, after 45 s, or on a
+// click. Only for the job picked at the top (never an AI call for a job he has not opened).
+var coachCtl = null, coachNow = null, coachT = null, recentQs = [], coachShown = [], themText = '', coachSaid = '', coachAdds = 0, coachLast = 0, heardAt = 0, addTimer = null;
+function onThem(text) { if (SOLO || !text || !firstTime('t', text)) return; themText = (themText + ' ' + text).slice(-2500); }
+function coachFor(text, add, retry) {
+  if (!add && !retry) { hideCoach(); coachAdds = 0; coachShown = []; heardAt = Date.now(); }
   var sid = $('job') && $('job').value; if (!sid) return;
   if (coachCtl) try { coachCtl.abort(); } catch (e) {}
-  var ctl = coachCtl = (window.AbortController ? new AbortController() : null), recent = recentQs.slice(-3);
-  recentQs.push(text); recentQs = recentQs.slice(-6);
-  fetch(location.origin + '/api/note/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, sessionId: sid, recent: recent }), signal: ctl ? ctl.signal : undefined })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (j) { if (j && j.coach && text === heardText) showCoach(j.coach); })
+  var ctl = coachCtl = (window.AbortController ? new AbortController() : null), recent = add ? recentQs.slice(-4, -1) : recentQs.slice(-3);
+  if (!add && !retry) { recentQs.push(text); recentQs = recentQs.slice(-6); }
+  coachLast = Date.now(); var asked = saidText;
+  fetch(location.origin + '/api/note/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, sessionId: sid, recent: recent, theySaid: themText, youSaid: add ? saidText : '', shown: coachShown }), signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { // two questions within 0.7 s: the server refuses the second as too fast, so it asks once more
+      if (r.status === 429 && !retry) { setTimeout(function () { if (text === heardText) coachFor(text, add, true); }, 800); return null; }
+      return r.ok ? r.json() : null;
+    })
+    .then(function (j) { if (j && j.coach && text === heardText && (!add || !coachNow)) showCoach(j.coach, add); })
     .catch(function () {});
 }
-function showCoach(c) {
-  coachNow = c; $('coach-want').textContent = c.want; $('coach-say').textContent = c.say;
+function showCoach(c, add) {
+  coachNow = c; coachSaid = ''; coachShown.push(c.say); $('coach-lbl').textContent = add ? 'Add:' : 'They want:'; $('coach-want').textContent = c.want; $('coach-say').textContent = c.say;
   $('coach').classList.remove('done'); $('coach').classList.add('show');
   clearTimeout(coachT); coachT = setTimeout(hideCoach, 45000);
 }
 function hideCoach() { coachNow = null; clearTimeout(coachT); $('coach').classList.remove('show'); }
 $('coach').onclick = hideCoach;
+// Part of the line is enough (owner: "should fade after hearing part of it"): a third of its words, at least two, said
+// since it came up.
+function heardPart(line, said) {
+  var ks = Object.keys(NoteMatch.stems(line)), hit = ks.filter(function (k) { return said[k]; }).length;
+  return ks.length > 0 && hit >= Math.min(ks.length, Math.max(2, Math.ceil(ks.length / 3)));
+}
+function coachOnSaid(text) {
+  if (coachNow && !$('coach').classList.contains('done')) {
+    coachSaid += ' ' + text;
+    if (heardPart(coachNow.say, NoteMatch.stems(coachSaid))) { $('coach').classList.add('done'); clearTimeout(coachT); coachT = setTimeout(hideCoach, 1500); } // green, then gone
+  }
+  // Mid-answer, when he pauses with nothing on screen: the one thing to add (at most 3 per question, 6 s apart, 3 min).
+  clearTimeout(addTimer);
+  addTimer = setTimeout(function () {
+    if (coachNow || !heardText || coachAdds >= 3 || Date.now() - heardAt > 180000 || Date.now() - coachLast < 6000 || saidText.length < 40) return;
+    coachAdds++; coachFor(heardText, true);
+  }, 2500);
+}
 function smartHeard(text) { // ~1 s later: which question it really is + the line to read. The newest question wins.
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
   var ctl = heardCtl = (window.AbortController ? new AbortController() : null);
@@ -1377,7 +1402,7 @@ function lightFlow(view, src) {
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
   if (SOLO || !follow || !N || !text || !firstTime('s', text)) return;
   saidText += ' ' + text; markLines();
-  if (coachNow && !$('coach').classList.contains('done') && NoteMatch.lineSaid(coachNow.say, NoteMatch.stems(saidText))) { $('coach').classList.add('done'); clearTimeout(coachT); coachT = setTimeout(hideCoach, 2500); } // he said it: green, then gone
+  coachOnSaid(text);
   clearTimeout(saidTimer); saidTimer = setTimeout(checkSaidByMeaning, 2200); // when he pauses
 }
 function checkSaidByMeaning() { // paraphrase: one tiny check on a pause, only for lines still open, only if he said more since
@@ -1427,8 +1452,9 @@ function markLines() { // display only: the line to read (data-hot), lines alrea
 ed.addEventListener('focus', function () { clearMarks(ed); });
 ed.addEventListener('blur', function () { markLines(); });
 $('heard-x').onclick = function () { $('heard').classList.remove('open'); };
-try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); else if (e.data.type === 'live') onLive(e.data.question, e.data.answer); }; } catch (e) {}
+try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); else if (e.data.type === 'live') onLive(e.data.question, e.data.answer); else if (e.data.type === 'them') onThem(e.data.text); }; } catch (e) {}
 window.addEventListener('storage', function (e) {
+  if (e.key === 'xhire_note_them' && e.newValue) { try { var t = JSON.parse(e.newValue); if (Date.now() - (t.ts || 0) < 15000) onThem(t.text); } catch (_) {} }
   if ((e.key === 'xhire_note_q' || e.key === 'xhire_note_said') && e.newValue) { try { var d = JSON.parse(e.newValue); if (Date.now() - (d.ts || 0) < 15000) (e.key === 'xhire_note_q' ? onHeard : onSaid)(d.text); } catch (_) {} }
 });
 
