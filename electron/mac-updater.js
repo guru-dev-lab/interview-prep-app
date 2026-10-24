@@ -3,7 +3,9 @@
 // be reinstalled by hand. This does it without Squirrel:
 //   1. read latest-mac.yml from the newest GitHub release (the same file electron-builder publishes),
 //   2. if it is newer, download the .zip for this Mac's chip and check its sha512 + size against that file,
-//   3. unpack it (ditto) and check the unpacked app really is that version,
+//   3. unpack it (ditto), check the unpacked app really is that version, and sign it on this Mac exactly like the
+//      download page's command (the CI build's own signature is broken: identifier "Electron", no sealed resources,
+//      measured 24 Oct), then verify the signature; an app that does not verify is thrown away,
 //   4. when the app quits (or "restart to update"), a small detached script waits for xHire to exit, moves the old app
 //      aside, moves the new one into its place, and only then deletes the old one (on failure the old one is put back).
 // Every step logs a result line; a failed step leaves the installed app untouched. No Node or Electron APIs beyond
@@ -56,7 +58,14 @@ function fetchTo(url, dest, redirects = 6) { // follows GitHub's redirects to it
   });
 }
 
-function createMacUpdater({ currentVersion, workDir, arch = process.arch, log = console.log, feedUrl = FEED, onAvailable, onDownloaded }) {
+// Same as the download page: ad-hoc sign the whole app as com.xhire.overlay (the id macOS privacy settings know it by),
+// then verify. Rejects on any failure.
+function signApp(appPath) {
+  const run = args => new Promise((res, rej) => execFile('/usr/bin/codesign', args, (e, so, se) => e ? rej(new Error((se || e.message).trim())) : res()));
+  return run(['--force', '--deep', '--sign', '-', '--identifier', 'com.xhire.overlay', appPath]).then(() => run(['--verify', '--deep', '--strict', appPath]));
+}
+
+function createMacUpdater({ currentVersion, workDir, arch = process.arch, log = console.log, feedUrl = FEED, onAvailable, onDownloaded, sign = signApp }) {
   let busy = false, ready = null, installing = false;
   async function check() {
     if (busy || ready) return ready ? { state: 'ready', version: ready.version } : { state: 'busy' };
@@ -78,6 +87,7 @@ function createMacUpdater({ currentVersion, workDir, arch = process.arch, log = 
       const appName = fs.readdirSync(out).find(n => /\.app$/.test(n));
       const appPath = appName && path.join(out, appName);
       if (!appPath || plistVersion(appPath) !== feed.version) { fs.rmSync(dir, { recursive: true, force: true }); log('[Update] Mac: the unpacked app is not v' + feed.version + ', discarded'); return { state: 'badapp' }; }
+      try { if (sign) await sign(appPath); } catch (e) { fs.rmSync(dir, { recursive: true, force: true }); log('[Update] Mac: could not sign v' + feed.version + ' (' + e.message + '), discarded'); return { state: 'badsign' }; }
       fs.rmSync(file, { force: true });
       ready = { version: feed.version, appPath };
       log('[Update] Mac: v' + feed.version + ' ready, installs when xHire quits');
@@ -112,4 +122,4 @@ function createMacUpdater({ currentVersion, workDir, arch = process.arch, log = 
   return { check, install, get ready() { return ready; } };
 }
 
-module.exports = { createMacUpdater, parseFeed, isNewer, pickZip, plistVersion, FEED };
+module.exports = { createMacUpdater, parseFeed, isNewer, pickZip, plistVersion, signApp, FEED };

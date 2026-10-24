@@ -58,7 +58,8 @@ if (process.platform !== 'darwin') { console.log(`(not a Mac: skipped the instal
   const apps = path.join(T, 'Applications'); makeApp(apps, '1.1.8', 'OLD 1.1.8');
   const installed = path.join(apps, 'Xhire.app');
   const logs = [];
-  const mk = (feed, work) => U.createMacUpdater({ currentVersion: '1.1.8', workDir: path.join(T, work), arch: 'arm64', log: l => logs.push(l), feedUrl: base + '/' + feed + '/releases/latest/download/latest-mac.yml' });
+  const signed = []; const fakeSign = async p => { signed.push(p); }; // the fake bundles hold no real program to sign; real signing is proven below
+  const mk = (feed, work) => U.createMacUpdater({ currentVersion: '1.1.8', workDir: path.join(T, work), arch: 'arm64', log: l => logs.push(l), sign: fakeSign, feedUrl: base + '/' + feed + '/releases/latest/download/latest-mac.yml' });
 
   let r = await mk('current', 'w0').check();
   check(r.state === 'current', 'same version: nothing to do', JSON.stringify(r));
@@ -72,10 +73,13 @@ if (process.platform !== 'darwin') { console.log(`(not a Mac: skipped the instal
 
   // the real path: found, downloaded, checked, unpacked, swapped after the app exits
   let seen = [];
-  const up = U.createMacUpdater({ currentVersion: '1.1.8', workDir: path.join(T, 'w4'), arch: 'arm64', log: l => logs.push(l), feedUrl: base + '/good/releases/latest/download/latest-mac.yml', onAvailable: v => seen.push('available ' + v), onDownloaded: v => seen.push('downloaded ' + v) });
+  const up = U.createMacUpdater({ currentVersion: '1.1.8', workDir: path.join(T, 'w4'), arch: 'arm64', log: l => logs.push(l), sign: fakeSign, feedUrl: base + '/good/releases/latest/download/latest-mac.yml', onAvailable: v => seen.push('available ' + v), onDownloaded: v => seen.push('downloaded ' + v) });
   r = await up.check();
   check(r.state === 'ready' && up.ready && up.ready.version === '1.1.9' && seen.join(',') === 'available 1.1.9,downloaded 1.1.9', 'newer version found, downloaded, checked and unpacked; the page is told both times', JSON.stringify([r, seen]));
+  check(signed.length === 1 && /unpacked\/Xhire\.app$/.test(signed[0]), 'the unpacked app is signed before it is offered', JSON.stringify(signed));
   check((await up.check()).state === 'ready', 'checking again while one is ready does not download twice');
+  const bad = await U.createMacUpdater({ currentVersion: '1.1.8', workDir: path.join(T, 'w6'), arch: 'arm64', log: l => logs.push(l), sign: async () => { throw new Error('invalid signature'); }, feedUrl: base + '/good/releases/latest/download/latest-mac.yml' }).check();
+  check(bad.state === 'badsign' && !fs.existsSync(path.join(T, 'w6', 'mac-update')), 'an app that does not sign and verify is thrown away', JSON.stringify(bad));
   check(up.install({ bundlePath: path.join(T, 'not-an-app'), pid: process.pid }) === false, 'never installs over something that is not an .app');
   const fakeApp = spawn('/bin/sleep', ['1']); // stands in for xHire: the swap waits for it to exit
   check(up.install({ bundlePath: installed, pid: fakeApp.pid, relaunch: false }) === true, 'install starts the swap');
@@ -87,7 +91,7 @@ if (process.platform !== 'darwin') { console.log(`(not a Mac: skipped the instal
   check(up.install({ bundlePath: installed, pid: process.pid }) === false, 'install runs once');
 
   // a swap that fails half way puts the old app back
-  const up2 = U.createMacUpdater({ currentVersion: '1.1.9', workDir: path.join(T, 'w5'), arch: 'arm64', log: l => logs.push(l), feedUrl: base + '/good/releases/latest/download/latest-mac.yml' });
+  const up2 = U.createMacUpdater({ currentVersion: '1.1.9', workDir: path.join(T, 'w5'), arch: 'arm64', log: l => logs.push(l), sign: fakeSign, feedUrl: base + '/good/releases/latest/download/latest-mac.yml' });
   feeds.good = yml('1.2.0', [zipOf('1.2.0', 'Xhire-1.2.0-arm64-mac.zip')]);
   r = await up2.check();
   fs.rmSync(up2.ready.appPath, { recursive: true, force: true }); // the new app vanishes before the swap
