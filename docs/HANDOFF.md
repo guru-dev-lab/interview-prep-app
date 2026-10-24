@@ -1,5 +1,19 @@
 # Handoff
 
+## 24 Oct — Answer Note v2 (branch feat/answer-note-v2)
+- Owner on v1: "the ugliest", "left side must show full question, expandable windows everywhere", "variations is harder to
+  spot", "i meant another way the question could be framed and most 3", "hard to see all whats it at glance".
+- Seed v2 (data/note-seed.json): 43 distinct questions in 11 sections; each = short bold title + the full question + up to 3
+  REWORDINGS of that same question (never a different question). lib MAX_WAYS = 3; POST item refuses a 4th other way (400).
+- Group name = short title, new column answer_note_groups.section (ADD COLUMN IF NOT EXISTS), items[0] = full question.
+- Notes seeded with v1 move to v2 once (loadNote → upgradeNoteSeed, one transaction, note row locked, settings.seedVersion=2).
+  upgradePlan never deletes an item with an answer, KEY or history and keeps its question; the SQL also re-checks emptiness.
+- Page rebuilt like a notes app: sections fold, Titles only, drag divider / hide left side, Expand (F), Pop out a question into
+  its own window (?solo=gid), cards for the ways, always-editable answer, Aa format bar, ... menu (follow call, theme, size,
+  page colour). Light paper default, dark mode; contrast measured >= 4.5:1 in both.
+- Proof: npm test green (answer-note 48 checks incl. upgrade), e2e 39/39 local (2 model calls; upgrade via the real route),
+  browser check 24/24 (scratchpad note-v2-check.js). Rollback tag known-good-2026-10-24-before-note-v2.
+
 
 ## 24 Oct — Answer Note (branch feat/answer-note, PR open, NOT merged)
 - Owner's ask (23 Oct): a desktop note he reads from DURING a call — left rail = question groups, horizontal tabs = the ways

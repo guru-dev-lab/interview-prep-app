@@ -4,13 +4,45 @@ const N = require('../lib/answer-note');
 let pass = 0, fail = 0;
 const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + label + (!ok && detail !== undefined ? '\n     ' + String(detail).slice(0, 300) : '')); };
 
-// Seed
+// Seed (v2, owner 24 Oct): every distinct question its own line, a short title, the full question, at most 3 other ways
 const rows = N.seedRows();
-check(rows.length === 18, 'seed: 18 groups', rows.length);
-check(rows.reduce((n, g) => n + g.items.length, 0) === 94, 'seed: 94 variations', rows.reduce((n, g) => n + g.items.length, 0));
-check(rows[0].name === 'Tell me about yourself' && rows[0].items[0].question === 'Tell me about yourself.', 'seed: first group and variation in order');
+const nItems = rows.reduce((n, g) => n + g.items.length, 0);
+check(rows.length === 43 && nItems === 172, 'seed: 43 questions, 172 wordings', rows.length + ' ' + nItems);
+check(rows.every(g => g.items.length >= 1 && g.items.length <= N.MAX_WAYS + 1), 'seed: every question has at most ' + N.MAX_WAYS + ' other ways');
+check(rows[0].name === 'About me' && rows[0].section === 'About you' && rows[0].items[0].question === 'Tell me about yourself.', 'seed: short title, section, full question first');
+check(rows.every(g => g.name.length <= 40 && g.section), 'seed: every title is short and sits in a section', rows.filter(g => g.name.length > 40 || !g.section).map(g => g.name).join(' | '));
 check(rows.every((g, i) => g.sort_order === i && g.items.every((it, j) => it.sort_order === j)), 'seed: sort orders set');
-check(rows.some(g => /executive who won't budge/.test(g.name)) && rows.some(g => /Prioritis/.test(g.name)), 'seed: the two the owner remembers are in');
+check(rows.some(g => /won't budge/.test(g.items[0].question)) && rows.some(g => /prioritize/.test(g.items[0].question)), 'seed: the two the owner remembers are in');
+check(!/\u2014/.test(JSON.stringify(N.SEED)), 'seed: no em dashes');
+const allQ = rows.flatMap(g => g.items.map(i => i.question.toLowerCase()));
+check(new Set(allQ).size === allQ.length, 'seed: no wording appears twice');
+
+// v1 -> v2 upgrade: nothing he wrote is lost; only empty seeded rows are renamed, reused or removed
+const v1 = [
+  { id: 'g1', name: 'Prioritising', sort_order: 3, items: [
+    { id: 'a', question: 'How do you prioritise?', sort_order: 0 },
+    { id: 'b', question: 'How do you handle conflicting priorities?', sort_order: 1, answer_html: '<ul><li>my answer</li></ul>' },
+    { id: 'c', question: 'You have two or three projects coming at once. How do you handle it?', sort_order: 2 },
+    { id: 'd', question: 'How do you prioritise across a global team and multiple regions?', sort_order: 3, versions: [{ id: 'v' }] },
+    { id: 'e', question: 'How do you handle tight deadlines and pressure?', sort_order: 4, key_points: 'my key' },
+  ] },
+  { id: 'g2', name: 'Salary', sort_order: 15, items: [{ id: 's1', question: 'What are your salary expectations?', sort_order: 0 }, { id: 's2', question: 'x', sort_order: 1 }] },
+  { id: 'g9', name: 'My own group', sort_order: 1, items: [{ id: 'm1', question: 'Mine', sort_order: 0 }] },
+];
+const ops = N.upgradePlan(v1);
+const byId = id => ops.filter(o => o.id === id);
+const del = new Set(ops.filter(o => o.op === 'deleteEmptyItem').map(o => o.id));
+check(!del.has('b') && !del.has('d') && !del.has('e'), 'upgrade: an answer, a KEY or any history is never deleted', JSON.stringify([...del]));
+check(byId('b').every(o => o.question === undefined) && byId('d').every(o => o.question === undefined), 'upgrade: his answered rows keep their own question');
+check(byId('g1')[0].name === 'Prioritizing' && byId('g1')[0].section === 'How you work', 'upgrade: group gets the short title and section');
+const g1Rows = ops.filter(o => (o.op === 'updateItem' && ['a', 'b', 'c', 'd', 'e'].includes(o.id)) || (o.op === 'insertItem' && o.group_id === 'g1'));
+check(g1Rows.length === 4 && g1Rows.find(o => o.sort_order === 0).question === 'How do you prioritize when everything is urgent?', 'upgrade: 4 wordings, the full question first', JSON.stringify(g1Rows));
+check(del.has('c') && del.size === 1, 'upgrade: only the empty extra row goes', JSON.stringify([...del]));
+check(byId('s1')[0].question === 'What are your salary expectations?' && byId('s2')[0].question === 'What are you looking for in pay?' && ops.filter(o => o.op === 'insertItem' && o.group_id === 'g2').length === 2, 'upgrade: empty rows are reused, the rest inserted');
+check(ops.some(o => o.op === 'insertGroup' && o.name === "Why I'm leaving") && ops.filter(o => o.op === 'insertGroup').length === 43 - 2, 'upgrade: questions not in the old note are added', ops.filter(o => o.op === 'insertGroup').length);
+check(byId('g9').length === 1 && byId('g9')[0].sort_order === 43 && byId('g9')[0].name === undefined, 'upgrade: his own group is left alone, moved below the seed');
+const tooMany = N.upgradePlan([{ id: 'g', name: 'SQL', items: ['p', 'q', 'r', 's', 't'].map((x, i) => ({ id: x, question: 'q' + x, sort_order: i, answer_html: 'a' })) }]);
+check(tooMany.filter(o => o.op === 'deleteEmptyItem').length === 0 && tooMany.filter(o => o.op === 'updateItem' && 'pqrst'.includes(o.id)).length === 5, 'upgrade: more answered rows than the cap all stay');
 
 // Version history — ONE door, nothing overwritten silently
 let item = { answer_html: '', key_points: '', version: 0, versions: [] };
@@ -74,12 +106,14 @@ check(N.sortGroups([{ id: 1, sort_order: 2 }, { id: 2, sort_order: 0 }, { id: 3,
 // Live question → closest variation (paraphrases from his real interviews)
 const seedGroups = N.seedRows().map((g, i) => ({ id: 'g' + i, name: g.name, items: g.items.map((it, j) => ({ id: 'g' + i + 'i' + j, question: it.question })) }));
 const cases = [
-  ['So how do you prioritize when you have a lot of competing things coming at you?', 'Prioritising'],
-  ['How do you convince an executive who just will not budge?', "Selling to an executive who won't budge"],
-  ["What's the difference between a left join and an inner join?", 'SQL'],
-  ['Could you tell us a bit about yourself?', 'Tell me about yourself'],
+  ['So how do you prioritize when you have a lot of competing things coming at you?', 'Prioritizing'],
+  ['How do you convince an executive who just will not budge?', "Exec who won't budge"],
+  ["What's the difference between a left join and an inner join?", 'Inner vs left join'],
+  ['Could you tell us a bit about yourself?', 'About me'],
   ['What are you expecting salary wise?', 'Salary'],
-  ['How do you validate the report before leadership sees it?', 'Checking the numbers are right'],
+  ['How do you validate the report before leadership sees it?', 'Checking a report'],
+  ["What's your biggest weakness?", 'Weakness'],
+  ['Why should we hire you over the other candidates?', 'Why hire me'],
 ];
 for (const [heard, groupName] of cases) {
   const m = N.closest(seedGroups, heard);
