@@ -1211,7 +1211,7 @@ function onHeard(text) {
   showHeard(text, m && m.groupId, m && m.itemId, m ? (findGroup(m.groupId) || {}).name || m.question : '');
   markLines();
   smartHeard(text);
-  coachFor(text);
+  coachWhenDone(text);
 }
 // Live coach: the very next thing to say, as a subtitle over the answer. Before he answers: how to open (owner 24 Oct:
 // "throwing in jokes, or greeting.. or thanking them.. if they explained everything about their company i need to say
@@ -1219,8 +1219,29 @@ function onHeard(text) {
 // thing to ADD. It fades as soon as he has said part of it; it also leaves on the next question, after 45 s, or on a
 // click. Only for the job picked at the top (never an AI call for a job he has not opened).
 var coachCtl = null, coachNow = null, coachT = null, recentQs = [], coachShown = [], themText = '', coachSaid = '', coachAdds = 0, coachLast = 0, heardAt = 0, addTimer = null;
-function onThem(text) { if (SOLO || !text || !firstTime('t', text)) return; themText = (themText + ' ' + text).slice(-2500); }
-function coachFor(text, add, retry) {
+function onThem(text) {
+  if (SOLO || !text || !firstTime('t', text)) return;
+  themText = (themText + ' ' + text).slice(-2500); lastThemAt = Date.now();
+  if (heardText && heardText.indexOf(text.trim()) < 0) themAfter += ' ' + text;
+  // they are talking again: a line on screen for the moment before is stale (it never sits there)
+  if (coachNow && !coachNow.add && Date.now() - coachNow.at > 1500 && text.trim().split(/\s+/).length >= 4) hideCoach();
+}
+// Owner 24 Oct: highlight only, so nothing jumps on a wrong or half question. The strip waits the same way: xHire can
+// flag a question from its first half, so the strip comes once the interviewer has been quiet for 1.2 s and uses all
+// they said (the rest of the question too). A typed question has no one talking, so it comes at once.
+var COACH_QUIET = 1200, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '';
+function coachWhenDone(text) {
+  hideCoach(); clearTimeout(coachWait); themAfter = ''; var t0 = Date.now();
+  (function check() {
+    if (text !== heardText) return; // a newer question took over
+    var quiet = Date.now() - lastThemAt;
+    if (quiet < COACH_QUIET && Date.now() - t0 < 15000) { coachWait = setTimeout(check, COACH_QUIET - quiet + 50); return; }
+    coachQ = themAfter.trim() ? (text + ' ' + themAfter.trim()).slice(-600) : text;
+    coachFor(coachQ, false, false, text);
+  })();
+}
+function coachFor(text, add, retry, key) {
+  key = key || text;
   if (!add && !retry) { hideCoach(); coachAdds = 0; coachShown = []; heardAt = Date.now(); }
   var sid = $('job') && $('job').value; if (!sid) return;
   if (coachCtl) try { coachCtl.abort(); } catch (e) {}
@@ -1229,14 +1250,14 @@ function coachFor(text, add, retry) {
   coachLast = Date.now(); var asked = saidText;
   fetch(location.origin + '/api/note/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, sessionId: sid, recent: recent, theySaid: themText, youSaid: add ? saidText : '', shown: coachShown }), signal: ctl ? ctl.signal : undefined })
     .then(function (r) { // two questions within 0.7 s: the server refuses the second as too fast, so it asks once more
-      if (r.status === 429 && !retry) { setTimeout(function () { if (text === heardText) coachFor(text, add, true); }, 800); return null; }
+      if (r.status === 429 && !retry) { setTimeout(function () { if (key === heardText) coachFor(text, add, true, key); }, 800); return null; }
       return r.ok ? r.json() : null;
     })
-    .then(function (j) { if (j && j.coach && text === heardText && (!add || !coachNow)) showCoach(j.coach, add); })
+    .then(function (j) { if (j && j.coach && key === heardText && (!add || !coachNow)) showCoach(j.coach, add); })
     .catch(function () {});
 }
 function showCoach(c, add) {
-  coachNow = c; coachSaid = ''; coachShown.push(c.say); $('coach-lbl').textContent = add ? 'Add:' : 'They want:'; $('coach-want').textContent = c.want;
+  coachNow = c; c.add = !!add; c.at = Date.now(); coachSaid = ''; coachShown.push(c.say); $('coach-lbl').textContent = add ? 'Add:' : 'They want:'; $('coach-want').textContent = c.want;
   $('coach-say').innerHTML = (c.lines && c.lines.length ? c.lines : [c.say]).map(function (l) { return '<div>' + esc(l) + '</div>'; }).join(''); // one line per sentence
   $('coach').classList.remove('done'); $('coach').classList.add('show');
   clearTimeout(coachT); coachT = setTimeout(hideCoach, 45000);
@@ -1261,7 +1282,7 @@ function coachOnSaid(text) {
   clearTimeout(addTimer);
   addTimer = setTimeout(function () {
     if (coachNow || !heardText || coachAdds >= 3 || Date.now() - heardAt > 180000 || Date.now() - coachLast < 6000 || saidText.length < 40) return;
-    coachAdds++; coachFor(heardText, true);
+    coachAdds++; coachFor(coachQ || heardText, true, false, heardText);
   }, 2500);
 }
 function smartHeard(text) { // ~1 s later: which question it really is + the line to read. The newest question wins.
