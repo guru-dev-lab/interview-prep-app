@@ -3225,7 +3225,7 @@ async function generateNoteAnswer(session, userId, item, mode, custom) {
   return { answerHtml: answerNote.answerToHtml(text), keyPoints };
 }
 
-// Detailed spoken answers (owner, 24 Oct, showing a ~2 minute "About me": "some questions required good details...
+// Detailed spoken answers (owner, 24 Oct: "some questions required good details...
 // that human and slow word for word start"). For the questions the seed marks (lib DETAIL_ARCS): paragraphs he reads
 // out loud slowly, following that question's path, built for this job and company from the résumé only. Written once
 // ahead of the call, so the better model; Shorter / Add a number / Sound like me / his own change still apply.
