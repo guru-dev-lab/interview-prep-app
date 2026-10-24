@@ -176,6 +176,8 @@ body.calls .side-foot{display:none}
 .coach .cw b{font-weight:700;margin-right:4px}
 .coach .cs{font-size:17px;font-weight:600;line-height:1.38}
 .coach.done .cs{color:#86EFAC}
+.coach .cs div+div{margin-top:3px}
+.coach .cs div.ok{color:#86EFAC;opacity:.6}
 .page{flex:1;overflow-y:auto;min-height:0}
 .sheet{max-width:880px;margin:0 auto;padding:18px 34px 60px}
 body.expand .sheet,body.solo .sheet{max-width:1100px}
@@ -1234,7 +1236,8 @@ function coachFor(text, add, retry) {
     .catch(function () {});
 }
 function showCoach(c, add) {
-  coachNow = c; coachSaid = ''; coachShown.push(c.say); $('coach-lbl').textContent = add ? 'Add:' : 'They want:'; $('coach-want').textContent = c.want; $('coach-say').textContent = c.say;
+  coachNow = c; coachSaid = ''; coachShown.push(c.say); $('coach-lbl').textContent = add ? 'Add:' : 'They want:'; $('coach-want').textContent = c.want;
+  $('coach-say').innerHTML = (c.lines && c.lines.length ? c.lines : [c.say]).map(function (l) { return '<div>' + esc(l) + '</div>'; }).join(''); // one line per sentence
   $('coach').classList.remove('done'); $('coach').classList.add('show');
   clearTimeout(coachT); coachT = setTimeout(hideCoach, 45000);
 }
@@ -1249,7 +1252,10 @@ function heardPart(line, said) {
 function coachOnSaid(text) {
   if (coachNow && !$('coach').classList.contains('done')) {
     coachSaid += ' ' + text;
-    if (heardPart(coachNow.say, NoteMatch.stems(coachSaid))) { $('coach').classList.add('done'); clearTimeout(coachT); coachT = setTimeout(hideCoach, 1500); } // green, then gone
+    // each line ticks green once part of it is heard; when the last one is, the strip goes green, then away
+    var said = NoteMatch.stems(coachSaid), rows = [].slice.call($('coach-say').children);
+    rows.forEach(function (d) { if (!d.classList.contains('ok') && heardPart(d.textContent, said)) d.classList.add('ok'); });
+    if (rows.length && rows[rows.length - 1].classList.contains('ok')) { $('coach').classList.add('done'); clearTimeout(coachT); coachT = setTimeout(hideCoach, 1500); }
   }
   // Mid-answer, when he pauses with nothing on screen: the one thing to add (at most 3 per question, 6 s apart, 3 min).
   clearTimeout(addTimer);
@@ -1267,6 +1273,7 @@ function smartHeard(text) { // ~1 s later: which question it really is + the lin
       if (!j || text !== heardText) return; // a newer question came in meanwhile
       if (j.groupId && findGroup(j.groupId)) {
         setHeard(j.groupId);
+        writeHeard(j.groupId, j.itemId);
         hot = j.line ? { gid: j.groupId, text: j.line } : null;
         showHeard(text, j.groupId, j.itemId, j.name);
         markLines();
@@ -1278,6 +1285,16 @@ function smartHeard(text) { // ~1 s later: which question it really is + the lin
     }).catch(function () {});
 }
 var aiSaid = {}, saidTimer = null, saidSent = 0;
+// Owner 24 Oct: "when match with question with no answer, it must start writing immediately". The question the call
+// asked (the smart match, never the instant guess) is written in the background the moment it is heard, so it is ready
+// when he opens it; the screen never switches. Same rules as writing on first open: a job picked at the top (no AI for
+// a job he has not opened), auto-writing on, written once.
+function writeHeard(gid, iid) {
+  var g = findGroup(gid); if (!g || !$('job').value || N.settings.autoGenerate === false || (genAll && genAll.running)) return;
+  var it = g.items.find(function (i) { return i.id === iid; }) || g.items[0];
+  if (!it || it.answer_html || busy[it.id] || it._autoTried) return;
+  it._autoTried = true; aiChange(it, g.section === NEWQ ? 'rich' : 'regenerate', '');
+}
 // ===== New questions (owner 24 Oct): a plain section that fills itself from calls; each keeps what xHire answered live
 var NEWQ = 'New questions', pendingLive = [];
 var pendingNew = '';
@@ -1288,7 +1305,7 @@ function addNewQuestion(title, question) {
   api('POST', '/api/note/from-call', { questions: [{ title: title, question: question, ways: [] }], section: NEWQ }).then(function (r) {
     if (!r.ok) return;
     r.json.added.forEach(function (g) { N.groups.push(g); attachLive(g); });
-    if (r.json.added.length) { setHeard(r.json.added[0].id); toast('New question kept: ' + r.json.added[0].name, 2500); if (question === pendingNew) showHeard(heardText, null, null, true); } // only now is it kept // its section opens and it is marked heard; what he is reading stays
+    if (r.json.added.length) { setHeard(r.json.added[0].id); writeHeard(r.json.added[0].id, (r.json.added[0].items[0] || {}).id); toast('New question kept: ' + r.json.added[0].name, 2500); if (question === pendingNew) showHeard(heardText, null, null, true); } // only now is it kept // its section opens and it is marked heard; what he is reading stays
   }).catch(function () {});
 }
 function onLive(question, answer) { // what xHire answered live on the call
