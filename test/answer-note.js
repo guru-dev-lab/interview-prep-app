@@ -181,5 +181,9 @@ check(N.paragraphsToHtml('I build reports.\nSeven years.\n\n• I ask what decis
 check(N.parseForm('story') === 'story' && N.parseForm(' Explain.') === 'explain' && N.parseForm('banana') === 'short' && N.parseForm('') === 'short', 'form: the fast model\'s one word is read; anything else is written short');
 check(N.FORMS.every(f => f === 'short' || f === 'explain' || N.DETAIL_ARCS[f]) && N.FORMS.every(f => N.FORM_LABEL[f]) && N.FORMS.every(f => N.FORM_GUIDE.includes(f + ':')), 'form: every form has a writer, a label and a line in the guide');
 
+// Owner 24 Oct: "IT should be ready to go reading" — no line that tells him what to say.
+check(N.dropStageTalk("<li>I'll say this happened at R&L.</li><li>I would say that my strength is clean data.</li><li>Mention that usage tripled.</li>") === "<li>This happened at R&L.</li><li>My strength is clean data.</li><li>Usage tripled.</li>", 'read aloud: stage words go, the words stay');
+check(["I said no to the request.", "I can say yes to that.", "I'll walk you through the pipeline.", "What I'd say to a new analyst is simple."].every(t => N.dropStageTalk(t) === t), 'read aloud: real speech is left alone');
+check(/word for word/.test(N.READ_ALOUD), 'read aloud: the writers get the rule');
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);
