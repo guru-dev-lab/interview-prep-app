@@ -635,6 +635,9 @@ document.body.style.background='transparent';
 
     <!-- Right-side icons -->
     <div class="tb-utils">
+      <button class="tb-btn" id="btn-note" data-tip="Answer Note" onclick="openAnswerNote()">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>
+      </button>
       <button class="tb-btn" id="btn-config" data-tip="Settings" onclick="openSettings()">
         <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       </button>
@@ -938,6 +941,21 @@ isElectronMode = params.get('electron') === '1' || !!(window.electronAPI && wind
 
 // Load current answer style for this session
 if (SESSION_ID && TOKEN) loadAnswerStyle();
+
+// Answer Note (23 Oct): its own window from the server page /note; opened for this session's job.
+// Desktop: window.open from the overlay makes a normal always-on-top window (no app build); browser: a new tab.
+function openAnswerNote() {
+  var url = location.origin + '/note?token=' + encodeURIComponent(TOKEN) + (SESSION_ID ? '&session=' + encodeURIComponent(SESSION_ID) : '');
+  if (isElectronMode) window.open(url, 'xhire-note', 'width=1040,height=720,alwaysOnTop=yes,title=Answer Note');
+  else window.open(url, 'xhire-note');
+}
+// Every detected interviewer question goes to the note window too (same origin: BroadcastChannel, localStorage as the
+// fallback). Fire-and-forget; the live pipeline never waits on it.
+function tellAnswerNote(text) {
+  if (!text) return;
+  try { new BroadcastChannel('xhire-note').postMessage({ type: 'question', text: text }); } catch (e) {}
+  try { localStorage.setItem('xhire_note_q', JSON.stringify({ text: text, ts: Date.now() })); } catch (e) {}
+}
 
 // Show Electron-only buttons (quit, go live, stealth)
 if (isElectronMode) {
@@ -1425,6 +1443,7 @@ function connect() {
       var btn = $('btn-wsay');
       btn.style.borderColor = '#34D399';
       setTimeout(function() { btn.style.borderColor = ''; }, 1000);
+      tellAnswerNote(msg.text); // the Answer Note window (if open) jumps to the closest prepared answer
       // Co-pilot mode: the server routed this question here (no Q&A card) — answer it with the shared screen
       if (copilotActive && msg.text) copilotSend({ ask: msg.text });
     }
