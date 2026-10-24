@@ -46,11 +46,18 @@ svg{display:block}
 body.noside .side,body.noside .resizer{display:none}
 .resizer{width:6px;flex-shrink:0;cursor:col-resize;background:transparent;border-left:1px solid var(--line);position:relative}
 .resizer:hover,.resizer.drag{background:var(--sel-line)}
-.list{flex:1;overflow-y:auto;padding:6px 8px 12px}
-.sec{display:flex;align-items:center;gap:6px;padding:12px 6px 6px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;user-select:none;position:sticky;top:-6px;background:var(--side);z-index:2}
-.sec .chev{transition:transform .15s;color:var(--dim)}
+.list{flex:1;overflow-y:auto;padding:0 8px 12px}
+/* section bar: solid so rows never show through it while it sticks, a yellow marker, a count badge */
+.sec{display:flex;align-items:center;gap:8px;margin:0 -8px 4px;padding:10px 14px 9px 12px;font-size:13.5px;font-weight:750;color:var(--text);cursor:pointer;user-select:none;position:sticky;top:0;background:var(--side);z-index:2;border-bottom:1px solid var(--line2);border-top:1px solid var(--line)}
+.sec:first-child{border-top:none}
+.sec:hover{background:var(--chrome)}
+.sec .bar{width:4px;height:16px;border-radius:2px;background:var(--accent-bg);flex-shrink:0}
+.sec .chev{transition:transform .15s;color:var(--dim);margin-left:auto}
 .sec.closed .chev{transform:rotate(-90deg)}
-.sec .cnt{margin-left:auto;font-weight:600;color:var(--dim);font-size:12px}
+.sec .cnt{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--line);border-radius:10px;padding:2px 8px;white-space:nowrap}
+.sec .cnt.done{background:var(--ok);color:#fff}
+body.dark .sec .cnt.done{color:#10301e}
+.sec + .row{margin-top:4px}
 .row{display:flex;gap:9px;align-items:flex-start;padding:9px 8px 9px 10px;border-radius:9px;cursor:pointer;position:relative;border:1px solid transparent;margin-bottom:2px;user-select:none}
 .row:hover{background:var(--line)}
 .row.active{background:var(--sel);border-color:var(--sel-line)}
@@ -436,7 +443,7 @@ function renderList() {
     var closed = !!closedSecs[sec.name] && !filter;
     var ready = sec.groups.filter(function (g) { return rowStatus(g).cls === 'done'; }).length;
     var h = document.createElement('div'); h.className = 'sec' + (closed ? ' closed' : ''); h.title = closed ? 'Open this section' : 'Fold this section';
-    h.innerHTML = '<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span>' + esc(sec.name) + '</span><span class="cnt">' + ready + ' of ' + sec.groups.length + ' ready</span>';
+    h.innerHTML = '<span class="bar"></span><span>' + esc(sec.name) + '</span><span class="cnt' + (ready === sec.groups.length ? ' done' : '') + '" title="' + ready + ' of ' + sec.groups.length + ' questions fully answered">' + ready + '/' + sec.groups.length + '</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
     h.onclick = function () { if (closedSecs[sec.name]) delete closedSecs[sec.name]; else closedSecs[sec.name] = 1; lsSet('xhire_note_closed', JSON.stringify(closedSecs)); renderList(); };
     host.appendChild(h);
     if (closed) return;
