@@ -3260,6 +3260,23 @@ Last line, outside the answer: KEY: <at most 12 words, the one thing to remember
   return { answerHtml: html, keyPoints };
 }
 const DETAIL_ARCS_TEXT = arc => answerNote.DETAIL_ARCS[arc] || '';
+// The best way to answer this question (lib FORM_GUIDE): the seed's mark wins; anything else (his own questions, ones
+// from calls, renamed ones) is decided by the fast model in about half a second, once per wording, then remembered.
+const answerFormSeen = new Map();
+async function pickAnswerForm(groupName, question) {
+  const seeded = answerNote.detailFor(groupName); if (seeded) return seeded;
+  const q = String(question || '').trim().slice(0, 400), k = q.toLowerCase();
+  if (!q) return 'short';
+  if (answerFormSeen.has(k)) return answerFormSeen.get(k);
+  const t0 = Date.now();
+  let form = 'short';
+  try { form = answerNote.parseForm(await callClaude(answerNote.FORM_GUIDE, 'QUESTION: ' + q, 8, MODEL_HAIKU, { __tag: 'note-form' })); }
+  catch (e) { console.error('[Note] form pick failed, writing it short:', e.message); return 'short'; }
+  if (answerFormSeen.size > 2000) answerFormSeen.clear();
+  answerFormSeen.set(k, form);
+  console.log(`[Note] form ${form} ${Date.now() - t0}ms q="${q.slice(0, 60)}"`);
+  return form;
+}
 // "Give us a quick introduction": only the first two steps and the close, renumbered, so the path can't outvote the length
 const quickPath = text => { const steps = text.split('\n').filter(l => /^\d+\./.test(l)); return [steps[0], steps[1], steps[steps.length - 1]].filter(Boolean).map((l, i) => l.replace(/^\d+\./, (i + 1) + '.')).join('\n'); };
 
@@ -3539,11 +3556,12 @@ app.post('/api/note/items/:iid/generate', authMiddleware, async (req, res) => {
     const mode = answerNote.MODES[req.body?.mode] ? req.body.mode : 'regenerate';
     const custom = String(req.body?.instruction || '').trim();
     if (mode === 'custom' && !custom) return res.status(400).json({ error: 'Say how to change it.' });
-    const arc = mode === 'rich' ? '' : answerNote.detailFor((await pool.query('SELECT name FROM answer_note_groups WHERE id = $1', [item.group_id])).rows[0]?.name);
-    const out = mode === 'rich' ? await generateStudyNote(session, req.userId, item)
-      : arc ? await generateDetailedAnswer(session, req.userId, item, arc, mode, custom)
-      : await generateNoteAnswer(session, req.userId, item, mode, custom);
-    const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label: answerNote.changeLabel(mode, custom) });
+    const form = mode === 'rich' ? 'explain' : await pickAnswerForm((await pool.query('SELECT name FROM answer_note_groups WHERE id = $1', [item.group_id])).rows[0]?.name, item.question);
+    const out = mode === 'rich' || (form === 'explain' && mode === 'regenerate') ? await generateStudyNote(session, req.userId, item)
+      : answerNote.DETAIL_ARCS[form] ? await generateDetailedAnswer(session, req.userId, item, form, mode, custom)
+      : await generateNoteAnswer(session, req.userId, item, mode, custom); // a change to a study note (Shorter, his own) is written as short lines
+    const label = mode === 'regenerate' ? answerNote.FORM_LABEL[form] || answerNote.changeLabel(mode, custom) : answerNote.changeLabel(mode, custom);
+    const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label });
     const saved = change.changed ? await writeNoteItem(item, change) : item;
     res.json(Object.assign(noteItemOut(saved), { job: { id: session.id, company: session.company, role: session.role } }));
   } catch (e) { console.error('[Note] generate failed:', e.message); res.status(500).json({ error: e.message }); }

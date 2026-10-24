@@ -66,7 +66,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   let sh = await api('POST', '/api/note/items/' + item.id + '/generate', { mode: 'shorter', sessionId: sess.id });
   const shPlain = String(sh.j.answer_html || '').replace(/<[^>]+>/g, ' ');
   const lines = h => (h.match(/<li>|<p>/g) || []).length; // bullets or spoken paragraphs
-  check(sh.r.status === 200 && sh.j.version === 4 && sh.j.versions.length === 3 && sh.j.versions[2].by === 'ai' && sh.j.versions[2].label === 'Regenerated', 'Shorter: version 4, the full AI answer kept', JSON.stringify(sh.j.versions));
+  check(sh.r.status === 200 && sh.j.version === 4 && sh.j.versions.length === 3 && sh.j.versions[2].by === 'ai' && sh.j.versions[2].label === 'Written as a spoken intro', 'Shorter: version 4, the full AI answer kept (labelled with how it was written)', JSON.stringify(sh.j.versions));
   check(lines(sh.j.answer_html) <= Math.max(2, lines(gen.j.answer_html)) && shPlain.length < aiText.length + 40, 'Shorter is not longer (' + lines(gen.j.answer_html) + ' → ' + lines(sh.j.answer_html) + ' lines)', aiText.length + ' → ' + shPlain.length);
   const undo = await api('POST', '/api/note/items/' + item.id + '/restore', { versionId: sh.j.versions[2].id });
   check(undo.r.status === 200 && undo.j.version === 5 && undo.j.answer_html === gen.j.answer_html && undo.j.versions.length === 4, 'Undo restores the full AI answer; the short one stays in history', JSON.stringify(undo.j).slice(0, 300));
