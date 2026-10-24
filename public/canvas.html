@@ -635,7 +635,7 @@ document.body.style.background='transparent';
 
     <!-- Right-side icons -->
     <div class="tb-utils">
-      <button class="tb-btn" id="btn-note" data-tip="Answer Note" onclick="openAnswerNote()">
+      <button class="tb-btn" id="btn-note" data-tip="Answer Note" onclick="openAnswerNote()" style="display:none"><!-- shown only in the desktop app (owner 24 Oct) -->
         <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>
       </button>
       <button class="tb-btn" id="btn-config" data-tip="Settings" onclick="openSettings()">
@@ -944,6 +944,7 @@ if (SESSION_ID && TOKEN) loadAnswerStyle();
 
 // Answer Note (23 Oct): its own window from the server page /note; opened for this session's job.
 // Desktop: window.open from the overlay makes a normal always-on-top window (no app build); browser: a new tab.
+if (window.electronAPI) { var _bn = document.getElementById('btn-note'); if (_bn) _bn.style.display = ''; }
 function openAnswerNote() {
   var url = location.origin + '/note?token=' + encodeURIComponent(TOKEN) + (SESSION_ID ? '&session=' + encodeURIComponent(SESSION_ID) : '');
   if (isElectronMode) window.open(url, 'xhire-note', 'width=1040,height=720,alwaysOnTop=yes,title=Answer Note');
