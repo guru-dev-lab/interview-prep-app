@@ -297,6 +297,7 @@ function showStep(id) {
 // Answer Note (owner, 23 Oct) — desktop AND browser. Its own window: the server page /note (no app build needed).
 // Desktop: window.open from the overlay makes a normal always-on-top window; browser: a new tab.
 function renderNoteCard() {
+  if (!window.electronAPI) return;                 // owner 24 Oct: the Answer Note lives in the desktop app only
   if (document.getElementById('note-card')) return;
   var list = document.getElementById('session-list'); if (!list) return;
   var card = document.createElement('div');
