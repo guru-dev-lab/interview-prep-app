@@ -949,6 +949,7 @@ if (window.electronAPI) { var _bn = document.getElementById('btn-note'); if (_bn
 function openAnswerNote() {
   var url = location.origin + '/note?embed=1&token=' + encodeURIComponent(TOKEN) + (SESSION_ID ? '&session=' + encodeURIComponent(SESSION_ID) : '');
   if (!window.electronAPI) { window.open(url.replace('embed=1&', ''), 'xhire-note'); return; }
+  if (window.electronAPI.openNote) { window.electronAPI.openNote(url.replace('embed=1&', '') + '&win=1'); return; } // 1.1.7+: its own protected window, separate from this overlay
   var p = document.getElementById('note-panel');
   if (p) { closeAnswerNote(); return; } // the toolbar button toggles it
   var tb = document.querySelector('.toolbar'); var top = tb ? Math.round(tb.getBoundingClientRect().bottom) + 4 : 44;

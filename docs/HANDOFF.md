@@ -1,5 +1,22 @@
 # Handoff
 
+## 24 Oct (late) — Answer Note: its own hidden window (app 1.1.7) + call memory (branch feat/note-window-and-calls)
+- Owner: "I NEED IT SEPARATE", "not moving with xhire if i change or swipe window", plus "take note of what was said on the
+  call and so next time i can read and build more questions from it for the same session".
+- HARD: never window.open in the desktop app (that window is NOT content-protected). electron/main.js openNoteWindow: its own
+  BrowserWindow, setContentProtection(true), NOT visibleOnAllWorkspaces, floating on top (toggle), bounds + onTop remembered in
+  userData/note-window.json, window.open denied, navigation off /note blocked. preload: openNote(url), noteOnTop(on).
+- Pages: launcher + canvas call electronAPI.openNote(url&win=1) when present; an older app (1.1.6) keeps the note INSIDE the
+  protected xHire window (launcher loadCanvas / canvas iframe panel). note.html modes: WIN / DESKTOP (old app) / EMBED / browser.
+- Calls tab in the note: GET /api/note/calls, GET /api/note/calls/:tid (Them/You via labelTranscript), POST /api/note/from-call.
+  The notes ARE the call report (POST /api/sessions/:id/transcripts/:tid/report): now speaker-labelled, plus aboutThem,
+  candidateSaid, noteQuestions/likelyNext [{title, question, ways<=3, sameAs}]; sameAs = which note question it IS, decided by
+  the writer (measured: wording similarity cannot tell rewordings from different questions). Calls without notes get them
+  made on open (newest 3). Added questions go under section "From calls: <company>"; repeats skipped (lib questionsToAdd).
+- Proof: npm test (answer-note 51), test/answer-note-calls-e2e.js 17/17 local (1 model call), Calls tab Chrome 11/11,
+  real electron/main.js under a test harness (own userData, tccutil + mic prompt blocked) 15/15.
+- Desktop release: tag v1.1.7 builds via .github/workflows/build-electron.yml; auto-update installs on quit.
+
 ## 24 Oct — Answer Note v2 (branch feat/answer-note-v2)
 - Owner on v1: "the ugliest", "left side must show full question, expandable windows everywhere", "variations is harder to
   spot", "i meant another way the question could be framed and most 3", "hard to see all whats it at glance".

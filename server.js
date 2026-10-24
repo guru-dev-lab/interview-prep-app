@@ -2474,11 +2474,15 @@ app.post('/api/sessions/:id/transcripts/:tid/report', authMiddleware, async (req
       });
     }
 
-    // Format transcript for AI
-    const txText = lines.map(l => {
-      const time = l.ts ? new Date(l.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
-      return `[${time}] ${l.text}`;
-    }).join('\n');
+    // The Answer Note's questions, numbered: the notes say which one each call question IS (same intent, any wording).
+    // Wording alone cannot tell (measured 24 Oct: rewordings score 0.08 to 0.7, different questions up to 0.71).
+    const noteQs = (await pool.query(`SELECT g.id, g.name, (SELECT i.question FROM answer_note_items i WHERE i.group_id = g.id ORDER BY i.sort_order, i.created_at LIMIT 1) AS q
+      FROM answer_note_groups g JOIN answer_notes n ON n.id = g.note_id WHERE n.user_id = $1 ORDER BY g.sort_order LIMIT 150`, [req.userId])).rows.filter(r => r.q);
+    const noteList = noteQs.length ? '\n\nCANDIDATE\'S NOTE (numbered questions they already prepared):\n' + noteQs.map((r, i) => `${i + 1}. ${r.q}`).join('\n') : '';
+
+    // Format transcript for AI: who said it (Interviewer / Candidate), echoes and mic bleed dropped (labelTranscript),
+    // so the notes never put the interviewer's words in the candidate's mouth (Answer Note call memory, 24 Oct).
+    const txText = labelTranscript(lines).join('\n');
 
     const duration = tx.ended_at ? Math.round((new Date(tx.ended_at) - new Date(tx.started_at)) / 60000) : 0;
 
@@ -2495,12 +2499,18 @@ JSON structure:
   "areasToImprove": ["topics where candidate struggled, gave weak answers, or could improve"],
   "actionItems": ["specific things the candidate should do before next call"],
   "interviewerSignals": ["positive or negative signals from the interviewer — enthusiasm, follow-ups, concerns expressed"],
-  "nextCallPrep": ["specific suggestions for what to prepare for the next round based on this call"]
+  "nextCallPrep": ["specific suggestions for what to prepare for the next round based on this call"],
+  "aboutThem": ["facts the interviewers shared about the company, team, role, tools, data, problems, process, people (names and titles), next steps"],
+  "candidateSaid": ["what the candidate claimed or told in this call: stories, tools, numbers, reasons, salary or dates given, so the next call stays consistent"],
+  "noteQuestions": [{"title": "2 to 4 word label", "question": "the interviewer's real question, cleaned into one clear sentence", "ways": ["up to 3 other ways to word THAT SAME question"], "sameAs": 0}],
+  "likelyNext": [{"title": "2 to 4 word label", "question": "a question the next round will likely ask, given this call", "ways": ["up to 3 other ways to word that same question"], "sameAs": 0}]
 }
 
+noteQuestions: every real interview question the interviewer asked (skip small talk, logistics chatter and "can you hear me"); merge a question asked in two parts into one. likelyNext: at most 5, specific to what came up. "ways" are rewordings of the same question, never a different question. "sameAs": the number of the question in CANDIDATE'S NOTE that asks the same thing (same intent, any wording), else 0. Plain words, no em dashes.
+
 Be specific — reference actual topics, tools, and moments from the transcript. No generic advice.`,
-      ctxLine + 'TRANSCRIPT (' + duration + ' min, ' + lines.length + ' lines):\n' + txText.substring(0, 12000) + priorContext,
-      2000, MODEL_HAIKU
+      ctxLine + 'TRANSCRIPT (' + duration + ' min, ' + lines.length + ' lines):\n' + txText.substring(0, 14000) + priorContext + noteList,
+      3500, MODEL_HAIKU
     );
 
     let report;
@@ -2510,6 +2520,12 @@ Be specific — reference actual topics, tools, and moments from the transcript.
     } catch (e) {
       report = { summary: reportResult.substring(0, 500), error: 'Parse failed' };
     }
+
+    // "sameAs" number → the note question it is (id + title), so the note can say "In your note: Prioritizing"
+    for (const k of ['noteQuestions', 'likelyNext']) if (Array.isArray(report[k])) report[k] = report[k].map(q => {
+      const hit = noteQs[(parseInt(q && q.sameAs, 10) || 0) - 1];
+      return { ...q, sameAs: hit ? { id: hit.id, name: hit.name } : null };
+    });
 
     // Save report to DB
     await pool.query('UPDATE live_transcripts SET report = $1 WHERE id = $2', [JSON.stringify(report), req.params.tid]);
@@ -3169,6 +3185,48 @@ async function generateNoteAnswer(session, userId, item, mode, custom) {
   if (!text || isNonAnswer(text)) throw new Error('The writer gave no usable answer. Try again.');
   return { answerHtml: answerNote.answerToHtml(text), keyPoints };
 }
+
+// ---- Calls (owner, 24 Oct): "take note of what was said on the call, so next time I can read it and build more
+// questions from it for the same session". The notes are the call report (POST /api/sessions/:id/transcripts/:tid/report,
+// one place); these routes list a job's calls, give one call's conversation, and add a call's questions to the note.
+app.get('/api/note/calls', authMiddleware, async (req, res) => {
+  try {
+    const session = await noteSessionFor(req.userId, String(req.query.sessionId || ''));
+    if (!session) return res.json({ session: null, calls: [] });
+    const r = await pool.query(`SELECT id, started_at, ended_at, stage, interviewer_name, interviewer_title, report, jsonb_array_length(coalesce(transcript, '[]'::jsonb)) AS n
+      FROM live_transcripts WHERE session_id = $1 AND user_id = $2 ORDER BY started_at DESC LIMIT 30`, [session.id, req.userId]);
+    res.json({ session: { id: session.id, company: session.company || '', role: session.role || '' },
+      calls: r.rows.map(c => ({ id: c.id, started_at: c.started_at, ended_at: c.ended_at, stage: c.stage || '', interviewer: [c.interviewer_name, c.interviewer_title].filter(Boolean).join(', '), lines: c.n || 0,
+        report: typeof c.report === 'string' ? (() => { try { return JSON.parse(c.report); } catch (e) { return null; } })() : (c.report || null) })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/note/calls/:tid', authMiddleware, async (req, res) => {
+  try {
+    if (!isValidUUID(req.params.tid)) return res.status(404).json({ error: 'Call not found' });
+    const r = await pool.query('SELECT transcript FROM live_transcripts WHERE id = $1 AND user_id = $2', [req.params.tid, req.userId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Call not found' });
+    const lines = labelTranscript(transcriptLines(r.rows[0].transcript)).map(l => { const you = /^Candidate: /.test(l); return { who: you ? 'you' : 'them', text: l.replace(/^(Candidate|Interviewer): /, '') }; });
+    res.json({ lines });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/note/from-call', authMiddleware, async (req, res) => {
+  try {
+    const note = await loadNote(req.userId);
+    const section = String(req.body?.section || 'From my calls').trim().slice(0, 80);
+    const tree = await noteTree(note);
+    const out = answerNote.questionsToAdd(tree.groups, req.body?.questions);
+    const added = [];
+    let order = (await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [note.id])).rows[0].n;
+    for (const q of out.add) {
+      const g = (await pool.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order) VALUES ($1, $2, $3, $4) RETURNING *', [note.id, q.title, section, order++])).rows[0];
+      const items = [];
+      for (let j = 0; j < q.items.length; j++) items.push((await pool.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4) RETURNING *', [note.id, g.id, q.items[j], j])).rows[0]);
+      added.push({ id: g.id, name: g.name, section: g.section, color: '', pinned: false, sort_order: g.sort_order, items: items.map(noteItemOut) });
+    }
+    console.log(`[Note] From a call: added ${added.length}, already in the note ${out.skipped.length}, section "${section}"`);
+    res.json({ added, skipped: out.skipped });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Note page — served no-store like the launcher (Electron must always get the latest)
 app.get('/note', (req, res) => { res.set('Cache-Control', 'no-store, no-cache, must-revalidate'); res.sendFile(path.join(__dirname, 'public', 'note.html')); });

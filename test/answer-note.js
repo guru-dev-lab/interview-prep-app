@@ -122,5 +122,18 @@ for (const [heard, groupName] of cases) {
 }
 check(N.closest(seedGroups, 'okay great, can you hear me fine?') === null, 'match: small talk matches nothing', JSON.stringify(N.closest(seedGroups, 'okay great, can you hear me fine?')));
 
+// Questions from a call -> the note: never twice, at most 3 other ways, the writer's "same as" wins over wording
+const noteG = [{ id: 'p', name: 'Prioritizing', items: [{ id: 'p0', question: 'How do you prioritize when everything is urgent?' }] }];
+const qa = N.questionsToAdd(noteG, [
+  { title: 'Urgent stakeholders', question: 'Three stakeholders say their report is most urgent. What do you do?', sameAs: { id: 'p', name: 'Prioritizing' } },
+  { title: 'Fabric pieces', question: 'Which Microsoft Fabric components have you implemented?', ways: ['What parts of Fabric have you used?', 'x', 'Which Fabric tools have you built with?', 'Have you worked hands on in Fabric?', 'One more way to ask it?'] },
+  { title: 'Fabric again', question: 'Which Microsoft Fabric components have you implemented?' },
+  { title: 'gone', question: 'Some question?', sameAs: { id: 'deleted-group', name: 'Old' } },
+  { question: 'hi' }, 'not an object',
+]);
+check(qa.skipped.length === 2 && qa.skipped[0].inNote === 'Prioritizing' && qa.skipped[1].inNote === 'Fabric pieces', 'from a call: "same as" and a repeat in the batch are skipped and named', JSON.stringify(qa.skipped));
+check(qa.add.length === 2 && qa.add[0].items.length === 4 && qa.add[0].items[0] === 'Which Microsoft Fabric components have you implemented?', 'from a call: added with the full question first and at most 3 other ways', JSON.stringify(qa.add));
+check(qa.add[1].title === 'gone', 'from a call: a "same as" pointing at a deleted question does not block it');
+
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);

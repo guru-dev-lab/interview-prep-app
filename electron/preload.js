@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setGlobalShortcut: (on) => ipcRenderer.invoke('set-global-shortcut', !!on),
   onGlobalShortcut: (callback) => ipcRenderer.on('global-shortcut', (_, action) => callback(action)),
 
+  // Answer Note: its own window, hidden from screen sharing like the overlay (1.1.7+). Pages check it exists first.
+  openNote: (url) => ipcRenderer.invoke('open-note', url),
+  noteOnTop: (on) => ipcRenderer.invoke('note-on-top', on),
+
   // Platform info
   platform: process.platform,
   isElectron: true,
