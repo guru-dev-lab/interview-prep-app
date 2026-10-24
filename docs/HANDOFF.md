@@ -1,5 +1,15 @@
 # Handoff
 
+## 24 Oct — Mac updates itself (desktop 1.1.8, branch fix/mac-self-update)
+- Cause: the Mac app is ad-hoc signed (codesign: Signature=adhoc, no Team ID) and releases had no Mac zip, so electron-updater
+  (Squirrel.Mac) could never install on a Mac; every Mac version had to be reinstalled by hand. Windows was fine.
+- Fix: electron/mac-updater.js (Mac only): latest-mac.yml from the latest GitHub release → zip for the chip → sha512 + size
+  check → ditto unpack → version check → on quit (or install-update IPC) a detached script waits for the app to exit, moves
+  the old app aside, puts the new one in, deletes the old (puts it back on failure). Build now also makes mac zips.
+- 1.1.7 and older cannot self-update: install 1.1.8 by hand ONCE; from then on Mac updates itself.
+- Proof: test/mac-updater.js 20/20 (in npm test; local feed with redirect, fake bundles: tampered zip, wrong version, dmg-only,
+  failed swap all leave the app untouched); real main.js under the harness logs "[Update] Mac: up to date (1.1.7)" from GitHub.
+
 ## 24 Oct (late) — Answer Note: its own hidden window (app 1.1.7) + call memory (branch feat/note-window-and-calls)
 - Owner: "I NEED IT SEPARATE", "not moving with xhire if i change or swipe window", plus "take note of what was said on the
   call and so next time i can read and build more questions from it for the same session".
