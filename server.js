@@ -3225,6 +3225,44 @@ async function generateNoteAnswer(session, userId, item, mode, custom) {
   return { answerHtml: answerNote.answerToHtml(text), keyPoints };
 }
 
+// Detailed spoken answers (owner, 24 Oct, showing a ~2 minute "About me": "some questions required good details...
+// that human and slow word for word start"). For the questions the seed marks (lib DETAIL_ARCS): paragraphs he reads
+// out loud slowly, following that question's path, built for this job and company from the résumé only. Written once
+// ahead of the call, so the better model; Shorter / Add a number / Sound like me / his own change still apply.
+async function generateDetailedAnswer(session, userId, item, arc, mode, custom) {
+  const question = String(item.question || '').trim();
+  const vp = await pool.query('SELECT voice_profile FROM users WHERE id = $1', [userId]);
+  const voiceProfile = (process.env.VOICE_PROFILE !== '0' && vp.rows[0] && vp.rows[0].voice_profile) || '';
+  const bankRows = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 8", [session.id])).rows;
+  const material = `THE CANDIDATE AND THE JOB:\nTHIS NOTE IS FOR: ${session.role || 'this role'} at ${session.company || 'the company'}.\n\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (the candidate's real experience):\n${bankRows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n') || 'N/A'}`;
+  const quick = /\b(quick|brief|briefly|short|in a nutshell|30 seconds|one minute)\b/i.test(question);
+  const length = quick ? 'about 120 to 160 words (under a minute spoken), three short paragraphs'
+    : arc === 'intro' ? 'about 330 to 400 words (about two and a half minutes read slowly)' : 'about 220 to 300 words (about a minute and a half read slowly)';
+  const rules = `You write what the candidate will SAY in a live interview, word for word. They read it slowly from a note, so it must sound like a real person talking, not a written essay or a cover letter.
+VOICE: first person, contractions, short sentences (most under 20 words), one idea per sentence, plain words. Include two or three natural, memorable lines in the candidate's own words about their own work: a short plain line that sums up a strength, the way a person says it out loud. Write fresh ones every time; never reuse stock phrases. No buzzwords (passionate, leverage, synergy, results-driven, dynamic, spearheaded), no em dashes, no bullet points, no headings, no lists. Never open with "Sure", "Great question" or "So"; start straight with the first sentence of the answer.
+FACTS: every concrete detail (employer, team, project, tool, action, number, result, what it was like before) must come from the resume, the Q&A bank or the job description. Use the real employers, titles, tools, certifications and numbers. Never add a detail to make it richer: no invented numbers, teams, projects, stories or before-and-after. Never invent quotes, conversations or what someone said or still does. Results only as the resume or Q&A bank states them. If the material is thin for a step, say less there, keep it true and general, or skip the step. Nothing after the last step.
+FIT: aim it at THIS role at THIS company. Lean on what the job description cares about most. Name the company naturally, once or twice at most.
+SHAPE: plain paragraphs separated by one blank line, 2 to 4 sentences each, one paragraph per step of the path below. Length: ${length}.
+PATH:
+${quick ? quickPath(DETAIL_ARCS_TEXT(arc)) : DETAIL_ARCS_TEXT(arc)}${voiceProfile ? `\nHOW THIS CANDIDATE TALKS (match it): ${voiceProfile}` : ''}
+Last line, outside the answer: KEY: <at most 12 words, the one thing to remember>`;
+  const instruction = answerNote.changeInstruction(mode, custom);
+  const current = answerNote.htmlToText(item.answer_html);
+  const changeBlock = instruction && current ? `\nCURRENT ANSWER:\n${current}\n\nCHANGE REQUESTED: ${instruction}\nKeep the spoken paragraphs and the path; keep every fact that is still true; add nothing the resume or Q&A bank does not have.\n` : '';
+  const user = `TODAY: ${new Date().toISOString().slice(0, 10)}\n${changeBlock}\nQUESTION: ${question}\n\nWrite what they will say now.`;
+  const t0 = Date.now();
+  const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1400, MODEL_SONNET, { __tag: 'note-detailed' });
+  const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/\u2014/g, ', '));
+  const html = answerNote.paragraphsToHtml(answer);
+  const words = answerNote.htmlToText(html).split(/\s+/).filter(Boolean).length;
+  console.log(`[Note] detailed ${arc} ${mode || 'regenerate'} ${Date.now() - t0}ms words=${words} paragraphs=${(html.match(/<p>/g) || []).length} q="${question.slice(0, 50)}"`);
+  if (!words || isNonAnswer(answer)) throw new Error('The writer gave no usable answer. Try again.');
+  return { answerHtml: html, keyPoints };
+}
+const DETAIL_ARCS_TEXT = arc => answerNote.DETAIL_ARCS[arc] || '';
+// "Give us a quick introduction": only the first two steps and the close, renumbered, so the path can't outvote the length
+const quickPath = text => { const steps = text.split('\n').filter(l => /^\d+\./.test(l)); return [steps[0], steps[1], steps[steps.length - 1]].filter(Boolean).map((l, i) => l.replace(/^\d+\./, (i + 1) + '.')).join('\n'); };
+
 // ---- Calls (owner, 24 Oct): "take note of what was said on the call, so next time I can read it and build more
 // questions from it for the same session". The notes are the call report (POST /api/sessions/:id/transcripts/:tid/report,
 // one place); these routes list a job's calls, give one call's conversation, and add a call's questions to the note.
@@ -3501,7 +3539,10 @@ app.post('/api/note/items/:iid/generate', authMiddleware, async (req, res) => {
     const mode = answerNote.MODES[req.body?.mode] ? req.body.mode : 'regenerate';
     const custom = String(req.body?.instruction || '').trim();
     if (mode === 'custom' && !custom) return res.status(400).json({ error: 'Say how to change it.' });
-    const out = mode === 'rich' ? await generateStudyNote(session, req.userId, item) : await generateNoteAnswer(session, req.userId, item, mode, custom);
+    const arc = mode === 'rich' ? '' : answerNote.detailFor((await pool.query('SELECT name FROM answer_note_groups WHERE id = $1', [item.group_id])).rows[0]?.name);
+    const out = mode === 'rich' ? await generateStudyNote(session, req.userId, item)
+      : arc ? await generateDetailedAnswer(session, req.userId, item, arc, mode, custom)
+      : await generateNoteAnswer(session, req.userId, item, mode, custom);
     const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label: answerNote.changeLabel(mode, custom) });
     const saved = change.changed ? await writeNoteItem(item, change) : item;
     res.json(Object.assign(noteItemOut(saved), { job: { id: session.id, company: session.company, role: session.role } }));

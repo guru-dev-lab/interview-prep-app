@@ -54,7 +54,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   let gen = await api('POST', '/api/note/items/' + item.id + '/generate', { mode: 'regenerate', sessionId: sess.id });
   const genMs = Date.now() - t0;
   const plain = String(gen.j.answer_html || '').replace(/<[^>]+>/g, ' ');
-  check(gen.r.status === 200 && gen.j.version === 3 && /<li>/.test(gen.j.answer_html) && plain.length > 60, 'AI write: list answer, version 3 (' + genMs + ' ms)', JSON.stringify(gen.j).slice(0, 400));
+  check(gen.r.status === 200 && gen.j.version === 3 && /<p>/.test(gen.j.answer_html) && !/<li>/.test(gen.j.answer_html) && plain.length > 60, 'AI write: About me is a spoken answer in paragraphs (owner 24 Oct), version 3 (' + genMs + ' ms)', JSON.stringify(gen.j).slice(0, 400));
   check(gen.j.versions.length === 2 && gen.j.versions[1].preview === 'Edit two' && gen.j.versions[1].by === 'you', 'AI write kept the manual edit in history', JSON.stringify(gen.j.versions));
   check(gen.j.key_points && gen.j.key_points.length > 3 && gen.j.key_points.split(/\s+/).length <= 16, 'KEY line present and short', gen.j.key_points);
   check(/\bI\b|\bI'm\b|\bmy\b/i.test(plain) && !/the candidate|resume/i.test(plain), 'first person, never talks about "the candidate"', plain.slice(0, 300));
@@ -65,7 +65,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   // 4. "Shorter" (second and last model call) keeps the AI version in history; Undo = restore
   let sh = await api('POST', '/api/note/items/' + item.id + '/generate', { mode: 'shorter', sessionId: sess.id });
   const shPlain = String(sh.j.answer_html || '').replace(/<[^>]+>/g, ' ');
-  const lines = h => (h.match(/<li>/g) || []).length;
+  const lines = h => (h.match(/<li>|<p>/g) || []).length; // bullets or spoken paragraphs
   check(sh.r.status === 200 && sh.j.version === 4 && sh.j.versions.length === 3 && sh.j.versions[2].by === 'ai' && sh.j.versions[2].label === 'Regenerated', 'Shorter: version 4, the full AI answer kept', JSON.stringify(sh.j.versions));
   check(lines(sh.j.answer_html) <= Math.max(2, lines(gen.j.answer_html)) && shPlain.length < aiText.length + 40, 'Shorter is not longer (' + lines(gen.j.answer_html) + ' → ' + lines(sh.j.answer_html) + ' lines)', aiText.length + ' → ' + shPlain.length);
   const undo = await api('POST', '/api/note/items/' + item.id + '/restore', { versionId: sh.j.versions[2].id });
