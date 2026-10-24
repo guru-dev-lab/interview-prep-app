@@ -3290,10 +3290,14 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
     const answers = withAnswers.map(x => `ANSWER TO ${groups.indexOf(x.g) + 1}:\n` + answerNote.htmlToText(x.it.answer_html).split('\n').map((l, j) => `  L${j + 1}. ${l}`).join('\n')).join('\n\n');
     const system = [
       Object.assign({ type: 'text', text: `The candidate's prepared questions, numbered:\n${list}` }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }),
-      { type: 'text', text: 'An interviewer just said the text below, live on a call. Reply with ONE line of JSON only:\n{"q": <the number of the prepared question it asks, same intent in any wording, a follow-up on one counts as that one; 0 if none>, "line": <for that question, the number L of the answer line that best answers exactly what was asked, 0 if no answer shown>, "title": "<2 to 4 word label, only when q is 0>", "question": "<the question as one clean sentence, only when q is 0>"}\nIf the text is small talk or not a question, use q 0 and leave title and question empty.' },
+      // Owner 24 Oct: "Walk me through the Fabric architecture you built" landed on "Dashboard end to end"; the old rule
+      // ("same intent in any wording") let same-SHAPE or same-TOPIC questions match. A question only matches when it asks
+      // the same thing; anything else goes to New questions, where it gets its own study note.
+      { type: 'text', text: 'An interviewer just said the text below, live on a call. Reply with ONE line of JSON only:\n{"q": <the number of the prepared question it asks, or 0>, "line": <for that question, the number L of the answer line that best answers exactly what was asked, 0 if no answer shown>, "title": "<2 to 4 word label, only when q is 0>", "question": "<the question as one clean sentence, only when q is 0>"}\nMatch ONLY when it is the SAME question in other words: same subject AND same ask, so the prepared answer fully answers it. It is NOT the same when:\n- the subject differs, even if shaped alike ("walk me through a dashboard you built" vs "walk me through the Fabric architecture you built");\n- the ask differs on the same subject ("what experience do you have with Fabric" vs "walk me through the Fabric architecture you built": that one needs the design, step by step);\n- it names one specific tool, platform, system or project while the prepared one is general ("what is your experience with Snowflake" vs "what tools have you used").\nA short follow-up that only digs into the question on screen counts as that one. When unsure, 0.\nIf the text is small talk or not a question, use q 0 and leave title and question empty.' },
     ];
     const t0 = Date.now();
-    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}INTERVIEWER: ${text}\n\nJSON:`, 120, MODEL_HAIKU, { __tag: 'note-heard' });
+    const onScreen = cur ? `QUESTION ON SCREEN: ${groups.indexOf(cur) + 1}\n` : '';
+    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}INTERVIEWER: ${text}\n\nJSON:`, 120, MODEL_HAIKU, { __tag: 'note-heard' });
     let j = {}; try { j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch (e) {}
     const g = groups[(parseInt(j.q, 10) || 0) - 1] || null;
     const src = g && withAnswers.find(x => x.g.id === g.id);
