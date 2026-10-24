@@ -22,7 +22,8 @@ button{cursor:pointer;background:none;border:none}
 .hidden{display:none !important}
 svg{display:block}
 /* toolbar */
-.top{flex-shrink:0;display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--chrome)}
+.top{flex-shrink:0;display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--chrome);-webkit-app-region:drag}
+.top button,.top input,.top select,.top .search,.top .state{-webkit-app-region:no-drag}
 .ibtn{height:32px;min-width:32px;padding:0 8px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--muted);font-weight:500;white-space:nowrap}
 .ibtn:hover{background:var(--line);color:var(--text)}
 .ibtn.on{background:var(--sel);color:var(--text)}
@@ -54,7 +55,7 @@ body.noside .side,body.noside .resizer{display:none}
 .sec .bar{width:4px;height:16px;border-radius:2px;background:var(--accent-bg);flex-shrink:0}
 .sec .chev{transition:transform .15s;color:var(--dim);margin-left:auto}
 .sec.closed .chev{transform:rotate(-90deg)}
-.sec .cnt{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--line);border-radius:10px;padding:2px 8px;white-space:nowrap}
+.sec .cnt{font-size:10.5px;font-weight:700;color:var(--muted);background:var(--line);border-radius:8px;padding:1px 6px;white-space:nowrap;flex-shrink:0}
 .sec .cnt.done{background:var(--ok);color:#fff}
 body.dark .sec .cnt.done{color:#10301e}
 .sec + .row{margin-top:4px}
@@ -69,7 +70,7 @@ body.dark .sec .cnt.done{color:#10301e}
 .row .full{font-size:12.5px;line-height:1.38;color:var(--muted);margin-top:2px}
 body.compact .row .full{display:none}
 body.compact .row{padding:6px 8px 6px 10px}
-.row .st{font-size:11.5px;color:var(--dim);font-weight:600;margin-top:2px;white-space:nowrap}
+.row .st{font-size:10.5px;color:var(--dim);font-weight:600;margin-top:3px;white-space:nowrap;flex-shrink:0}
 .row .st.done{color:var(--ok)}
 .row .pin{color:var(--accent);font-size:12px;margin-top:1px}
 .row .more{opacity:0;width:24px;height:22px;border-radius:6px;color:var(--muted);margin-top:-1px;flex-shrink:0}
@@ -185,10 +186,21 @@ body.expand .h1,body.solo .h1{font-size:28px}
 body.expand .side,body.expand .resizer,body.solo .side,body.solo .resizer{display:none}
 body.expand .only-full,body.solo .only-full{display:none}
 @media (max-width:760px){:root{--side-w:240px}.sheet{padding:14px 16px 40px}.job{max-width:130px}}
+/* narrow (the call overlay): one pane at a time, like a phone notes app. The questions button swaps list and answer. */
+body.narrow .main{position:relative}
+body.narrow .side{position:absolute;inset:0;width:100%;max-width:none;z-index:20}
+body.narrow:not(.listview) .side,body.narrow .resizer{display:none}
+body.narrow .job,body.narrow #gen-all,body.narrow:not(.embed) #expand-lbl,body.narrow .search .kbd,body.narrow #state-text{display:none}
+body.narrow .search{min-width:0}
+body.narrow .sheet{padding:12px 14px 40px}
+body.narrow .h1{font-size:21px}
+body.narrow .ways{grid-template-columns:1fr 1fr}
+body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
 </style>
 </head>
 <body>
 <div class="top" id="top">
+  <button class="ibtn txt hidden" id="btn-home" title="Back to the xHire home screen">&lsaquo; xHire</button>
   <button class="ibtn only-full" id="btn-side" title="Show or hide the questions (Cmd+\)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
   <div class="search only-full"><svg class="mag" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="search" placeholder="Search questions and answers" autocomplete="off"><span class="kbd">/</span></div>
   <select class="job only-full" id="job" title="The job the answers are written for"><option value="">Answers for: my latest résumé</option></select>
@@ -275,6 +287,12 @@ var TOKEN = params.get('token') || lsGet('xhire_note_token') || lsGet('token') |
 if (params.get('token')) lsSet('xhire_note_token', TOKEN);
 var SESSION_PARAM = params.get('session') || '';
 var SOLO = params.get('solo') || '';               // a popped-out window: one question only
+// Owner 24 Oct: the note must be as hidden from screen sharing as xHire itself. In the desktop app it never opens a
+// window of its own (a new window is NOT protected): from the home screen it fills the protected xHire window
+// (DESKTOP), during a call it is a panel inside the call overlay (EMBED). Pop out is a browser-only extra.
+var EMBED = params.get('embed') === '1';
+var DESKTOP = !EMBED && !!window.electronAPI;
+var CAN_POP = !EMBED && !DESKTOP;
 var $ = function (id) { return document.getElementById(id); };
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -282,6 +300,10 @@ function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 var toastT; function toast(msg, ms) { var t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, ms || 1800); }
 if (SOLO) document.body.classList.add('solo');
+if (!CAN_POP) document.getElementById('btn-pop').classList.add('hidden');
+if (EMBED) document.body.classList.add('embed');
+function setNarrow() { var n = window.innerWidth < 700; if (n !== document.body.classList.contains('narrow')) { document.body.classList.toggle('narrow', n); if (!n) document.body.classList.remove('listview'); } }
+setNarrow(); window.addEventListener('resize', setNarrow);
 
 async function api(method, path, body) {
   var r = await fetch(location.origin + path, { method: method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: body ? JSON.stringify(body) : undefined });
@@ -305,7 +327,7 @@ var fontSize = parseInt(lsGet('xhire_note_size') || '17', 10);
 var busy = {};           // itemId → true while the AI is writing it
 var lastAi = null;       // { iid, versionId } for the Undo chip
 var genAll = null;       // { total, done, stop }
-var closedSecs = {}; try { closedSecs = JSON.parse(lsGet('xhire_note_closed') || '{}') || {}; } catch (e) {}
+var openSec = null;      // the ONE open section (owner: "the default state should open one of them"): the current question's
 var PALETTE = ['', '#d97706', '#dc2626', '#db2777', '#7c3aed', '#2563eb', '#0891b2', '#059669', '#64748b'];
 var MAX_WAYS = 3;        // owner: a question plus at most 3 other ways it gets asked (the server holds the same cap)
 var OWN = 'My questions';
@@ -324,7 +346,7 @@ function screenOrder(gs) {
   secs.sort(function (a, b) { return (b === 'Pinned') - (a === 'Pinned'); });
   return secs.map(function (s) { return { name: s, groups: by[s] }; });
 }
-function navGroups() { var out = []; screenOrder(visibleGroups()).forEach(function (s) { if (!closedSecs[s.name] || filter) out = out.concat(s.groups); }); return out.map(function (g) { return findGroup(g.id); }); }
+function navGroups() { var out = []; screenOrder(visibleGroups()).forEach(function (s) { out = out.concat(s.groups); }); return out.map(function (g) { return findGroup(g.id); }); } // arrows walk every question; the section opens as you arrive
 
 // ===== autosave queue: debounced per key, one in flight per key, retried until the server has it =====
 var pending = {}, timers = {}, inflight = {}, attempts = {};
@@ -440,11 +462,11 @@ function renderList() {
   var gs = visibleGroups();
   if (!gs.length) { host.innerHTML = '<div class="empty">' + (filter ? 'Nothing matches "' + esc(filter) + '".' : 'No questions yet. Add one below.') + '</div>'; return; }
   screenOrder(gs).forEach(function (sec) {
-    var closed = !!closedSecs[sec.name] && !filter;
+    var closed = sec.name !== openSec && !filter;
     var ready = sec.groups.filter(function (g) { return rowStatus(g).cls === 'done'; }).length;
     var h = document.createElement('div'); h.className = 'sec' + (closed ? ' closed' : ''); h.title = closed ? 'Open this section' : 'Fold this section';
-    h.innerHTML = '<span class="bar"></span><span>' + esc(sec.name) + '</span><span class="cnt' + (ready === sec.groups.length ? ' done' : '') + '" title="' + ready + ' of ' + sec.groups.length + ' questions fully answered">' + ready + '/' + sec.groups.length + '</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
-    h.onclick = function () { if (closedSecs[sec.name]) delete closedSecs[sec.name]; else closedSecs[sec.name] = 1; lsSet('xhire_note_closed', JSON.stringify(closedSecs)); renderList(); };
+    h.innerHTML = '<span class="bar"></span><span style="min-width:0">' + esc(sec.name) + '</span><span class="cnt' + (ready === sec.groups.length ? ' done' : '') + '" title="' + ready + ' of ' + sec.groups.length + ' questions fully answered">' + ready + '/' + sec.groups.length + '</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+    h.onclick = function () { openSec = openSec === sec.name ? null : sec.name; renderList(); if (openSec) h.scrollIntoView({ block: 'start' }); };
     host.appendChild(h);
     if (closed) return;
     sec.groups.forEach(function (sg) {
@@ -455,7 +477,7 @@ function renderList() {
         + (g.pinned ? '<span class="pin" title="Pinned">&#9733;</span>' : '')
         + '<span class="st ' + st.cls + '" title="Answers written for the ways it gets asked">' + st.text + '</span>'
         + '<button class="more" title="Rename, pin, colour, move, delete">&middot;&middot;&middot;</button>';
-      el.onclick = function (e) { if (e.target.closest('.more,input')) return; select(g.id, (g.items[0] || {}).id || null); };
+      el.onclick = function (e) { if (e.target.closest('.more,input')) return; select(g.id, (g.items[0] || {}).id || null, { fromList: true }); };
       el.ondblclick = function (e) { if (!e.target.closest('.more,input')) renameGroup(g, el); };
       el.querySelector('.more').onclick = function (e) { e.stopPropagation(); groupMenu(g, el, e.currentTarget); };
       el.draggable = true;
@@ -517,7 +539,8 @@ function select(gid, iid, opts) {
   var changed = cur.iid !== (iid || null);
   cur.gid = gid; cur.iid = iid || null;
   if (iid && !SOLO) lsSet('xhire_note_last', iid);
-  var g = findGroup(gid); if (g && closedSecs[secOf(g)] && !filter) { delete closedSecs[secOf(g)]; lsSet('xhire_note_closed', JSON.stringify(closedSecs)); }
+  var g = findGroup(gid); if (g) openSec = secOf(g);
+  if (opts && opts.fromList) document.body.classList.remove('listview');
   renderList(); renderAnswer(changed);
   if (changed) $('page').scrollTop = 0;
   var ge = document.querySelector('.row[data-gid="' + gid + '"]'); if (ge) ge.scrollIntoView({ block: 'nearest' });
@@ -594,7 +617,7 @@ function groupMenu(g, el, anchor) {
   var gs = groupsSorted(); var i = gs.findIndex(function (x) { return x.id === g.id; });
   openPop(anchor, '<button class="mi" data-a="rename">Rename the title</button>'
     + '<button class="mi" data-a="pin">' + (g.pinned ? 'Unpin' : 'Pin to the top') + '</button>'
-    + '<button class="mi" data-a="pop">Pop out in its own window</button>'
+    + (CAN_POP ? '<button class="mi" data-a="pop">Pop out in its own window</button>' : '')
     + '<div class="hr"></div><div class="note" style="padding-bottom:0">Colour</div><div class="sw">' + PALETTE.map(function (c) { return '<span data-c="' + c + '" style="background:' + (c || 'transparent') + ';border-style:' + (c ? 'solid' : 'dashed') + '" title="' + (c ? 'Colour' : 'No colour') + '"></span>'; }).join('') + '</div>'
     + '<div class="note" style="padding-bottom:0">Section</div><input class="txt" id="pop-sec" value="' + esc(g.section || '') + '" placeholder="Section name">'
     + '<div class="hr"></div>' + (i > 0 ? '<button class="mi" data-a="up">Move up</button>' : '') + (i < gs.length - 1 ? '<button class="mi" data-a="down">Move down</button>' : '')
@@ -746,13 +769,36 @@ $('gen-all').onclick = async function () {
   rz.ondblclick = function () { setSide(false); };
 })();
 function setSide(show) { document.body.classList.toggle('noside', !show); lsSet('xhire_note_noside', show ? '0' : '1'); $('btn-side').classList.toggle('on', !show); }
-$('btn-side').onclick = function () { setSide(document.body.classList.contains('noside')); };
+$('btn-side').onclick = function () { if (document.body.classList.contains('narrow')) { document.body.classList.toggle('listview'); return; } setSide(document.body.classList.contains('noside')); };
 $('btn-compact').onclick = function () { var on = !document.body.classList.contains('compact'); document.body.classList.toggle('compact', on); $('btn-compact').classList.toggle('on', on); lsSet('xhire_note_compact', on ? '1' : '0'); };
 $('ways-head').onclick = function () { var c = $('ways-head').classList.toggle('closed'); lsSet('xhire_note_ways_closed', c ? '1' : '0'); };
 function setExpand(on) { expand = on; document.body.classList.toggle('expand', on); $('btn-expand').classList.toggle('on', on); $('expand-lbl').textContent = on ? 'Back' : 'Expand'; }
-$('btn-expand').onclick = function () { if (SOLO) { window.close(); return; } setExpand(!expand); };
-if (SOLO) { $('expand-lbl').textContent = 'Close'; $('btn-expand').title = 'Close this window'; }
+$('btn-expand').onclick = function () { if (SOLO) { window.close(); return; } if (EMBED) { closeEmbed(); return; } setExpand(!expand); };
+if (SOLO || EMBED) { $('expand-lbl').textContent = 'Close'; $('btn-expand').title = EMBED ? 'Close the note, back to your answers' : 'Close this window'; }
+function closeEmbed() { flushEditor(); try { parent.closeAnswerNote(); } catch (e) {} }
+// DESKTOP: the note fills the protected xHire window. Grow it to a readable size on open; Back puts it back as it was.
+if (DESKTOP) {
+  $('btn-home').classList.remove('hidden');
+  try { if (window.electronAPI.setClickThrough) window.electronAPI.setClickThrough(false); } catch (e) {}
+  (function grow() {
+    var want = { w: Math.min(1040, screen.availWidth - 40), h: Math.min(740, screen.availHeight - 40) };
+    var dw = Math.max(0, want.w - window.outerWidth), dh = Math.max(0, want.h - window.outerHeight);
+    if ((dw || dh) && window.electronAPI.resizeWindow) { window.electronAPI.resizeWindow(dw, dh, 'sw'); lsSet('xhire_note_grew', JSON.stringify({ dw: dw, dh: dh })); }
+    else lsDel('xhire_note_grew');
+  })();
+}
+$('btn-home').onclick = async function () {
+  flushEditor();
+  Object.keys(pending).forEach(function (k) { clearTimeout(timers[k]); runSave(k); });
+  for (var i = 0; i < 40 && (Object.keys(pending).length || Object.keys(inflight).length); i++) await new Promise(function (r) { setTimeout(r, 100); });
+  if (Object.keys(pending).length || Object.keys(inflight).length) { toast('Still saving. Try again in a moment.', 2500); return; }
+  var g = null; try { g = JSON.parse(lsGet('xhire_note_grew') || 'null'); } catch (e) {}
+  if (g && window.electronAPI.resizeWindow) window.electronAPI.resizeWindow(-g.dw, -g.dh, 'sw');
+  lsDel('xhire_note_grew');
+  window.electronAPI.loadCanvas(location.origin + '/launcher');
+};
 function popOut(g) {
+  if (!CAN_POP) return;
   g = g || (cur.gid && findGroup(cur.gid)); if (!g) return;
   flushEditor();
   var w = window.open(location.origin + '/note?token=' + encodeURIComponent(TOKEN) + '&solo=' + encodeURIComponent(g.id), 'xhire-note-' + g.id, 'width=560,height=680');
@@ -776,6 +822,7 @@ $('btn-menu').onclick = function () {
     + '<div class="mi" style="cursor:default">Text size<span class="r"><button class="chip" data-a="smaller" style="height:26px">A&#8722;</button> <span id="pop-size">' + fontSize + '</span> <button class="chip" data-a="larger" style="height:26px">A+</button></span></div>'
     + '<label class="mi" style="cursor:pointer">Page colour<span class="r"><input type="color" id="pop-bg" value="' + esc((N.settings && N.settings.bg) || (dark ? '#1e1e20' : '#fffdf8')) + '" style="width:30px;height:22px;border:none;background:none;cursor:pointer"></span></label>'
     + '<button class="mi" data-a="bgreset">Reset the page colour</button>'
+    + (document.body.classList.contains('narrow') ? '<button class="mi" data-a="genall">' + (genAll && genAll.running ? 'Stop writing answers' : 'Write all answers') + '</button>' : '')
     + '<div class="hr"></div><button class="mi" data-a="help">Keyboard shortcuts<span class="r">?</span></button>', function (p) {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
       e.stopPropagation(); var a = b.dataset.a;
@@ -784,6 +831,7 @@ $('btn-menu').onclick = function () {
       else if (a === 'smaller' || a === 'larger') { fontSize = a === 'smaller' ? Math.max(12, fontSize - 1) : Math.min(36, fontSize + 1); applyFontSize(); $('pop-size').textContent = fontSize; }
       else if (a === 'bgreset') { setNoteBg(''); saveSettings({ bg: '' }); closePop(); toast('Page colour reset'); }
       else if (a === 'help') { closePop(); $('help').classList.add('open'); }
+      else if (a === 'genall') { closePop(); $('gen-all').click(); }
     }; });
     var bg = p.querySelector('#pop-bg'); bg.oninput = function () { setNoteBg(this.value); }; bg.onchange = function () { saveSettings({ bg: this.value }); };
   });
@@ -808,7 +856,9 @@ document.addEventListener('keydown', function (e) {
     if ($('help').classList.contains('open')) { $('help').classList.remove('open'); return; }
     if (inText) { e.target.blur(); return; }
     if (expand) { setExpand(false); return; }
-    if (filter) { $('search').value = ''; filter = ''; renderList(); }
+    if (filter) { $('search').value = ''; filter = ''; renderList(); return; }
+    if (document.body.classList.contains('listview')) { document.body.classList.remove('listview'); return; }
+    if (EMBED) closeEmbed();
     return;
   }
   if (inText || meta) return;
