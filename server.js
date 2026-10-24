@@ -40,6 +40,16 @@ app.use('/launcher', (req, res, next) => {
   next();
 });
 
+// The note's diagram drawer, served from xhire.app itself (owner 24 Oct: "we can not have anything weak for interview"):
+// no outside site in the path. Stored gzipped (mermaid 10.9.1 from npm, integrity checked); cached for a year.
+const MERMAID_GZ = path.join(__dirname, 'public', 'vendor', 'mermaid-10.9.1.min.js.gz');
+let mermaidPlain = null;
+app.get('/vendor/mermaid-10.9.1.min.js', (req, res) => {
+  res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', Vary: 'Accept-Encoding' });
+  if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) { res.set('Content-Encoding', 'gzip'); return res.sendFile(MERMAID_GZ); }
+  try { mermaidPlain = mermaidPlain || require('zlib').gunzipSync(fs.readFileSync(MERMAID_GZ)); res.send(mermaidPlain); } catch (e) { res.status(500).end(); }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============ DATABASE ============
