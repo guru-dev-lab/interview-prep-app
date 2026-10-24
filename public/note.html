@@ -14,15 +14,15 @@
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;--note-font:var(--font);--note-size:17px;--side-w:330px;--shadow:0 10px 30px rgba(0,0,0,.14)}
 body.dark{--chrome:#1c1c1e;--side:#242426;--page:#1e1e20;--card:#2a2a2d;--text:#ececee;--muted:#b4b4ba;--dim:#9a9aa1;--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.18);
   --accent:#f2c14e;--accent-bg:#f2c14e;--sel:#4a3d17;--sel-line:#8a6d1f;--key:#3a3115;--key-line:#6b5a22;--ok:#5fd08f;--warn:#f0b35a;--bad:#ff8a80;--shadow:0 10px 30px rgba(0,0,0,.5)}
-/* Glass (owner 24 Oct: "the exact type on xHire"): the overlay's own glass, same values as canvas.html: panels tinted
-   rgba(15,15,25,.65) dark / rgba(255,255,255,.65) light, blur(60px) saturate(200%), a thin light border, rounded,
-   on a transparent frameless window. */
-body.glass{--glass-bg:rgba(15,15,25,0.65);--glass-blur:blur(60px) saturate(200%);--glass-border-color:rgba(255,255,255,0.10);
+/* Glass (owner 24 Oct: "the exact type on xHire"): the overlay's glass build (separate rounded panels with gaps, a thin
+   light border, on a transparent frameless window, nothing behind them), with a stronger tint so text reads over a busy
+   desktop: he picked style B (dark .86) over .65, and light glass at .9 with dark text (measured over his real desktop). */
+body.glass{--glass-bg:rgba(12,12,20,0.86);--glass-blur:blur(60px) saturate(200%);--glass-border-color:rgba(255,255,255,0.10);
   --chrome:transparent;--side:transparent;--page:transparent;--card:rgba(255,255,255,.06);--line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.16);
   --text:#ffffff;--muted:#cbd5e1;--dim:#94a3b8;--sel:rgba(124,58,237,.28);--sel-line:rgba(167,139,250,.7);--accent:#c4b5fd;--accent-bg:#a78bfa;
   --key:rgba(124,58,237,.18);--key-line:rgba(167,139,250,.45);--ok:#34d399;--shadow:0 8px 32px rgba(0,0,0,.5)}
-body.glass:not(.dark){--glass-bg:rgba(255,255,255,0.65);--glass-border-color:rgba(0,0,0,.1);--card:rgba(255,255,255,.5);--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.14);
-  --text:#0f172a;--muted:#334155;--dim:#475569;--sel:rgba(124,58,237,.14);--sel-line:rgba(109,40,217,.55);--accent:#6d28d9;--accent-bg:#c4b5fd;--key:rgba(124,58,237,.1);--key-line:rgba(109,40,217,.3);--ok:#047857}
+body.glass:not(.dark){--glass-bg:rgba(255,255,255,0.9);--glass-border-color:rgba(0,0,0,.12);--card:rgba(255,255,255,.7);--line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.14);
+  --text:#0b1020;--muted:#1e293b;--dim:#334155;--sel:rgba(124,58,237,.14);--sel-line:rgba(109,40,217,.55);--accent:#6d28d9;--accent-bg:#c4b5fd;--key:rgba(124,58,237,.1);--key-line:rgba(109,40,217,.3);--ok:#047857}
 html.glass-on,html.glass-on body{background:transparent !important}
 body.glass{padding:4px;gap:4px}
 body.glass .top{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border-color);border-radius:16px 16px 5px 5px}
