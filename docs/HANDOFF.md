@@ -1,6 +1,34 @@
 # Handoff
 
 
+## 24 Oct — Answer Note (branch feat/answer-note, PR open, NOT merged)
+- Owner's ask (23 Oct): a desktop note he reads from DURING a call — left rail = question groups, horizontal tabs = the ways
+  one question gets asked, each tab = his answer; AI-written from his résumé, hand-editable with fonts/colours, background
+  colours, smart search, shortcuts, one click to the answer.
+- Built: `/note` page (public/note.html) + routes `/api/note…` in server.js (block "ANSWER NOTE") + logic in lib/answer-note.js
+  + shared matcher/search public/note-match.js (one copy for page + server + tests) + seed data/note-seed.json (18 groups /
+  94 phrasings mined from his 16 real interviews). Tables answer_notes / answer_note_groups / answer_note_items (additive).
+- Rules: every content write goes through applyChange — the current text goes into `versions` (cap 20) BEFORE anything
+  replaces it; a save with a stale baseVersion is refused 409 and the page shows both ("Use that version" / "Keep mine");
+  AI buttons (Regenerate / Shorter / Add a number / Sound like me / free text) never overwrite silently — Undo + History
+  restore. Answers use the live writer rules (composeLiveSystemPrompt + normalizeLiveAnswer, Haiku, `employerLine: true`
+  = his own example always welcome) from the chosen session (or his latest with a résumé), end with a KEY glance line.
+  Lazy write on first open of a tab (settings.autoGenerate=false turns it off); "Generate all" fills the rest 2 at a time.
+- Live link: canvas.html + index.html `question_detected` → tellAnswerNote() (BroadcastChannel 'xhire-note' + localStorage
+  fallback); the note jumps to the closest phrasing (Dice + keyword containment, threshold 0.4) and flashes it. Fire-and-
+  forget; the live pipeline never waits on it.
+- Entry points: launcher card "Answer Note" (desktop + browser), canvas toolbar button, web nav button. Desktop opens it via
+  window.open(..., 'alwaysOnTop=yes') from the overlay — needs no app build; NOT yet proven inside the real Electron app
+  (only in Chrome). If the child window is not on top, an Electron change (setWindowOpenHandler / explicit BrowserWindow
+  with setAlwaysOnTop) is the fix — described in the PR.
+- Proof: test/answer-note.js 34 checks (in npm test); test/answer-note-e2e.js 31/31 on a local server (2 model calls);
+  real Chrome via Playwright: groups/tabs, edit + bold + KEY edit autosave (Saving… → Saved, survives reload), background
+  colour, search, ↑↓←→ / 1-9 / Cmd+E / R / "/" / Esc, read mode, history restore, live-link jump from a second tab.
+  Total model calls in testing: 4 Haiku answers. Screenshots in the session scratchpad (note-01..04.png).
+- Open: Electron real-window proof; plan cap for note answers = the bank's monthly cap (checkAnswerLimit) — owner to say
+  if the note should count differently; a font-size/family picked with no selection sets the note default (by design).
+- Rollback: tag known-good-2026-10-23-before-answer-note (tables are additive, harmless).
+
 ## 23 Oct — Say pressed mid-question (PR: fix/say-mid-question)
 - Owner: candidates press Say early, while the interviewer is still asking, because they can already hear the question.
 - Reproduced (early-stale-e2e scenario 8, old code): Say read only FINAL transcript words; the question still being spoken was

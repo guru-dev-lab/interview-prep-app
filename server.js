@@ -13,6 +13,7 @@ const WebSocket = require('ws');
 const stringSimilarity = require('string-similarity');
 const meetingCopilot = require('./lib/meeting-copilot');
 const assessment = require('./lib/assessment'); // desktop Assessment: carry-over notes, title lock, who sees it // meeting co-pilot logic (call log, prompts, budget)
+const answerNote = require('./lib/answer-note'); // Answer Note (23 Oct): seed, version history, search, AI change modes
 // Import only the submodules we need — avoid loading SentimentAnalyzer which has ESM-only deps
 const TfIdf = require('natural/lib/natural/tfidf/tfidf');
 const PorterStemmer = require('natural/lib/natural/stemmers/porter_stemmer');
@@ -181,6 +182,43 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_sessions_user_kind ON sessions(user_id, kind);
       CREATE INDEX IF NOT EXISTS idx_call_events_session ON call_events(session_id, kind);
     `).catch(e => console.error('[DB] assessment migration failed:', e.message));
+    // Answer Note (23 Oct): one note per user; groups (left rail) → items (the phrasings of one question, each with his
+    // answer as editor HTML + its version history). Additive only.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS answer_notes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        settings JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS answer_note_groups (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        note_id UUID NOT NULL REFERENCES answer_notes(id) ON DELETE CASCADE,
+        name VARCHAR(160) NOT NULL DEFAULT '',
+        color VARCHAR(32) DEFAULT '',
+        pinned BOOLEAN DEFAULT FALSE,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS answer_note_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        note_id UUID NOT NULL REFERENCES answer_notes(id) ON DELETE CASCADE,
+        group_id UUID NOT NULL REFERENCES answer_note_groups(id) ON DELETE CASCADE,
+        question TEXT NOT NULL DEFAULT '',
+        answer_html TEXT DEFAULT '',
+        key_points TEXT DEFAULT '',
+        versions JSONB DEFAULT '[]',
+        version INT DEFAULT 0,
+        edited_by VARCHAR(16) DEFAULT '',
+        edit_label VARCHAR(120) DEFAULT '',
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_answer_note_groups_note ON answer_note_groups(note_id, sort_order);
+      CREATE INDEX IF NOT EXISTS idx_answer_note_items_group ON answer_note_items(group_id, sort_order);
+    `).catch(e => console.error('[DB] answer note migration failed:', e.message));
     console.log('Database tables ready');
   } finally { client.release(); }
 }
@@ -3010,6 +3048,224 @@ app.post('/api/assessments', authMiddleware, async (req, res) => {
   } catch (e) { console.error('[Assessment] create failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// ============ ANSWER NOTE (owner, 23 Oct) ============
+// A desktop note he reads from during a live interview. ONE note per user, seeded from data/note-seed.json on first
+// open (18 groups mined from his real interviews, their phrasings as items). Logic in lib/answer-note.js; this block
+// is the DB + the writer. Every content write goes through answerNote.applyChange (history kept, stale writes → 409).
+async function loadNote(userId) {
+  let n = (await pool.query('SELECT * FROM answer_notes WHERE user_id = $1', [userId])).rows[0];
+  if (!n) n = (await pool.query('INSERT INTO answer_notes (user_id) VALUES ($1) ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW() RETURNING *', [userId])).rows[0];
+  const has = await pool.query('SELECT 1 FROM answer_note_groups WHERE note_id = $1 LIMIT 1', [n.id]);
+  if (!has.rows.length && !n.settings?.seeded) {
+    let items = 0;
+    for (const g of answerNote.seedRows()) {
+      const gr = await pool.query('INSERT INTO answer_note_groups (note_id, name, sort_order) VALUES ($1, $2, $3) RETURNING id', [n.id, g.name, g.sort_order]);
+      for (const it of g.items) { await pool.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4)', [n.id, gr.rows[0].id, it.question, it.sort_order]); items++; }
+    }
+    n = (await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"seeded\": true}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0]; // seeded once; deleting every group later does not re-seed
+    console.log(`[Note] Seeded ${items} answers in ${answerNote.seedRows().length} groups for user ${userId}`);
+  }
+  return n;
+}
+function noteItemOut(i) {
+  return { id: i.id, group_id: i.group_id, question: i.question, answer_html: i.answer_html || '', key_points: i.key_points || '', version: i.version || 0,
+    edited_by: i.edited_by || '', edit_label: i.edit_label || '', sort_order: i.sort_order, updated_at: i.updated_at,
+    versions: (i.versions || []).map(v => ({ id: v.id, ts: v.ts, by: v.by, label: v.label, version: v.version, preview: answerNote.htmlToText(v.html).slice(0, 90) })) }; // history list only; the text comes back on restore
+}
+async function noteTree(note) {
+  const groups = (await pool.query('SELECT * FROM answer_note_groups WHERE note_id = $1 ORDER BY sort_order, created_at', [note.id])).rows;
+  const items = (await pool.query('SELECT * FROM answer_note_items WHERE note_id = $1 ORDER BY sort_order, created_at', [note.id])).rows;
+  return { id: note.id, settings: note.settings || {}, groups: answerNote.sortGroups(groups).map(g => ({ id: g.id, name: g.name, color: g.color || '', pinned: !!g.pinned, sort_order: g.sort_order, items: items.filter(i => i.group_id === g.id).map(noteItemOut) })) };
+}
+async function ownNoteGroup(userId, gid) {
+  if (!isValidUUID(gid)) return null;
+  return (await pool.query('SELECT g.* FROM answer_note_groups g JOIN answer_notes n ON n.id = g.note_id WHERE g.id = $1 AND n.user_id = $2', [gid, userId])).rows[0] || null;
+}
+async function ownNoteItem(userId, iid) {
+  if (!isValidUUID(iid)) return null;
+  return (await pool.query('SELECT i.* FROM answer_note_items i JOIN answer_notes n ON n.id = i.note_id WHERE i.id = $1 AND n.user_id = $2', [iid, userId])).rows[0] || null;
+}
+async function writeNoteItem(item, change) { // the one UPDATE for content changes (applyChange result)
+  const r = await pool.query('UPDATE answer_note_items SET answer_html = $1, key_points = $2, versions = $3, version = $4, edited_by = $5, edit_label = $6, updated_at = NOW() WHERE id = $7 RETURNING *',
+    [change.answer_html, change.key_points, JSON.stringify(change.versions), change.version, change.edited_by || item.edited_by || '', change.edit_label || '', item.id]);
+  return r.rows[0];
+}
+// The job the answers are written for: the chosen session, else his latest interview session that has a résumé.
+async function noteSessionFor(userId, sessionId) {
+  if (sessionId && isValidUUID(sessionId)) {
+    const s = await pool.query('SELECT * FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, userId]);
+    if (s.rows.length) return s.rows[0];
+  }
+  const s = await pool.query("SELECT * FROM sessions WHERE user_id = $1 AND coalesce(kind, 'interview') <> 'assessment' AND coalesce(resume, '') <> '' ORDER BY updated_at DESC LIMIT 1", [userId]);
+  return s.rows[0] || null;
+}
+// Note answers use the SAME writer rules as live answers (LIVE_CORE: first person, short spoken lines, a real number
+// where the résumé has one, never invent; layout by question shape; style = tone) on the fast model. No conversation
+// exists yet, so the answer must stand alone; his own example (↳ line) is always welcome. Ends with a KEY line for the
+// 2-second glance. mode/custom = the change asked for (lib MODES); the current note text rides along for a rewrite.
+async function generateNoteAnswer(session, userId, item, mode, custom) {
+  const question = String(item.question || '').trim();
+  const { shape, technical } = classifyQuestionShape(question);
+  const vp = await pool.query('SELECT voice_profile FROM users WHERE id = $1', [userId]);
+  const voiceProfile = (process.env.VOICE_PROFILE !== '0' && vp.rows[0] && vp.rows[0].voice_profile) || '';
+  const styleKey = session.answer_style || 'conversational';
+  const system = composeLiveSystemPrompt({ shape, technical, styleKey, maxLines: 0, voiceProfile, withConversation: false, questionText: question, employerLine: true });
+  const bankRows = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 8", [session.id])).rows;
+  const bank = bankRows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
+  const material = `SESSION MATERIAL — the candidate and the job:\nTHIS NOTE IS FOR: ${session.role || 'this role'} at ${session.company || 'the company'}. Reference them naturally when a question asks "why this role/company"; never parrot the JD.\n\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bank || 'N/A'}`;
+  const systemBlocks = [
+    Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), // same material for every answer in the note → cached
+    { type: 'text', text: system },
+  ];
+  const todayLine = `TODAY: ${new Date().toISOString().slice(0, 10)}\n`;
+  const expFacts = experienceFacts(session.resume);
+  const instruction = answerNote.changeInstruction(mode, custom);
+  const current = answerNote.htmlToText(item.answer_html);
+  const changeBlock = instruction && current
+    ? `\n\nCURRENT ANSWER (the candidate's note as it stands):\n${current}\n\nCHANGE REQUESTED: ${instruction}\nKeep every fact that is still true; add nothing the resume or Q&A bank does not have.`
+    : (instruction ? `\n\nINSTRUCTION: ${instruction}` : '');
+  const user = `${todayLine}${expFacts ? expFacts + '\n' : ''}${changeBlock}\n\nQUESTION (one way an interviewer phrases it — this is a prepared note read from during a call, so the answer must stand on its own):\n${question}\n\nAnswer in the LAYOUT above. Then, as the very last line, exactly: KEY: <at most 12 words — the one thing to remember to say>\n\nAnswer:`;
+  const t0 = Date.now();
+  const raw = await callClaude(systemBlocks, user, shape === 'code' ? 1000 : 600, MODEL_HAIKU, { __tag: 'note-answer' });
+  const { answer, keyPoints } = answerNote.parseGenerated(raw);
+  const text = normalizeLiveAnswer(answer, shape, { cap: liveLineCap(styleKey, 0, shape), employerLineAllowed: true, cueOnly: (STYLE_LAYOUT[styleKey] || {}).unit === 'cue' && shape !== 'code' });
+  console.log(`[Note] ${mode || 'regenerate'} shape=${shape} ${Date.now() - t0}ms lines=${(text || '').split('\n').length} key=${keyPoints ? 'yes' : 'no'} q="${question.slice(0, 50)}"`);
+  if (!text || isNonAnswer(text)) throw new Error('The writer gave no usable answer. Try again.');
+  return { answerHtml: answerNote.answerToHtml(text), keyPoints };
+}
+
+// Note page — served no-store like the launcher (Electron must always get the latest)
+app.get('/note', (req, res) => { res.set('Cache-Control', 'no-store, no-cache, must-revalidate'); res.sendFile(path.join(__dirname, 'public', 'note.html')); });
+
+app.get('/api/note', authMiddleware, async (req, res) => {
+  try { res.json(await noteTree(await loadNote(req.userId))); }
+  catch (e) { console.error('[Note] load failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+const NOTE_SETTING_KEYS = ['bg', 'theme', 'fontFamily', 'fontSize', 'sessionId', 'readMode', 'autoGenerate', 'railWidth'];
+app.put('/api/note/settings', authMiddleware, async (req, res) => {
+  try {
+    const note = await loadNote(req.userId);
+    const patch = {};
+    for (const k of NOTE_SETTING_KEYS) if (req.body && req.body[k] !== undefined) patch[k] = req.body[k];
+    const r = await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2 RETURNING settings", [JSON.stringify(patch), note.id]);
+    res.json({ settings: r.rows[0].settings });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/note/groups', authMiddleware, async (req, res) => {
+  try {
+    const note = await loadNote(req.userId);
+    const name = String(req.body?.name || '').trim().slice(0, 160) || 'New group';
+    const mx = await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [note.id]);
+    const g = (await pool.query('INSERT INTO answer_note_groups (note_id, name, sort_order) VALUES ($1, $2, $3) RETURNING *', [note.id, name, mx.rows[0].n])).rows[0];
+    res.json({ id: g.id, name: g.name, color: '', pinned: false, sort_order: g.sort_order, items: [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/note/groups/order', authMiddleware, async (req, res) => { // before /:gid so "order" is never read as an id
+  try {
+    const note = await loadNote(req.userId);
+    const have = (await pool.query('SELECT id FROM answer_note_groups WHERE note_id = $1 ORDER BY sort_order, created_at', [note.id])).rows.map(r => r.id);
+    const order = answerNote.reorderIds(have, Array.isArray(req.body?.ids) ? req.body.ids : []);
+    for (let i = 0; i < order.length; i++) await pool.query('UPDATE answer_note_groups SET sort_order = $1 WHERE id = $2 AND note_id = $3', [i, order[i], note.id]);
+    res.json({ ids: order });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/note/groups/:gid', authMiddleware, async (req, res) => {
+  try {
+    const g = await ownNoteGroup(req.userId, req.params.gid);
+    if (!g) return res.status(404).json({ error: 'Group not found' });
+    const name = req.body?.name !== undefined ? (String(req.body.name).trim().slice(0, 160) || g.name) : g.name;
+    const color = req.body?.color !== undefined ? String(req.body.color || '').slice(0, 32) : g.color;
+    const pinned = req.body?.pinned !== undefined ? !!req.body.pinned : g.pinned;
+    const r = await pool.query('UPDATE answer_note_groups SET name = $1, color = $2, pinned = $3 WHERE id = $4 RETURNING *', [name, color, pinned, g.id]);
+    res.json({ id: r.rows[0].id, name: r.rows[0].name, color: r.rows[0].color || '', pinned: !!r.rows[0].pinned, sort_order: r.rows[0].sort_order });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/note/groups/:gid', authMiddleware, async (req, res) => {
+  try {
+    const g = await ownNoteGroup(req.userId, req.params.gid);
+    if (!g) return res.status(404).json({ error: 'Group not found' });
+    await pool.query('DELETE FROM answer_note_groups WHERE id = $1', [g.id]); // its items go with it (FK cascade)
+    res.json({ removed: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/note/groups/:gid/items', authMiddleware, async (req, res) => {
+  try {
+    const g = await ownNoteGroup(req.userId, req.params.gid);
+    if (!g) return res.status(404).json({ error: 'Group not found' });
+    const question = String(req.body?.question || '').trim().slice(0, 500) || 'New question';
+    const mx = await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_items WHERE group_id = $1', [g.id]);
+    const it = (await pool.query('INSERT INTO answer_note_items (note_id, group_id, question, sort_order) VALUES ($1, $2, $3, $4) RETURNING *', [g.note_id, g.id, question, mx.rows[0].n])).rows[0];
+    res.json(noteItemOut(it));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/note/groups/:gid/items/order', authMiddleware, async (req, res) => {
+  try {
+    const g = await ownNoteGroup(req.userId, req.params.gid);
+    if (!g) return res.status(404).json({ error: 'Group not found' });
+    const have = (await pool.query('SELECT id FROM answer_note_items WHERE group_id = $1 ORDER BY sort_order, created_at', [g.id])).rows.map(r => r.id);
+    const order = answerNote.reorderIds(have, Array.isArray(req.body?.ids) ? req.body.ids : []);
+    for (let i = 0; i < order.length; i++) await pool.query('UPDATE answer_note_items SET sort_order = $1 WHERE id = $2 AND group_id = $3', [i, order[i], g.id]);
+    res.json({ ids: order });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Save: question rename and/or content. Content carries baseVersion (the version the editor loaded); a stale one is
+// refused with 409 + the live row — the page then shows both, nothing is overwritten silently.
+app.put('/api/note/items/:iid', authMiddleware, async (req, res) => {
+  try {
+    let item = await ownNoteItem(req.userId, req.params.iid);
+    if (!item) return res.status(404).json({ error: 'Question not found' });
+    if (req.body?.question !== undefined) {
+      const q = String(req.body.question).trim().slice(0, 500);
+      if (q) item = (await pool.query('UPDATE answer_note_items SET question = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [q, item.id])).rows[0];
+    }
+    if (req.body?.answer_html !== undefined || req.body?.key_points !== undefined) {
+      let change;
+      try { change = answerNote.applyChange(item, { answer_html: req.body.answer_html, key_points: req.body.key_points, baseVersion: req.body.baseVersion }, { by: 'you', label: 'Your edit' }); }
+      catch (e) { if (e.code === 'CONFLICT') { console.log(`[Note] Stale save refused for ${item.id} (base ${req.body.baseVersion}, live ${item.version})`); return res.status(409).json({ error: e.message, item: noteItemOut(item) }); } throw e; }
+      if (change.changed) item = await writeNoteItem(item, change);
+    }
+    res.json(noteItemOut(item));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/note/items/:iid', authMiddleware, async (req, res) => {
+  try {
+    const item = await ownNoteItem(req.userId, req.params.iid);
+    if (!item) return res.status(404).json({ error: 'Question not found' });
+    await pool.query('DELETE FROM answer_note_items WHERE id = $1', [item.id]);
+    res.json({ removed: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// AI: write or change one answer. The current text goes into history BEFORE the AI result replaces it (Undo = restore).
+app.post('/api/note/items/:iid/generate', authMiddleware, async (req, res) => {
+  try {
+    const item = await ownNoteItem(req.userId, req.params.iid);
+    if (!item) return res.status(404).json({ error: 'Question not found' });
+    const answerCheck = await checkAnswerLimit(req.userId, req.plan); // same monthly cap as the bank's Generate buttons
+    if (!answerCheck.ok) return res.status(403).json({ error: `Monthly answer limit reached (${answerCheck.limit}). Upgrade for more.` });
+    const note = await loadNote(req.userId);
+    const session = await noteSessionFor(req.userId, req.body?.sessionId || note.settings?.sessionId);
+    if (!session) return res.status(400).json({ error: 'Add your résumé to a session first. The note writes answers from it.' });
+    if (!String(session.resume || '').trim()) return res.status(400).json({ error: 'That session has no résumé. Pick one that does.' });
+    const mode = answerNote.MODES[req.body?.mode] ? req.body.mode : 'regenerate';
+    const custom = String(req.body?.instruction || '').trim();
+    if (mode === 'custom' && !custom) return res.status(400).json({ error: 'Say how to change it.' });
+    const out = await generateNoteAnswer(session, req.userId, item, mode, custom);
+    const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label: answerNote.changeLabel(mode, custom) });
+    const saved = change.changed ? await writeNoteItem(item, change) : item;
+    res.json(Object.assign(noteItemOut(saved), { job: { id: session.id, company: session.company, role: session.role } }));
+  } catch (e) { console.error('[Note] generate failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+app.post('/api/note/items/:iid/restore', authMiddleware, async (req, res) => {
+  try {
+    const item = await ownNoteItem(req.userId, req.params.iid);
+    if (!item) return res.status(404).json({ error: 'Question not found' });
+    let change;
+    try { change = answerNote.restoreVersion(item, String(req.body?.versionId || '')); }
+    catch (e) { if (e.code === 'NOT_FOUND') return res.status(404).json({ error: e.message }); throw e; }
+    res.json(noteItemOut(change.changed ? await writeNoteItem(item, change) : item));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Standalone Smart Canvas page
 app.get('/canvas', (req, res) => res.sendFile(path.join(__dirname, 'public', 'canvas.html')));
 
@@ -5538,10 +5794,11 @@ function liveLineCap(styleKey, userMaxLines, shape) {
   return shape === 'story' && cap ? Math.max(cap, STORY_MIN_LINES) : cap;
 }
 
-function composeLiveSystemPrompt({ shape, technical, styleKey, maxLines, voiceProfile, withConversation, questionText }) {
+function composeLiveSystemPrompt({ shape, technical, styleKey, maxLines, voiceProfile, withConversation, questionText, employerLine }) {
   const sp = STYLE_LAYOUT[styleKey] || {};
   const cap = liveLineCap(styleKey, maxLines, shape);
-  const employerLineAllowed = !!withConversation || OWN_EXPERIENCE_RE.test(questionText || '');
+  // employerLine === true: the Answer Note (prepared ahead, no conversation) always welcomes his own example; live answers unchanged
+  const employerLineAllowed = employerLine === true || !!withConversation || OWN_EXPERIENCE_RE.test(questionText || '');
   const parts = [LIVE_CORE];
   if (technical) parts.push(LIVE_ACCURACY);
   parts.push('\n' + liveLayout(shape, { maxLines: cap, unit: sp.unit, storyLabels: sp.storyLabels && shape === 'story', employerLineAllowed }));

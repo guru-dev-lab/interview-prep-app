@@ -377,6 +377,7 @@ button{font-family:inherit;cursor:pointer}
   </div>
   <div style="flex:1"></div>
   <div class="nav-user" style="position:relative">
+    <button id="nav-note" onclick="openAnswerNote()" title="Your answers, ready to read on a call" style="display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:8px;font:600 11px Inter,sans-serif;border:1px solid rgba(124,58,237,.4);background:rgba(124,58,237,.1);color:#c4b5fd;cursor:pointer;transition:.15s;letter-spacing:.3px"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>Answer Note</button>
     <button id="nav-upgrade" onclick="showUpgradeModal()" style="display:none;align-items:center;gap:5px;padding:6px 14px;border-radius:8px;font:600 11px Inter,sans-serif;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08);color:#FBBF24;cursor:pointer;transition:.15s;letter-spacing:.3px"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Upgrade</button>
     <span id="nav-plan-badge" style="font:600 10px Inter,sans-serif;padding:4px 10px;border-radius:100px;text-transform:uppercase;letter-spacing:.5px;display:none"></span>
     <div class="nav-avatar" id="nav-avatar" onclick="toggleUserMenu()"><span id="nav-initials"></span></div>
@@ -2641,6 +2642,7 @@ function handleLiveMessage(msg) {
   }
 
   else if (msg.type === 'question_detected') {
+    tellAnswerNote(msg.text); // the Answer Note window (if open) jumps to the closest prepared answer
     var qd = document.createElement('div');
     qd.style.cssText = 'font:600 10px Inter,sans-serif;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px;margin:6px 0 2px;padding-left:88px';
     qd.textContent = 'Question detected';
@@ -3438,6 +3440,20 @@ async function handleCanvasQuestionOffline(text) {
       }
     } catch(e) { toast('Failed to generate answer', 1); }
   }
+}
+
+// Answer Note (23 Oct): its own window from the server page /note, for the open session's job when there is one.
+function openAnswerNote() {
+  if (!TOKEN) { toast('Sign in first', 1); return; }
+  var url = location.origin + '/note?token=' + encodeURIComponent(TOKEN) + (S && S.id ? '&session=' + encodeURIComponent(S.id) : '');
+  window.open(url, 'xhire-note', 'width=1040,height=720');
+}
+// Every detected interviewer question goes to the note window too (same origin: BroadcastChannel, localStorage as the
+// fallback). Fire-and-forget; the live pipeline never waits on it.
+function tellAnswerNote(text) {
+  if (!text) return;
+  try { new BroadcastChannel('xhire-note').postMessage({ type: 'question', text: text }); } catch (e) {}
+  try { localStorage.setItem('xhire_note_q', JSON.stringify({ text: text, ts: Date.now() })); } catch (e) {}
 }
 
 // Launch standalone desktop canvas (for Electron always-on-top app)

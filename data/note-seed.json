@@ -1,0 +1,135 @@
+{
+  "_source": "Mined 23 Oct 2026 from 16 real xHire interviews (calls >=10 min where the candidate spoke 700+ words), plus the two the owner remembers (prioritise, sell to an executive who won't budge). Groups = left rail (vertical). Variations = horizontal tabs inside a group: the different ways interviewers phrase the same question.",
+  "groups": [
+    { "name": "Tell me about yourself", "variations": [
+      "Tell me about yourself.",
+      "Give us a little introduction of yourself.",
+      "Walk me through your background and what you want to highlight.",
+      "Tell me about the reporting work you did at your current company.",
+      "Can you give me a brief overview of yourself, titles and things you've done?"
+    ]},
+    { "name": "Why are you looking / why this role", "variations": [
+      "Why are you looking to leave your current role?",
+      "Why are you interested in this role?",
+      "What has you looking for a new position now?",
+      "What are you looking for in your next role?",
+      "What got you interested in our company?",
+      "You're already a subject matter expert where you are. Why move?"
+    ]},
+    { "name": "What do you know about us", "variations": [
+      "What do you know about our company?",
+      "What have you learned about us so far?",
+      "What can you say about our culture?"
+    ]},
+    { "name": "Prioritising", "variations": [
+      "How do you prioritise?",
+      "How do you handle conflicting priorities?",
+      "You have two or three projects coming at once. How do you handle it?",
+      "How do you prioritise across a global team and multiple regions?",
+      "How do you handle tight deadlines and pressure?"
+    ]},
+    { "name": "Selling to an executive who won't budge", "variations": [
+      "How do you convince an executive who won't budge?",
+      "How did you make them care?",
+      "What happens if they want you to go the wrong direction?",
+      "Leadership disagrees with what your data shows. What do you do?",
+      "How do you get buy-in when stakeholders aren't sold on your idea?",
+      "Tell me about a time you influenced a decision without authority."
+    ]},
+    { "name": "Stakeholders & requirements", "variations": [
+      "A leader asked for one report but actually needed something different. What did you do?",
+      "What's your process when a new requirement comes in?",
+      "How do you handle a stakeholder who keeps changing requirements?",
+      "Have you renegotiated a timeline with someone more senior?",
+      "Tell me about a time you had to say no to a stakeholder.",
+      "How do you get people to actually adopt something new you built?"
+    ]},
+    { "name": "Checking the numbers are right", "variations": [
+      "How do you validate a report before it goes to leadership?",
+      "How did you turn questionable data into clean data you trusted?",
+      "The business says these numbers are wrong. How do you look into it?",
+      "Tell me about a time you missed an error before it went out.",
+      "How do you document your data cleaning?"
+    ]},
+    { "name": "Dashboards you built", "variations": [
+      "What dashboards have you built?",
+      "What visuals and functionality does your dashboard have?",
+      "Walk me through one you built end to end and how it solved the problem.",
+      "How were the executives using them?",
+      "What did the team do with that data?"
+    ]},
+    { "name": "Power BI & data models", "variations": [
+      "How would you troubleshoot a measure that's right at row level but wrong in the total?",
+      "Describe the most difficult DAX calculation you've written.",
+      "How many models, fact tables and dimensions did you build to support those reports?",
+      "How do users access the reports? Workspace or apps? How do you manage who sees what (RLS)?",
+      "How do you develop and deploy a report?",
+      "How do you optimize a slow Power BI report?",
+      "Which Microsoft Fabric components have you implemented?",
+      "Rate your Power BI skills from 0 to 10."
+    ]},
+    { "name": "SQL", "variations": [
+      "What's the difference between an inner join and a left join?",
+      "What is a window function and when would you use one?",
+      "Have you optimized a query that wasn't performing well? How?",
+      "Do you use views or materialized views? When?",
+      "How do you find and handle duplicates?",
+      "Do you test queries in a separate environment?"
+    ]},
+    { "name": "Pipelines & warehouse", "variations": [
+      "Walk me through a pipeline from raw source data to metrics.",
+      "What do you call each layer, and what belongs in each?",
+      "Where should transformation logic live: warehouse or BI layer?",
+      "How would you pull data from an API into a database or Google Sheet?",
+      "Someone does a process by hand. How would you automate it?"
+    ]},
+    { "name": "AI & tools", "variations": [
+      "How is AI changing your work? Have you built anything with it?",
+      "What AI tools do you use to support your work?",
+      "What are most people doing wrong when using AI to get work done?",
+      "What tools, platforms and databases have you used?",
+      "How many years of Tableau do you have?",
+      "How have you used Python in your current role?"
+    ]},
+    { "name": "Tell me about a time", "variations": [
+      "Tell me about a time you collaborated really well with others. What did you do?",
+      "Tell me about a time you worked with a difficult person.",
+      "Your work was challenged as incomplete. How did you respond?",
+      "Tell me about a time you took initiative.",
+      "Tell me about a time documentation helped you.",
+      "Tell me about your most complex project or biggest technical challenge."
+    ]},
+    { "name": "Leadership", "variations": [
+      "What's your leadership style?",
+      "Is a team of five the largest you've led?",
+      "You've led a team. Are you OK being an individual contributor?",
+      "Tell me about a time you stepped into a leadership role."
+    ]},
+    { "name": "Strengths, weaknesses, why you", "variations": [
+      "What are your strengths?",
+      "What's your weakness? A skill you're still developing?",
+      "What constructive feedback have you received and how did you act on it?",
+      "What sets you apart from other candidates?",
+      "Why should we hire you?"
+    ]},
+    { "name": "Salary", "variations": [
+      "What are your salary expectations?",
+      "Is that still the range you're looking for?",
+      "Where do you sit on that range realistically?",
+      "What would you need in a package to consider a change?"
+    ]},
+    { "name": "Logistics", "variations": [
+      "How soon can you start?",
+      "Do you have offers elsewhere? What's your timeline?",
+      "Are you subject to a non-compete?",
+      "This is remote with some travel. Does that work?",
+      "Are you authorized to work in the US?"
+    ]},
+    { "name": "Questions for them", "variations": [
+      "What questions do you have for me?",
+      "What does success look like in the first 90 days?",
+      "What's the biggest problem the team is facing today?",
+      "What are the current initiatives?"
+    ]}
+  ]
+}
