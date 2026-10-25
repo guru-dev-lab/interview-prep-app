@@ -146,7 +146,7 @@ body.compact .row{padding:6px 8px 6px 10px}
 .people.closed .people-head .chev{transform:rotate(-90deg)}
 .people.closed textarea{display:none}
 .people:not(.closed) .people-head .sum{display:none}
-.people textarea{width:100%;box-sizing:border-box;resize:none;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font:inherit;font-size:13.5px;line-height:1.45;padding:6px 8px;min-height:44px;max-height:180px;overflow-y:auto}
+.people textarea{width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font:inherit;font-size:13.5px;line-height:1.45;padding:6px 8px;min-height:44px;max-height:60vh;overflow-y:auto}
 .people textarea:focus{outline:none;border-color:var(--accent)}
 .row input{width:100%;font-weight:650;font-size:14px;padding:3px 6px;border:1px solid var(--sel-line);border-radius:6px;background:var(--page)}
 .side-foot{padding:8px;border-top:1px solid var(--line);display:flex;gap:6px}
@@ -722,7 +722,13 @@ function renderPeople() {
   peopleSum(); growPeople();
 }
 function peopleSum() { var t = $('people-text').value.trim(); $('people-sum').textContent = t ? t.split('\n')[0] + (t.indexOf('\n') > 0 ? ' +' + (t.split('\n').filter(function (l) { return l.trim(); }).length - 1) : '') : 'Add who you are meeting'; }
-function growPeople() { var ta = $('people-text'); ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 180) + 'px'; }
+// Owner 25 Oct "expandable and collapsible": it folds (the bar), and its bottom edge drags it taller or shorter; a dragged
+// size is kept. With none kept, it grows with what he types, up to 180px.
+function growPeople() { var ta = $('people-text'), h = parseInt(lsGet('xhire_note_people_h') || '0', 10); if (h) { ta.style.height = h + 'px'; return; } ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 180) + 'px'; }
+var peopleH = 0;
+$('people-text').onmousedown = function () { peopleH = $('people-text').offsetHeight; };
+document.addEventListener('mouseup', function () { if (!peopleH) return; var h = $('people-text').offsetHeight; if (h !== peopleH) lsSet('xhire_note_people_h', String(h)); peopleH = 0; });
+$('people-text').ondblclick = function (e) { if (e.offsetY > this.clientHeight - 12) { lsSet('xhire_note_people_h', ''); growPeople(); } }; // double-click the bottom edge: back to fitting the text
 $('people-head').onclick = function () { var c = !$('people').classList.contains('closed'); $('people').classList.toggle('closed', c); lsSet('xhire_note_people_closed', c ? '1' : '0'); if (!c) { growPeople(); $('people-text').focus(); } };
 $('people-text').oninput = function () {
   if (!N || !N.job) return;
