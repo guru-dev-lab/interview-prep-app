@@ -82,7 +82,7 @@ check(N.htmlToText('<ul><li>One</li><li>Two &amp; three</li></ul><p>Four</p>') =
 const gen = N.parseGenerated('• I lead with the number.\n• Then the how.\n↳ At Acme — cut refresh from 4 hours to 20 minutes.\nKEY: lead with the 4h to 20min cut');
 check(gen.keyPoints === 'lead with the 4h to 20min cut' && !/KEY/.test(gen.answer) && gen.answer.split('\n').length === 3, 'parseGenerated splits KEY off', JSON.stringify(gen));
 const html = N.answerToHtml(gen.answer);
-check(html === '<ul><li>I lead with the number.</li><li>Then the how.</li></ul><p class="emp">At Acme — cut refresh from 4 hours to 20 minutes.</p>', 'answerToHtml: bullets → list, ↳ → proof line', html);
+check(html === '<ul><li>I lead with the number.</li><li>Then the how.</li></ul><p class="emp">At Acme, cut refresh from 4 hours to 20 minutes.</p>', 'answerToHtml: bullets → list, ↳ → proof line', html);
 check(N.answerToHtml('▸ At Acme\n• Situation: x\n```sql\nSELECT 1\n```') === '<h3>At Acme</h3><ul><li>Situation: x</li></ul><pre>SELECT 1</pre>', 'answerToHtml: heading and code', N.answerToHtml('▸ At Acme\n• Situation: x\n```sql\nSELECT 1\n```'));
 
 // Change instructions

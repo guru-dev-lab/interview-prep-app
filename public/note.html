@@ -1314,6 +1314,7 @@ var heardGid = null, heardSec = null, heardText = '', hot = null, saidText = '',
 function showHeard(text, gid, itemId, label) {
   var t = $('heard-text');
   if (gid) t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> &rarr; <b>' + esc(label) + '</b>' + (gid !== cur.gid ? ' <button class="chip primary" id="heard-open" style="height:26px;margin-left:6px">Open</button>' : ' <span style="color:var(--muted)">(on screen)</span>');
+  else if (label === 'wait' || label === 'pending') t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i> <span style="color:var(--muted)">' + (label === 'wait' ? 'Finding it in your note...' : 'Waiting for the rest of the question...') + '</span>';
   else t.innerHTML = 'Heard: <i>' + esc(text.slice(0, 140)) + '</i>. ' + (label === true ? 'Not in your note yet: kept under "New questions" on the left.' : label ? 'Not in your note yet: adding it to "New questions"...' : 'Nothing close in the note.');
   var ob = $('heard-open'); if (ob) ob.onclick = function () { select(gid, itemId, { flash: true }); $('heard').classList.remove('open'); };
   $('heard').classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { $('heard').classList.remove('open'); }, 20000);
@@ -1327,9 +1328,10 @@ function firstTime(kind, text) { var k = kind + '|' + text, now = Date.now(); if
 function onHeard(text) {
   if (SOLO || !follow || !N || !text || !firstTime('q', text)) return;
   heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; heardPending = false; // a new question: ticks start over
-  var m = NoteMatch.closest(N.groups, text); // instant: by wording
-  setHeard(m ? m.groupId : null);
-  showHeard(text, m && m.groupId, m && m.itemId, m ? (findGroup(m.groupId) || {}).name || m.question : '');
+  // Owner 25 Oct (screenshots): the instant guess by wording named the wrong card ("could you tell me a little" -> Start
+  // date, "an example of that?" -> Great teamwork). Nothing is named or marked until the smart match (~0.8 s) says so.
+  setHeard(null);
+  showHeard(text, null, null, 'wait');
   markLines();
   smartHeard(text);
   clearTimeout(coachWait); themAfter = ''; coachQ = text;
@@ -1439,6 +1441,10 @@ function smartHeard(text, key) { // ~1 s later: which question it really is + th
         showHeard(text, j.groupId, j.itemId, j.name);
         if (N.settings.autoSwitch && !unfinished && j.groupId !== cur.gid && !typingInNote()) select(j.groupId, j.itemId, { flash: true });
         markLines();
+      } else if (heardPending) {
+        setHeard(null);
+        if (unfinished) showHeard(text, null, null, 'pending'); // cut off: nothing named until the whole question is heard
+        else $('heard').classList.remove('open'); // a finished sentence that is not a question (small talk): nothing to show
       } else if (j.question) {
         setHeard(null);
         addNewQuestion(j.title, j.question);
