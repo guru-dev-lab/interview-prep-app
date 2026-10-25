@@ -1134,6 +1134,7 @@ function ul(items) { items = (items || []).filter(Boolean); return items.length 
 function renderCallPage() {
   var wrap = $('call-wrap'); if (view !== 'calls') { wrap.classList.add('hidden'); return; }
   wrap.classList.remove('hidden');
+  $('answer-wrap').classList.add('hidden'); $('empty').classList.add('hidden'); // the call replaces the open question, never sits on top of it
   if (!CALLS) { wrap.innerHTML = '<div class="empty">Loading your calls...</div>'; return; }
   var c = CALLS.calls.find(function (x) { return x.id === curCall; });
   if (!c) { wrap.innerHTML = '<div class="empty">' + (CALLS.session ? 'No calls for this job yet. When you take a call with xHire, what was asked and said is noted here, so you can read it before the next round and add the questions to your note.' : esc(CALLS.error || 'Pick the job at the top to see its calls.')) + '</div>'; return; }
