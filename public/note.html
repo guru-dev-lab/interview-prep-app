@@ -136,6 +136,18 @@ body.compact .row{padding:6px 8px 6px 10px}
 .row:hover .more,.row.active .more{opacity:1}
 .row .more:hover{background:var(--line2)}
 .row.drag-over{border-top:2px solid var(--accent)}
+.sec.drop-before{box-shadow:inset 0 3px 0 var(--accent)}
+.sec.drop-after{box-shadow:inset 0 -3px 0 var(--accent)}
+/* People pad (owner 25 Oct): who he is meeting for this job and small details, always above the questions */
+.people{flex-shrink:0;border-bottom:1px solid var(--line2);padding:6px 10px 8px}
+.people-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;user-select:none;padding:2px 2px 4px}
+.people-head .sum{flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+.people-head .chev{flex-shrink:0;transition:transform .15s}
+.people.closed .people-head .chev{transform:rotate(-90deg)}
+.people.closed textarea{display:none}
+.people:not(.closed) .people-head .sum{display:none}
+.people textarea{width:100%;box-sizing:border-box;resize:none;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font:inherit;font-size:13.5px;line-height:1.45;padding:6px 8px;min-height:44px;max-height:180px;overflow-y:auto}
+.people textarea:focus{outline:none;border-color:var(--accent)}
 .row input{width:100%;font-weight:650;font-size:14px;padding:3px 6px;border:1px solid var(--sel-line);border-radius:6px;background:var(--page)}
 .side-foot{padding:8px;border-top:1px solid var(--line);display:flex;gap:6px}
 .side-foot .ibtn{flex:1}
@@ -312,6 +324,10 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
 <div class="main" id="main">
   <aside class="side" id="side">
     <div class="vtabs only-full"><button id="tab-q" class="on" title="Your questions and answers">Questions</button><button id="tab-calls" title="Notes from your calls for this job">Calls</button></div>
+    <div class="people hidden" id="people">
+      <div class="people-head" id="people-head" title="Fold or open"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.3 3.3 0 0 1 0 6.4M18.5 14.8c1.6.8 2.6 2.6 3 5.2"/></svg><span>People</span><span class="sum" id="people-sum"></span><svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+      <textarea id="people-text" rows="2" spellcheck="false" placeholder="Who you have met and who is on this call, with small details. One person per line."></textarea>
+    </div>
     <div class="list" id="list"></div>
     <div class="side-foot"><button class="ibtn txt" id="add-group">+ New question</button><button class="ibtn txt" id="btn-compact" title="Show titles only, to see everything at a glance">Titles only</button></div>
   </aside>
@@ -550,7 +566,7 @@ async function load() {
   var r = await api('GET', '/api/note');
   if (!r.ok) { toast(r.json.error || 'Could not load the note', 3000); return; }
   N = r.json; N.groups.forEach(function (g) { g.items = g.items || []; }); if (N.job) JOB = N.job.id;
-  applySettings(); applyDrafts();
+  applySettings(); applyDrafts(); renderPeople();
   if (!SOLO) await loadJobs().catch(function () {});
   buildJob();
   api('GET', '/api/note/asked').then(function (r) { if (r.ok) { ASKED = r.json.counts || {}; renderList(); } }).catch(function () {}); // the job at the top is set BEFORE anything is written: opened from a session, it is that session (owner 24 Oct)
@@ -601,7 +617,7 @@ async function switchJob() {
     var r = await api('GET', '/api/note').catch(function () { return { ok: false, json: {} }; });
     if (!r.ok) { JOB = was; $('job').value = [].some.call($('job').options, function (o) { return o.value === was; }) ? was : ''; jobTitle(); var kg = keep && N.groups.find(function (g) { return g.name === keep; }); if (kg) select(kg.id, (kg.items[0] || {}).id); toast(r.json.error || 'Could not load that job', 3000); return; }
     N = r.json; N.groups.forEach(function (g) { g.items = g.items || []; }); if (N.job) JOB = N.job.id;
-    applyDrafts(); latestLabel(); jobTitle(); hot = null; heardGid = null;
+    applyDrafts(); latestLabel(); jobTitle(); renderPeople(); hot = null; heardGid = null;
     var same = keep && N.groups.find(function (g) { return g.name === keep; }), gs = navGroups();
     if (same) select(same.id, (same.items[0] || {}).id); else if (gs.length && gs[0].items.length) select(gs[0].id, gs[0].items[0].id); else { cur = { gid: null, iid: null }; renderAll(); }
     buildJob();
@@ -640,7 +656,8 @@ function renderList() {
   screenOrder(gs).forEach(function (sec) {
     var closed = sec.name !== openSec && sec.name !== heardSec && !filter;
     var ready = sec.groups.filter(function (g) { return rowStatus(g).cls === 'done'; }).length;
-    var h = document.createElement('div'); h.className = 'sec' + (closed ? ' closed' : ''); h.title = closed ? 'Open this section' : 'Fold this section';
+    var h = document.createElement('div'); h.className = 'sec' + (closed ? ' closed' : ''); h.title = (closed ? 'Open this section' : 'Fold this section') + (sec.name !== 'Pinned' && !filter ? '. Drag to move it.' : '');
+    sectionDrop(h, sec.name);
     h.innerHTML = '<span class="bar"></span><span style="min-width:0">' + esc(sec.name) + '</span><span class="cnt' + (ready === sec.groups.length ? ' done' : '') + '" title="' + ready + ' of ' + sec.groups.length + ' questions fully answered">' + ready + '/' + sec.groups.length + '</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
     h.onclick = function () { openSec = openSec === sec.name ? null : sec.name; renderList(); if (openSec) h.scrollIntoView({ block: 'start' }); };
     host.appendChild(h);
@@ -669,9 +686,50 @@ function renderList() {
 function newQuestionsPlaceholder(host) { // the plain section is always there, even before a call has filled it
   if (filter || N.groups.some(function (g) { return g.section === NEWQ; })) return;
   var h = document.createElement('div'); h.className = 'sec'; h.innerHTML = '<span class="bar" style="background:var(--ok)"></span><span style="min-width:0">' + NEWQ + '</span><span class="cnt">0</span>';
+  sectionDrop(h, null); // a section dropped here goes to the end, just above it
   host.appendChild(h);
   host.insertAdjacentHTML('beforeend', '<div class="newhint">Questions from your calls that are not in your note land here on their own, with what xHire answered. Open one and the note writes it up its own way: tables, and a flow for any process or architecture.</div>');
 }
+// Sections move as a whole (owner 25 Oct: "can you make them moveable"): drag a section bar onto another one; the top
+// half drops it above, the bottom half below. name null = the empty New questions bar: the very end.
+function sectionDrop(h, name) {
+  if (name && name !== 'Pinned' && !filter) {
+    h.draggable = true;
+    h.ondragstart = function (e) { e.dataTransfer.setData('text/plain', 's:' + name); e.dataTransfer.effectAllowed = 'move'; };
+  }
+  if (name === 'Pinned') return;
+  var side = function (e) { var r = h.getBoundingClientRect(); return name !== null && e.clientY > r.top + r.height / 2; };
+  h.ondragover = function (e) { e.preventDefault(); var after = side(e); h.classList.toggle('drop-before', !after); h.classList.toggle('drop-after', after); };
+  h.ondragleave = function () { h.classList.remove('drop-before', 'drop-after'); };
+  h.ondrop = function (e) {
+    e.preventDefault(); var after = side(e); h.classList.remove('drop-before', 'drop-after');
+    var d = e.dataTransfer.getData('text/plain'); if (d.indexOf('s:') === 0) moveSectionTo(d.slice(2), name, after);
+  };
+}
+function moveSectionTo(from, to, after) {
+  if (from === to) return;
+  var ids = NoteMatch.moveSection(N.groups, from, to, after, secOf);
+  ids.forEach(function (id, i) { findGroup(id).sort_order = i; }); renderList();
+  queueSave('group-order', async function () { var r = await api('PUT', '/api/note/groups/order', { ids: ids }); if (!r.ok) throw new Error('order'); }, 300);
+}
+// ===== People pad: who he is meeting for this job, his own words, saved per job =====
+function renderPeople() {
+  var box = $('people'), ta = $('people-text');
+  box.classList.toggle('hidden', !N || !N.job);
+  if (!N || !N.job) return;
+  if (document.activeElement !== ta) ta.value = N.job.people || '';
+  box.classList.toggle('closed', lsGet('xhire_note_people_closed') === '1');
+  peopleSum(); growPeople();
+}
+function peopleSum() { var t = $('people-text').value.trim(); $('people-sum').textContent = t ? t.split('\n')[0] + (t.indexOf('\n') > 0 ? ' +' + (t.split('\n').filter(function (l) { return l.trim(); }).length - 1) : '') : 'Add who you are meeting'; }
+function growPeople() { var ta = $('people-text'); ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 180) + 'px'; }
+$('people-head').onclick = function () { var c = !$('people').classList.contains('closed'); $('people').classList.toggle('closed', c); lsSet('xhire_note_people_closed', c ? '1' : '0'); if (!c) { growPeople(); $('people-text').focus(); } };
+$('people-text').oninput = function () {
+  if (!N || !N.job) return;
+  var sid = N.job.id, text = $('people-text').value; N.job.people = text; peopleSum(); growPeople();
+  queueSave('people:' + sid, async function () { var r = await api('PUT', '/api/note/people', { sessionId: sid, text: text }); if (!r.ok) throw new Error('people'); }, 600);
+};
+$('people-text').onkeydown = function (e) { e.stopPropagation(); }; // typing here never fires the note's keys
 function renderWays() {
   var host = $('ways'); host.innerHTML = '';
   var g = cur.gid && findGroup(cur.gid); if (!g) return;

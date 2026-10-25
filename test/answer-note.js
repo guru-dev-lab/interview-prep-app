@@ -7,7 +7,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
 // Seed (v2, owner 24 Oct): every distinct question its own line, a short title, the full question, at most 3 other ways
 const rows = N.seedRows();
 const nItems = rows.reduce((n, g) => n + g.items.length, 0);
-check(rows.length === 48 && nItems === 192, 'seed: 48 questions, 192 wordings', rows.length + ' ' + nItems);
+check(rows.length === 49 && nItems === 196, 'seed: 49 questions, 196 wordings', rows.length + ' ' + nItems);
 check(rows.every(g => g.items.length >= 1 && g.items.length <= N.MAX_WAYS + 1), 'seed: every question has at most ' + N.MAX_WAYS + ' other ways');
 check(rows[0].name === 'About me' && rows[0].section === 'About you' && rows[0].items[0].question === 'Tell me about yourself.', 'seed: short title, section, full question first');
 check(rows.every(g => g.name.length <= 40 && g.section), 'seed: every title is short and sits in a section', rows.filter(g => g.name.length > 40 || !g.section).map(g => g.name).join(' | '));
@@ -39,8 +39,8 @@ const g1Rows = ops.filter(o => (o.op === 'updateItem' && ['a', 'b', 'c', 'd', 'e
 check(g1Rows.length === 4 && g1Rows.find(o => o.sort_order === 0).question === 'How do you prioritize when everything is urgent?', 'upgrade: 4 wordings, the full question first', JSON.stringify(g1Rows));
 check(del.has('c') && del.size === 1, 'upgrade: only the empty extra row goes', JSON.stringify([...del]));
 check(byId('s1')[0].question === 'What are your salary expectations?' && byId('s2')[0].question === 'What are you looking for in pay?' && ops.filter(o => o.op === 'insertItem' && o.group_id === 'g2').length === 2, 'upgrade: empty rows are reused, the rest inserted');
-check(ops.some(o => o.op === 'insertGroup' && o.name === "Why I'm leaving") && ops.filter(o => o.op === 'insertGroup').length === 48 - 2, 'upgrade: questions not in the old note are added', ops.filter(o => o.op === 'insertGroup').length);
-check(byId('g9').length === 1 && byId('g9')[0].sort_order === 48 && byId('g9')[0].name === undefined, 'upgrade: his own group is left alone, moved below the seed');
+check(ops.some(o => o.op === 'insertGroup' && o.name === "Why I'm leaving") && ops.filter(o => o.op === 'insertGroup').length === 49 - 2, 'upgrade: questions not in the old note are added', ops.filter(o => o.op === 'insertGroup').length);
+check(byId('g9').length === 1 && byId('g9')[0].sort_order === 49 && byId('g9')[0].name === undefined, 'upgrade: his own group is left alone, moved below the seed');
 const tooMany = N.upgradePlan([{ id: 'g', name: 'SQL', items: ['p', 'q', 'r', 's', 't'].map((x, i) => ({ id: x, question: 'q' + x, sort_order: i, answer_html: 'a' })) }]);
 check(tooMany.filter(o => o.op === 'deleteEmptyItem').length === 0 && tooMany.filter(o => o.op === 'updateItem' && 'pqrst'.includes(o.id)).length === 5, 'upgrade: more answered rows than the cap all stay');
 
@@ -163,14 +163,15 @@ check(M.powerSaid('20 minutes', 'like twenty minutes') && !M.powerSaid('40 execu
 // Seed v3 (24 Oct, owner: "add Agentic AI usage into the AI part"): added once to notes made earlier, after the AI section
 const v2rows = N.seedRows().filter(g => !(N.SEED.groups.find(s => s.title === g.name) || {}).since); // a note made from seed v2
 const v2 = v2rows.map((g, i) => ({ id: 'n' + i, name: g.name, section: g.section, sort_order: i, items: g.items.map(it => ({ question: it.question })) }));
-const add = N.additionsPlan(v2, 2);
+const add = N.additionsPlan(v2, 2).filter(a => a.name !== 'My AI impact');
 const aiLast = v2.filter(g => g.section === 'AI and tools').pop();
 check(add.length === 5 && add.every(a => a.section === 'AI and tools' && a.items.length === 4), 'v2 note: the 5 Agentic AI questions are added to the AI section', JSON.stringify(add.map(a => a.name)));
 check(add[0].name === 'Agentic AI at work' && add[0].after === aiLast.sort_order && add[1].after === aiLast.sort_order + 1, 'they go right after the last AI question, in order', JSON.stringify(add.map(a => a.after)));
-check(N.additionsPlan(v2, 3).length === 0, 'a note already on v3 gets nothing');
+const v4add = N.additionsPlan(v2, 3);
+check(v4add.length === 1 && v4add[0].name === 'My AI impact' && v4add[0].section === 'AI and tools' && v4add[0].after === aiLast.sort_order && N.additionsPlan(v2, 4).length === 0, 'seed v4 (owner 25 Oct): a note on v3 gets only My AI impact, under AI; a v4 note gets nothing', JSON.stringify(v4add));
 const hasOne = v2.concat([{ id: 'x', name: 'My agents', section: 'AI and tools', sort_order: 99, items: [{ question: 'How have you used agentic AI in your work?' }] }]);
-check(N.additionsPlan(hasOne, 2).length === 4, 'a question he already has (same wording) is not added again');
-check(N.SEED.groups.every(g => !/\u2014/.test(JSON.stringify(g))) && N.SEED.version === 3, 'seed v3, no em dashes');
+check(N.additionsPlan(hasOne, 2).length === 5, 'a question he already has (same wording) is not added again');
+check(N.SEED.groups.every(g => !/\u2014/.test(JSON.stringify(g))) && N.SEED.version === 4, 'seed v4, no em dashes');
 
 // detailed spoken answers (owner 24 Oct): which questions get them, and how paragraphs become the note
 check(N.detailFor('About me') === 'intro' && N.detailFor('about me ') === 'intro' && N.detailFor('Tell me about yourself') === 'intro', 'detailed: About me (and its old name) gets the intro path');
@@ -196,10 +197,17 @@ check(/never of the method/.test(N.COACH_PROMPT), 'coach: résumé and bank give
 check(['Weakness', 'A difficult person', "Why I'm leaving", 'Start date'].every(n => N.scopeOf({ name: n }) === 'you') && ['About me', 'Why this role', 'Salary', 'Slow SQL query', 'Some new question'].every(n => N.scopeOf({ name: n }) === 'job'), 'per job: experience questions keep one answer, the rest one per job');
 check(N.scopeOf({ name: 'Weakness', scope: 'job' }) === 'job' && N.scopeOf({ name: 'About me', scope: 'you' }) === 'you', 'per job: his flip wins over the app');
 check(N.isRoleSection('SQL and pipelines') && N.isRoleSection('From calls: Cambium') && !N.isRoleSection('About you') && !N.isRoleSection('Why you'), 'per job: the data sections and call questions are job-only');
-check(rows.filter(g => N.isRoleSection(g.section)).length === 24 && rows.filter(g => !N.isRoleSection(g.section)).length === 24, 'per job: 24 seed questions fit any job, 24 are for data jobs');
+check(rows.filter(g => N.isRoleSection(g.section)).length === 16 && rows.filter(g => !N.isRoleSection(g.section)).length === 33 && !N.isRoleSection('AI and tools'), 'per job: 33 seed questions fit any job (AI included, owner 25 Oct), 16 are for data jobs');
 check(N.visibleFor({ job_ids: null }, 'a') && N.visibleFor({}, null) && N.visibleFor({ job_ids: ['a'] }, 'a') && !N.visibleFor({ job_ids: ['a'] }, 'b') && !N.visibleFor({ job_ids: [] }, 'a') && !N.visibleFor({ job_ids: ['a'] }, null), 'per job: a job-only question shows only for its jobs');
 const jb = N.parseJobBuild('ok {"keep":[2,"3",9,2,0],"add":[{"section":"Patient care","title":"Triage","question":"How do you  triage?","ways":["a","b","c","d"]},{"section":"New questions","title":"x","question":"y"},{"section":"","title":"z","question":"q"}]}', 4);
 check(jb.ok && JSON.stringify(jb.keep) === '[2,3]' && jb.add.length === 1 && jb.add[0].question === 'How do you triage?' && jb.add[0].ways.length === 3, 'per job: the build reply is cleaned (real numbers only, at most 3 ways, no stray sections)', JSON.stringify(jb));
 check(N.parseJobBuild('nonsense', 3).ok === false && N.parseJobBuild('{"keep":[1],"add":[{"section":"A","title":"B","question":"cut off', 3).ok === false && N.parseJobBuild('{"keep":[],"add":[]}', 3).ok === true, 'per job: a broken or cut-off build reply is not taken as "nothing to add"');
+// Sections move (owner 25 Oct): a section goes as one block; "Your questions" sits last, just above New questions.
+const sg = [['a', 'About you', 0], ['b', 'About you', 1], ['y', 'Your questions', 2], ['p', 'Patient care', 3], ['n', 'New questions', 4], ['c', 'Charting', 5], ['s', 'Why you', 6, true]].map(([id, section, sort_order, pinned]) => ({ id, section, sort_order, pinned: !!pinned }));
+const so = g => g.pinned ? 'Pinned' : g.section;
+check(N.yourQuestionsLast(sg.filter(g => !g.pinned)).join('') === 'abpcyn', 'sections: Your questions goes last, above New questions; the rest keep their order', N.yourQuestionsLast(sg).join(''));
+check(N.moveSection(sg, 'Your questions', 'New questions', false, so).join('') === 'sabpync', 'sections: dropped on the top half of a section, it goes above it', N.moveSection(sg, 'Your questions', 'New questions', false, so).join(''));
+check(N.moveSection(sg, 'About you', 'Charting', true, so).join('') === 'sypncab' && N.moveSection(sg, 'Charting', null, false, so).join('') === 'sabypnc', 'sections: below a section, or to the very end', N.moveSection(sg, 'About you', 'Charting', true, so).join(''));
+check(N.moveSection(sg, 'Nope', 'Charting', true, so).join('') === 'sabypnc' && N.moveSection(sg, 'Charting', 'Charting', false, so).join('') === 'sabypnc', 'sections: an unknown or same section changes nothing');
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);

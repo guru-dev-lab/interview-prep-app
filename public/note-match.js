@@ -126,6 +126,18 @@
   function sortGroups(groups) {
     return (groups || []).slice().sort(function (a, b) { return ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || ((a.sort_order || 0) - (b.sort_order || 0)) || String(a.created_at || '').localeCompare(String(b.created_at || '')); });
   }
+  // A whole section moved (owner 25 Oct: "can you make them moveable"): its questions go as one block before or after
+  // another section (to = null: the end); every other question keeps its place. secOf names a question's section.
+  function moveSection(groups, from, to, after, secOf) {
+    var sorted = sortGroups(groups), names = [], by = {};
+    sorted.forEach(function (g) { var s = secOf(g); if (!by[s]) { by[s] = []; names.push(s); } by[s].push(g.id); });
+    if (by[from] && from !== to) {
+      names.splice(names.indexOf(from), 1);
+      var ti = to == null ? -1 : names.indexOf(to);
+      names.splice(ti < 0 ? names.length : ti + (after ? 1 : 0), 0, from);
+    }
+    return names.reduce(function (out, s) { return out.concat(by[s]); }, []);
+  }
   var SAME_QUESTION = 0.72; // a question from a call this close to one in the note IS that question (not added twice)
-  return { SAME_QUESTION: SAME_QUESTION, rank: rank, pointKeys: pointKeys, saidWords: saidWords, isSaid: isSaid, stems: stems, powerWords: powerWords, lineSaid: lineSaid, powerSaid: powerSaid, dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
+  return { moveSection: moveSection, SAME_QUESTION: SAME_QUESTION, rank: rank, pointKeys: pointKeys, saidWords: saidWords, isSaid: isSaid, stems: stems, powerWords: powerWords, lineSaid: lineSaid, powerSaid: powerSaid, dice: dice, keywordScore: keywordScore, score: score, closest: closest, words: words, htmlToText: htmlToText, searchNote: searchNote, sortGroups: sortGroups };
 });

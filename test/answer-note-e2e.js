@@ -29,16 +29,16 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
 
   // 1. first open seeds the mined groups
   let { j } = await api('GET', '/api/note');
-  // Per job (25 Oct): all 48 are stored; the 24 data-job ones show only once a job they fit is built
+  // Per job (25 Oct): all 49 are stored; the 16 data-job ones show only once a job they fit is built
   const dbCount = async noteId => (await pool.query('SELECT (SELECT count(*) FROM answer_note_groups WHERE note_id = $1)::int g, (SELECT count(*) FROM answer_note_items WHERE note_id = $1)::int i', [noteId])).rows[0];
   const c1 = await dbCount(j.id);
-  check(j.id && c1.g === 48 && c1.i === 192 && j.groups.length === 24 && !j.groups.some(g => g.jobOnly), 'first open: 48 questions, 192 wordings seeded; the 24 for any job show', JSON.stringify([c1, j.groups.length]));
+  check(j.id && c1.g === 49 && c1.i === 196 && j.groups.length === 33 && !j.groups.some(g => g.jobOnly), 'first open: 49 questions, 196 wordings seeded; the 33 for any job show (AI included)', JSON.stringify([c1, j.groups.length]));
   check(j.groups[0].name === 'About me' && j.groups[0].section === 'About you' && j.groups[0].items[0].question === 'Tell me about yourself.' && j.groups[0].items[0].version === 0, 'seed order kept: short title, section, full question first, answers empty');
-  check(j.settings.seedVersion === 3, 'a fresh note is born on the current seed (v3, never upgraded again)');
+  check(j.settings.seedVersion === 4, 'a fresh note is born on the current seed (v4, never upgraded again)');
   const cap = await api('POST', '/api/note/groups/' + j.groups[0].id + '/items', { question: 'A fifth wording' });
   check(cap.r.status === 400 && /at most 3/.test(cap.j.error || ''), 'a question already holding 3 other ways refuses a 4th', cap.r.status + ' ' + JSON.stringify(cap.j));
   const again = (await api('GET', '/api/note')).j;
-  check(again.id === j.id && (await dbCount(j.id)).g === 48 && again.groups.length === 24, 'second open: same note, not seeded twice');
+  check(again.id === j.id && (await dbCount(j.id)).g === 49 && again.groups.length === 33, 'second open: same note, not seeded twice');
   const g0 = j.groups[0], item = g0.items[0];
 
   // 2. manual save with history + stale write refused
@@ -79,14 +79,14 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
 
   // 5. groups and variations: add, rename, colour, pin, reorder, delete
   const ng = (await api('POST', '/api/note/groups', { name: 'My extra group' })).j;
-  check(ng.id && ng.name === 'My extra group' && ng.sort_order === 48, 'add group at the end', JSON.stringify(ng));
+  check(ng.id && ng.name === 'My extra group' && ng.sort_order === 49, 'add group at the end', JSON.stringify(ng));
   const ren = (await api('PUT', '/api/note/groups/' + ng.id, { name: 'Renamed group', color: '#2563eb', pinned: true })).j;
   check(ren.name === 'Renamed group' && ren.color === '#2563eb' && ren.pinned === true, 'rename, colour, pin a group');
   let tree = (await api('GET', '/api/note')).j;
   check(tree.groups[0].id === ng.id, 'pinned group comes first');
   const ids = tree.groups.map(g => g.id);
   const ord = (await api('PUT', '/api/note/groups/order', { ids: [ids[2], ids[1], 'not-an-id'].concat(ids.slice(3)) })).j;
-  check(ord.ids.length === 49 && ord.ids[0] === ids[2] && ord.ids[1] === ids[1] && ord.ids.includes(ids[0]), 'reorder groups: bad id ignored, nothing lost', JSON.stringify(ord.ids.slice(0, 3)));
+  check(ord.ids.length === 50 && ord.ids[0] === ids[2] && ord.ids[1] === ids[1] && ord.ids.includes(ids[0]), 'reorder groups: bad id ignored, nothing lost', JSON.stringify(ord.ids.slice(0, 3)));
   const ni = (await api('POST', '/api/note/groups/' + ng.id + '/items', { question: 'A brand new way to ask' })).j;
   check(ni.id && ni.question === 'A brand new way to ask' && ni.group_id === ng.id, 'add a variation');
   const ni2 = (await api('POST', '/api/note/groups/' + ng.id + '/items', { question: 'Second one' })).j;
@@ -98,7 +98,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const di = await api('DELETE', '/api/note/items/' + ni2.id);
   const dg = await api('DELETE', '/api/note/groups/' + ng.id);
   tree = (await api('GET', '/api/note')).j;
-  check(di.j.removed && dg.j.removed && !tree.groups.some(g => g.id === ng.id) && tree.groups.length === 24 && (await dbCount(j.id)).g === 48, 'delete a variation and a group (its items go with it)');
+  check(di.j.removed && dg.j.removed && !tree.groups.some(g => g.id === ng.id) && tree.groups.length === 33 && (await dbCount(j.id)).g === 49, 'delete a variation and a group (its items go with it)');
   const other = (await pool.query("SELECT i.id FROM answer_note_items i JOIN answer_notes n ON n.id=i.note_id WHERE n.user_id<>$1 LIMIT 1", [u.id])).rows[0];
   if (other) { const x = await api('PUT', '/api/note/items/' + other.id, { answer_html: 'x', baseVersion: 0 }); check(x.r.status === 404, "another user's item → 404"); }
   else check(true, "another user's item → 404 (no other note locally, skipped)");
@@ -123,13 +123,13 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const up = await get3();
   const upPri = up.groups.find(g => g.id === pri.id);
   const kept = upPri && upPri.items.find(i => i.id === pri.ids[3]);
-  check(up.settings.seedVersion === 3 && up.settings.theme === 'dark', 'v1 note upgraded once, his settings kept', JSON.stringify(up.settings));
+  check(up.settings.seedVersion === 4 && up.settings.theme === 'dark', 'v1 note upgraded once, his settings kept', JSON.stringify(up.settings));
   check(upPri && upPri.name === 'Prioritizing' && upPri.section === 'How you work' && upPri.items[0].question === 'How do you prioritize when everything is urgent?', 'v1 group renamed to the short title, full question first', JSON.stringify(upPri && upPri.items.map(i => i.question)));
   check(kept && /MY-OWN-ANSWER/.test(kept.answer_html) && kept.question === 'How do you prioritise across a global team and multiple regions?', 'his written answer survived with its own question');
   check(upPri && upPri.items.length === 4, 'the group now holds 4 wordings', upPri && upPri.items.length);
-  check(up.groups.length === 49 && up.groups.some(g => g.id === mine.id && g.name === 'My own group'), 'the missing seed questions were added, his own group left alone', up.groups.length);
+  check(up.groups.length === 50 && up.groups.some(g => g.id === mine.id && g.name === 'My own group'), 'the missing seed questions were added, his own group left alone', up.groups.length);
   const up2 = await get3();
-  check(up2.groups.length === 49 && up2.groups.reduce((n, g) => n + g.items.length, 0) === up.groups.reduce((n, g) => n + g.items.length, 0), 'opening again changes nothing (runs once)');
+  check(up2.groups.length === 50 && up2.groups.reduce((n, g) => n + g.items.length, 0) === up.groups.reduce((n, g) => n + g.items.length, 0), 'opening again changes nothing (runs once)');
 
   // 6c. a note made on seed v2 (like his) gets the Agentic AI questions once, right after its AI section, nothing else touched
   const u4e = 'note-v2@local.test';
@@ -146,11 +146,11 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const v3 = await get4();
   const names = v3.groups.map(g => g.name);
   const ai = names.indexOf('My tools');
-  check(v3.settings.seedVersion === 3 && v3.groups.length === 48, 'v2 note: moved to v3, 5 questions added', v3.groups.length);
-  check(JSON.stringify(names.slice(ai + 1, ai + 6)) === JSON.stringify(['Agentic AI at work', 'Building an AI agent', 'Keeping agents in check', 'Agent vs chatbot', 'Agents for this team']) && v3.groups.slice(ai + 1, ai + 6).every(g => g.section === 'AI and tools' && g.items.length === 4), 'they sit right after "My tools" in the AI section, with their 3 other ways', JSON.stringify(names.slice(ai - 1, ai + 7)));
-  check(names[ai + 6] === 'Great teamwork' && names[0] === 'About me', 'the questions after them just move down');
+  check(v3.settings.seedVersion === 4 && v3.groups.length === 49, 'v2 note: moved to v4, 6 questions added', v3.groups.length);
+  check(JSON.stringify(names.slice(ai + 1, ai + 7)) === JSON.stringify(['Agentic AI at work', 'Building an AI agent', 'Keeping agents in check', 'Agent vs chatbot', 'Agents for this team', 'My AI impact']) && v3.groups.slice(ai + 1, ai + 7).every(g => g.section === 'AI and tools' && g.items.length === 4), 'they sit right after "My tools" in the AI section, with their 3 other ways', JSON.stringify(names.slice(ai - 1, ai + 7)));
+  check(names[ai + 7] === 'Great teamwork' && names[0] === 'About me', 'the questions after them just move down');
   check(/MY-TOOLS-ANSWER/.test(v3.groups[ai].items[0].answer_html), 'his written answers are untouched');
-  check((await get4()).groups.length === 48, 'opening again adds nothing');
+  check((await get4()).groups.length === 49, 'opening again adds nothing');
 
   // 7. no résumé anywhere → a clear refusal, no model call
   const u2e = 'note-noresume@local.test';

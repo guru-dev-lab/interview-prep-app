@@ -232,6 +232,7 @@ async function initDB() {
       ALTER TABLE answer_note_groups ADD COLUMN IF NOT EXISTS section VARCHAR(80) DEFAULT '';
       ALTER TABLE answer_note_groups ADD COLUMN IF NOT EXISTS scope VARCHAR(8) DEFAULT '';
       ALTER TABLE answer_note_groups ADD COLUMN IF NOT EXISTS job_ids UUID[] DEFAULT NULL;
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS note_people TEXT DEFAULT '';
       CREATE TABLE IF NOT EXISTS answer_note_job_answers (
         item_id UUID NOT NULL REFERENCES answer_note_items(id) ON DELETE CASCADE,
         session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -3109,7 +3110,31 @@ async function loadNote(userId) {
   } else if (n.settings?.seeded && !n.settings?.seedVersion) n = await upgradeNoteSeed(n);
   else if (n.settings?.seeded && n.settings.seedVersion < answerNote.SEED.version) n = await addNewSeedQuestions(n);
   if (!n.settings?.perJob) n = await moveNoteToPerJob(n, userId);
+  if (!n.settings?.yqLast) n = await yourQuestionsToEnd(n);
+  if (!n.settings?.aiAlways) n = await aiForEveryJob(n);
   return n;
+}
+// Once per note (owner 25 Oct: "AI, agentic AI and its current usage, my contribution and impact" matter for every
+// job): the seed AI questions were made data-jobs-only by the per-job move; they show for every job again.
+async function aiForEveryJob(n) {
+  const names = answerNote.SEED.groups.filter(g => g.section === 'AI and tools').map(g => g.title);
+  await pool.query("UPDATE answer_note_groups SET job_ids = NULL WHERE note_id = $1 AND section = 'AI and tools' AND name = ANY($2::text[])", [n.id, names]);
+  return (await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"aiAlways\": true}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0];
+}
+// Once per note (owner 25 Oct): the job sections used to land below "Your questions"; it goes back to the end, just
+// above New questions. Only the order changes.
+async function yourQuestionsToEnd(n) {
+  const rows = (await pool.query('SELECT id, section FROM answer_note_groups WHERE note_id = $1 ORDER BY sort_order, created_at', [n.id])).rows;
+  const ids = answerNote.yourQuestionsLast(rows);
+  await pool.query('UPDATE answer_note_groups g SET sort_order = o.i - 1 FROM unnest($1::uuid[]) WITH ORDINALITY AS o(id, i) WHERE g.id = o.id AND g.note_id = $2', [ids, n.id]);
+  return (await pool.query("UPDATE answer_notes SET settings = coalesce(settings, '{}'::jsonb) || '{\"yqLast\": true}'::jsonb WHERE id = $1 RETURNING *", [n.id])).rows[0];
+}
+// Where new sections go: just above "Your questions" (room is made for count), else the end. db = pool or a client.
+async function slotAboveYourQuestions(db, noteId, count) {
+  const p = (await db.query('SELECT min(sort_order) AS p FROM answer_note_groups WHERE note_id = $1 AND section = $2', [noteId, answerNote.YOUR_QUESTIONS])).rows[0].p;
+  if (p === null || p === undefined) return (await db.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [noteId])).rows[0].n;
+  await db.query('UPDATE answer_note_groups SET sort_order = sort_order + $3 WHERE note_id = $1 AND sort_order >= $2', [noteId, p, count]);
+  return p;
 }
 // Once per note (owner 25 Oct, answers per job): the role sections become job-only, and every answer he already has
 // for a per-job question is copied to the job it was written for. Nothing is deleted: the old columns stay as they were.
@@ -3231,7 +3256,7 @@ async function noteTree(note, session) {
   const rows = sid ? new Map((await pool.query('SELECT j.* FROM answer_note_job_answers j JOIN answer_note_items i ON i.id = j.item_id WHERE i.note_id = $1 AND j.session_id = $2', [note.id, sid])).rows.map(r => [r.item_id, r])) : new Map();
   const built = ((note.settings || {}).jobsBuilt || []).includes(sid);
   return { id: note.id, settings: note.settings || {},
-    job: session ? { id: session.id, company: session.company || '', role: session.role || '' } : null,
+    job: session ? { id: session.id, company: session.company || '', role: session.role || '', people: session.note_people || '' } : null,
     needsBuild: !!session && !built && !!(String(session.jd || '').trim() || String(session.role || '').trim()),
     groups: answerNote.sortGroups(groups).map(g => { const scope = answerNote.scopeOf(g); return { id: g.id, name: g.name, section: g.section || '', color: g.color || '', pinned: !!g.pinned, sort_order: g.sort_order, scope, jobOnly: Array.isArray(g.job_ids),
       items: items.filter(i => i.group_id === g.id).map(i => noteItemOut(scope === 'job' && sid ? forJob(i, rows.get(i.id), sid) : i)) }; }) };
@@ -3329,7 +3354,7 @@ Last line, outside the answer: KEY: <at most 12 words, the one thing to remember
   const changeBlock = instruction && current ? `\nCURRENT ANSWER:\n${current}\n\nCHANGE REQUESTED: ${instruction}\nKeep the spoken paragraphs and the path; keep every fact that is still true; add nothing the resume or Q&A bank does not have.\n` : '';
   const user = `TODAY: ${new Date().toISOString().slice(0, 10)}\n${changeBlock}\nQUESTION: ${question}\n\nWrite what they will say now.`;
   const t0 = Date.now();
-  const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1400, MODEL_SONNET, { __tag: 'note-detailed' });
+  const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1400, MODEL_SONNET, { __tag: 'note-detailed', thinking: { type: 'disabled' } });
   const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/\u2014/g, ', '));
   const html = answerNote.paragraphsToHtml(answer);
   const words = answerNote.htmlToText(html).split(/\s+/).filter(Boolean).length;
@@ -3390,7 +3415,8 @@ app.post('/api/note/from-call', authMiddleware, async (req, res) => {
     const tree = await noteTree(note, ses);
     const out = answerNote.questionsToAdd(tree.groups, req.body?.questions);
     const added = [];
-    let order = (await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [note.id])).rows[0].n;
+    let order = section === 'New questions' ? (await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [note.id])).rows[0].n
+      : await slotAboveYourQuestions(pool, note.id, out.add.length); // New questions stay last; a call's own section goes above Your questions
     for (const q of out.add) {
       const g = (await pool.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order, job_ids) VALUES ($1, $2, $3, $4, $5::uuid[]) RETURNING *', [note.id, q.title, section, order++, ses ? [ses.id] : null])).rows[0];
       const items = [];
@@ -3527,7 +3553,7 @@ Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`
   const said = answerNote.htmlToText(item.answer_html);
   const user = `QUESTION: ${question}\n${said ? `\nWHAT XHIRE SAID LIVE ON THE CALL (rough, build on it):\n${said}\n` : ''}\nWrite the study note now.`;
   const t0 = Date.now();
-  const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1800, MODEL_SONNET, { __tag: 'note-study' });
+  const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1800, MODEL_SONNET, { __tag: 'note-study', thinking: { type: 'disabled' } });
   const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/^\s*```(?:html)?\s*/i, '').replace(/```\s*$/m, ''));
   const html = answerNote.sanitizeHtml(answer.replace(/```(?:html)?/gi, '').trim());
   console.log(`[Note] study note ${Date.now() - t0}ms table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} q="${question.slice(0, 50)}"`);
@@ -3572,6 +3598,18 @@ app.post('/api/note/groups', authMiddleware, async (req, res) => {
     const mx = await pool.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [note.id]);
     const g = (await pool.query('INSERT INTO answer_note_groups (note_id, name, section, sort_order) VALUES ($1, $2, $3, $4) RETURNING *', [note.id, name, section, mx.rows[0].n])).rows[0];
     res.json({ id: g.id, name: g.name, section: g.section || '', color: '', pinned: false, sort_order: g.sort_order, items: [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// The People pad (owner 25 Oct): who he has met and is meeting for this job, with small details, so he addresses them
+// properly. One per job; his own words, no AI. updated_at is left alone (it decides his "latest résumé").
+app.put('/api/note/people', authMiddleware, async (req, res) => {
+  try {
+    const sid = String(req.body?.sessionId || '');
+    if (!isValidUUID(sid)) return res.status(400).json({ error: 'Pick a job first' });
+    const text = String(req.body?.text || '').slice(0, 4000);
+    const r = await pool.query('UPDATE sessions SET note_people = $1 WHERE id = $2 AND user_id = $3 RETURNING id', [text, sid, req.userId]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Job not found' });
+    res.json({ ok: true, people: text });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/note/groups/order', authMiddleware, async (req, res) => { // before /:gid so "order" is never read as an id
@@ -3684,7 +3722,7 @@ async function buildJobQuestions(noteId, ses) {
   const t0 = Date.now();
   if (String(ses.jd || '').trim() || String(ses.role || '').trim()) {
     const user = `JOB: ${ses.role || '(no title)'}${ses.company ? ' at ' + ses.company : ''}\nJOB DESCRIPTION:\n${String(ses.jd || '').slice(0, 6000) || '(none given)'}\n\nROLE QUESTIONS:\n${role.map((g, i) => `${i + 1}. [${g.section}] ${first(g)}`).join('\n') || '(none)'}\n\nGENERAL QUESTIONS (already in the note):\n${shown.map(g => '- ' + first(g)).join('\n')}\n\nJSON:`;
-    const raw = await callClaude([{ type: 'text', text: answerNote.JOB_BUILD_PROMPT }], user, 5000, MODEL_SONNET, { __tag: 'note-job-build' });
+    const raw = await callClaude([{ type: 'text', text: answerNote.JOB_BUILD_PROMPT }], user, 5000, MODEL_SONNET, { __tag: 'note-job-build', thinking: { type: 'disabled' } });
     plan = answerNote.parseJobBuild(raw, role.length);
     if (!plan.ok) { console.error(`[Note] job build reply unreadable for ${ses.id} after ${Date.now() - t0}ms (${String(raw || '').length} chars, ends "${String(raw || '').slice(-60).replace(/\s+/g, ' ')}")`); throw new Error('unreadable build reply'); }
   }
@@ -3696,7 +3734,7 @@ async function buildJobQuestions(noteId, ses) {
     const keepIds = plan.keep.map(n => role[n - 1].id);
     if (keepIds.length) await client.query('UPDATE answer_note_groups SET job_ids = array_append(job_ids, $1::uuid) WHERE id = ANY($2::uuid[]) AND NOT ($1::uuid = ANY(job_ids))', [ses.id, keepIds]);
     let pool2 = shown.concat(role.filter(g => keepIds.includes(g.id))).map(g => ({ id: g.id, name: g.name, items: items.filter(i => i.group_id === g.id) }));
-    let order = (await client.query('SELECT coalesce(max(sort_order), -1) + 1 AS n FROM answer_note_groups WHERE note_id = $1', [noteId])).rows[0].n, added = 0;
+    let order = await slotAboveYourQuestions(client, noteId, plan.add.length), added = 0;
     for (const a of plan.add) {
       const out = answerNote.questionsToAdd(pool2, [{ title: a.title, question: a.question, ways: a.ways }]);
       for (const q of out.add) {
