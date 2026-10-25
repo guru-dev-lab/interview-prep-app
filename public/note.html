@@ -1504,6 +1504,14 @@ function smartHeard(text, key) { // ~1 s later: which question it really is + th
       }
     }).catch(function () {});
 }
+function keepAssist(g, answer) { // Assist's answer goes on the question first (it is in History after), then the study note is written over it
+  var it = g.items[0]; if (!it) return;
+  api('POST', '/api/note/items/' + it.id + '/live', { answer: answer }).then(function (r) {
+    if (r.ok) { Object.assign(it, r.json); if (cur.iid === it.id) renderAnswer(true); renderList(); }
+    if (!$('job').value || N.settings.autoGenerate === false || (genAll && genAll.running) || busy[it.id] || it._autoTried) return;
+    it._autoTried = true; aiChange(it, 'rich', '');
+  }).catch(function () {});
+}
 var aiSaid = {}, saidTimer = null, saidSent = 0;
 // Owner 24 Oct: "when match with question with no answer, it must start writing immediately". The question the call
 // asked (the smart match, never the instant guess) is written in the background the moment it is heard, so it is ready
@@ -1518,14 +1526,29 @@ function writeHeard(gid, iid) {
 // ===== New questions (owner 24 Oct): a plain section that fills itself from calls; each keeps what xHire answered live
 var NEWQ = 'New questions', pendingLive = [];
 var pendingNew = '';
-function addNewQuestion(title, question) {
+// Owner 25 Oct: "in xHire assist mode, it can use the screenshot and voice to answer, would the note also use same". An
+// Assist answer arrives whole; its "Asked:" line is the question (else what he asked out loud). A question already in
+// the note is marked like any heard one; a new one is kept with Assist's answer on it, then its study note is written
+// from that answer and the screen xHire read (the server adds the screen and the call's history).
+var assistSeen = {};
+function onAssist(ask, answer) {
+  if (SOLO || !N || !answer || !follow) return;
+  var asked = ((String(answer).match(/^\s*Asked:\s*(.+)$/mi) || [])[1] || '').trim();
+  if (!asked || /^nothing\b/i.test(asked)) asked = String(ask || '').trim();
+  if (!asked || /^nothing\b/i.test(asked) || asked.split(/\s+/).length < 3) return;
+  var k = asked.toLowerCase(); if (assistSeen[k]) return; assistSeen[k] = 1;
+  var title = asked.replace(/[\u2014,:;(].*$/, '').split(/\s+/).slice(0, 6).join(' ').replace(/[?.!]+$/, '');
+  addNewQuestion(title, asked, answer);
+}
+function addNewQuestion(title, question, assistAnswer) {
   if (!question) return;
   pendingNew = question;
   var hit = NoteMatch.closest(N.groups, question, NoteMatch.SAME_QUESTION);
   if (hit) { var hg = findGroup(hit.groupId); setHeard(hit.groupId); writeHeard(hit.groupId, hit.itemId); showHeard(heardText, hit.groupId, hit.itemId, hg ? hg.name : ''); return; } // already in the note (e.g. made for this job): marked and written like any match, never dropped
   api('POST', '/api/note/from-call', { questions: [{ title: title, question: question, ways: [] }], section: NEWQ }).then(function (r) {
     if (!r.ok) return;
-    r.json.added.forEach(function (g) { N.groups.push(g); attachLive(g); });
+    r.json.added.forEach(function (g) { N.groups.push(g); if (!assistAnswer) attachLive(g); });
+    if (r.json.added.length && assistAnswer) { setHeard(r.json.added[0].id); keepAssist(r.json.added[0], assistAnswer); toast('New question kept: ' + r.json.added[0].name, 2500); return; }
     if (r.json.added.length) { setHeard(r.json.added[0].id); writeHeard(r.json.added[0].id, (r.json.added[0].items[0] || {}).id); toast('New question kept: ' + r.json.added[0].name, 2500); if (question === pendingNew) showHeard(heardText, null, null, true); } // only now is it kept // its section opens and it is marked heard; what he is reading stays
   }).catch(function () {});
 }
@@ -1691,8 +1714,9 @@ function markLines() { // display only: the line to read (data-hot), lines alrea
 ed.addEventListener('focus', function () { clearMarks(ed); });
 ed.addEventListener('blur', function () { markLines(); });
 $('heard-x').onclick = function () { $('heard').classList.remove('open'); };
-try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); else if (e.data.type === 'live') onLive(e.data.question, e.data.answer); else if (e.data.type === 'them') onThem(e.data.text); }; } catch (e) {}
+try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); else if (e.data.type === 'live') onLive(e.data.question, e.data.answer); else if (e.data.type === 'them') onThem(e.data.text); else if (e.data.type === 'assist') onAssist(e.data.ask, e.data.answer); }; } catch (e) {}
 window.addEventListener('storage', function (e) {
+  if (e.key === 'xhire_note_assist' && e.newValue) { try { var a = JSON.parse(e.newValue); if (Date.now() - (a.ts || 0) < 15000) onAssist(a.ask, a.answer); } catch (_) {} }
   if (e.key === 'xhire_note_them' && e.newValue) { try { var t = JSON.parse(e.newValue); if (Date.now() - (t.ts || 0) < 15000) onThem(t.text); } catch (_) {} }
   if ((e.key === 'xhire_note_q' || e.key === 'xhire_note_said') && e.newValue) { try { var d = JSON.parse(e.newValue); if (Date.now() - (d.ts || 0) < 15000) (e.key === 'xhire_note_q' ? onHeard : onSaid)(d.text); } catch (_) {} }
 });
