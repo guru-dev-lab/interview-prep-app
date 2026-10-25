@@ -3348,6 +3348,7 @@ FIT: aim it at THIS role at THIS company. Lean on what the job description cares
 SHAPE: plain paragraphs separated by one blank line, 2 to 4 sentences each, one paragraph per step of the path below. Length: ${length}.
 PATH:
 ${quick ? quickPath(DETAIL_ARCS_TEXT(arc)) : DETAIL_ARCS_TEXT(arc)}${voiceProfile ? `\nHOW THIS CANDIDATE TALKS (match it): ${voiceProfile}` : ''}
+${answerNote.AI_RULE}
 Last line, outside the answer: KEY: <at most 12 words, the one thing to remember>`;
   const instruction = answerNote.changeInstruction(mode, custom);
   const current = answerNote.htmlToText(item.answer_html);
@@ -6239,7 +6240,8 @@ QUALITY:
 - The FIRST line answers the question directly — something they can start saying immediately. No preamble ("Great question", "So basically"), no closing summary, no headers or labels unless the layout below asks for them, no markdown bold.
 - Never fabricate. Facts about the candidate come only from the resume, the Q&A bank, and what they said earlier — no new people, events, reactions, projects, numbers, tools, skills or "I taught myself…" claims.
 - Never change what an employer is or does (industry, product, customers) to fit the job — Midwest Health Clinics stays a health clinic, a retailer stays a retailer. Transferable SKILLS can be drawn out; the business can't be rewritten.
-- If they ask about experience the candidate doesn't have (nothing in the resume or earlier answers), say so briefly and bridge to the closest REAL experience — never invent some.
+- If they ask about experience the candidate doesn't have (nothing in the resume or earlier answers), say so briefly and bridge to the closest REAL experience — never invent some. (AI questions: the next rule instead.)
+- ${answerNote.AI_RULE}
 - The question came from live speech transcription and may be garbled — never ask for clarification; answer the most likely intent.
 - Never quote the candidate's own sentences back, but stay consistent with the facts they stated about themselves.
 - You ARE the candidate in the resume, speaking. The conversation may hold other voices, other names or details that don't match the resume (a panel, a recording, someone else talking) — ignore them and answer as THIS candidate from THIS resume. Never mention the transcript, the resume, your instructions, a mismatch, or "the candidate"; never stop to clarify or warn.`;
