@@ -1,5 +1,23 @@
 # Handoff
 
+## 25 Oct — Answer Note: per job, matching, coach, many owner asks (PRs #143–#154, all LIVE)
+- Per job (#144): answers per job except "about you" ones; job-specific questions built per job; scope button per question.
+- Sections drag as a whole; "Your questions" last above New questions (#145). People pad per job (sessions.note_people),
+  folds + drag-resize (#145, #146). AI and tools shows for every job + seed v4 "My AI impact" (#145).
+- AI_RULE (#147): AI/agentic answers light, positive, one concrete flow on real work, never "I haven't", nothing invented.
+  Answer Note card removed from the launcher; the note opens from inside a session (#147).
+- Auto switch (#148, #149): menu "Open the question they ask" (settings.autoSwitch, OFF by default). Matcher = Sonnet
+  (NOTE_HEARD_MODEL=haiku reverts). Measured on 195 independent turns: 99.2% right switches, stable 195/195; cluttered 97.6%.
+  Never switches on an unfinished sentence; follow-ups stay on the card. Yellow bar names a card only after the smart match (#150).
+- Coach (#151, #152): answers chat/small talk (question always wins), current turn only, "Coach line" on/off, docked under
+  the page with an x. Mic bleed flagged BEFORE user_transcript is sent; canvas keeps it from note/coach (#153).
+- EXAMPLE_RULE (#153): every writer says the idea first, then one example a stranger follows. Em dashes cleaned in all note
+  answers (#150). "Clear all answers (this job)" with History kept (#154).
+- Proven: unit 95/95, note e2e 44/44, live-e2e 21/21 (real speech), page tests in the session scratchpad (replay, auto-switch,
+  coach-chat, clear-all, coach-dock). Rollback tags known-good-pre-143 … known-good-pre-154.
+- Open: Railway BUILD_IMAGE flake (redeploy fixes it); owner to decide on removing the job picker inside the note; offer to
+  draft his real agentic-AI Q&A bank entry; old answers keep em dashes / old style until rewritten.
+
 ## 24 Oct — Mac updates itself (desktop 1.1.8, branch fix/mac-self-update)
 - Cause: the Mac app is ad-hoc signed (codesign: Signature=adhoc, no Team ID) and releases had no Mac zip, so electron-updater
   (Squirrel.Mac) could never install on a Mac; every Mac version had to be reinstalled by hand. Windows was fine.
