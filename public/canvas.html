@@ -1345,7 +1345,7 @@ function connect() {
     if (msg.type === 'interviewer_final' || (msg.type === 'transcript' && !msg.isEcho)) { try { onNameCapActivity(); } catch (e) {} }
     // Live coach reads YOUR mic (read-only, no API) to tick off points as you say them
     if (msg.type === 'transcript' && msg.isFinal && !msg.isEcho && msg.text) { try { tellAnswerNoteThem(msg.text); } catch (e) {} }
-    if (msg.type === 'user_transcript' && msg.text) { try { coachHeard(msg.text); } catch (e) {} try { tellAnswerNoteSaid(msg.text); } catch (e) {} }
+    if (msg.type === 'user_transcript' && msg.text && !msg.bleed) { try { coachHeard(msg.text); } catch (e) {} try { tellAnswerNoteSaid(msg.text); } catch (e) {} } // bleed (the call heard through his mic) is never his words
 
     if (msg.type === 'match') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
