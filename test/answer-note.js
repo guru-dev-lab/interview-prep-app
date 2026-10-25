@@ -192,5 +192,14 @@ check(N.parseCoach('NONE') === null && N.parseCoach('WANT: NONE\nSAY: NONE') ===
 check(N.parseCoach('WANT: Fit\nSAY: Yes, that is exactly the kind of work I enjoy, I replaced six Excel workbooks with a cost-per-case model in Power BI.').say === 'Yes, that is exactly the kind of work I enjoy.', 'coach: a long line ends at a natural comma');
 check(N.parseCoach('WANT: One governed report\nSAY: I\'d build one shared model with role-level security by district.').say === "I'd build one shared model with row-level security by district.", 'coach: the expert term is named right (row-level security)');
 check(/never of the method/.test(N.COACH_PROMPT), 'coach: résumé and bank give facts, not the method');
+// Per job (owner 25 Oct): answers for that job, except the ones about his own experience; role questions only for jobs they fit.
+check(['Weakness', 'A difficult person', "Why I'm leaving", 'Start date'].every(n => N.scopeOf({ name: n }) === 'you') && ['About me', 'Why this role', 'Salary', 'Slow SQL query', 'Some new question'].every(n => N.scopeOf({ name: n }) === 'job'), 'per job: experience questions keep one answer, the rest one per job');
+check(N.scopeOf({ name: 'Weakness', scope: 'job' }) === 'job' && N.scopeOf({ name: 'About me', scope: 'you' }) === 'you', 'per job: his flip wins over the app');
+check(N.isRoleSection('SQL and pipelines') && N.isRoleSection('From calls: Cambium') && !N.isRoleSection('About you') && !N.isRoleSection('Why you'), 'per job: the data sections and call questions are job-only');
+check(rows.filter(g => N.isRoleSection(g.section)).length === 24 && rows.filter(g => !N.isRoleSection(g.section)).length === 24, 'per job: 24 seed questions fit any job, 24 are for data jobs');
+check(N.visibleFor({ job_ids: null }, 'a') && N.visibleFor({}, null) && N.visibleFor({ job_ids: ['a'] }, 'a') && !N.visibleFor({ job_ids: ['a'] }, 'b') && !N.visibleFor({ job_ids: [] }, 'a') && !N.visibleFor({ job_ids: ['a'] }, null), 'per job: a job-only question shows only for its jobs');
+const jb = N.parseJobBuild('ok {"keep":[2,"3",9,2,0],"add":[{"section":"Patient care","title":"Triage","question":"How do you  triage?","ways":["a","b","c","d"]},{"section":"New questions","title":"x","question":"y"},{"section":"","title":"z","question":"q"}]}', 4);
+check(jb.ok && JSON.stringify(jb.keep) === '[2,3]' && jb.add.length === 1 && jb.add[0].question === 'How do you triage?' && jb.add[0].ways.length === 3, 'per job: the build reply is cleaned (real numbers only, at most 3 ways, no stray sections)', JSON.stringify(jb));
+check(N.parseJobBuild('nonsense', 3).ok === false && N.parseJobBuild('{"keep":[1],"add":[{"section":"A","title":"B","question":"cut off', 3).ok === false && N.parseJobBuild('{"keep":[],"add":[]}', 3).ok === true, 'per job: a broken or cut-off build reply is not taken as "nothing to add"');
 console.log(fail ? `${fail} FAILED, ${pass} passed` : `ALL PASS (answer note, ${pass} checks)`);
 process.exit(fail ? 1 : 0);
