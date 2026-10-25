@@ -59,13 +59,6 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 .jobscout-card .s-role{font:400 11px Inter,sans-serif;color:#7dd3c0;margin-top:3px}
 .jobscout-card .js-arrow{color:#10B981;flex-shrink:0;margin-left:auto}
 .s-role-icon{opacity:.5;flex-shrink:0}
-.note-card{padding:12px 14px;border:1px solid rgba(124,58,237,.4);border-radius:12px;background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(99,102,241,.08));cursor:pointer;text-align:left;transition:all .2s ease;display:flex;align-items:center;gap:12px;margin-bottom:10px}
-.note-card:hover{border-color:rgba(124,58,237,.7);background:linear-gradient(135deg,rgba(124,58,237,.2),rgba(99,102,241,.14));transform:translateY(-1px);box-shadow:0 4px 14px rgba(124,58,237,.18)}
-.note-card:active{transform:translateY(0)}
-.note-card .note-icon{width:40px;height:40px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff}
-.note-card .s-company{font:600 13px Inter,sans-serif;color:#e2e8f0}
-.note-card .s-role{font:400 11px Inter,sans-serif;color:#c4b5fd;margin-top:3px}
-.note-card .note-arrow{color:#a78bfa;flex-shrink:0;margin-left:auto}
 /* Assessment (desktop only) — amber so it never reads as a company session */
 .as-card{width:100%;max-width:340px;padding:12px 14px;border:1px solid rgba(251,191,36,.35);border-radius:12px;background:linear-gradient(135deg,rgba(251,191,36,.10),rgba(249,115,22,.07));cursor:pointer;text-align:left;transition:all .2s ease;display:flex;align-items:center;gap:12px}
 .as-card:hover{border-color:rgba(251,191,36,.6);background:linear-gradient(135deg,rgba(251,191,36,.16),rgba(249,115,22,.12));transform:translateY(-1px);box-shadow:0 4px 14px rgba(251,191,36,.14)}
@@ -291,28 +284,7 @@ async function handleGoogleResponse(response) {
 function showStep(id) {
   document.querySelectorAll('.step').forEach(function(s) { s.classList.remove('active'); });
   document.getElementById(id).classList.add('active');
-  if (id === 'step-sessions') { renderJobScout(); renderAssessmentCard(); renderNoteCard(); }
-}
-
-// Answer Note (owner, 23 Oct) — desktop AND browser. Its own window: the server page /note (no app build needed).
-// Desktop: window.open from the overlay makes a normal always-on-top window; browser: a new tab.
-function renderNoteCard() {
-  if (!window.electronAPI) return;                 // owner 24 Oct: the Answer Note lives in the desktop app only
-  if (document.getElementById('note-card')) return;
-  var list = document.getElementById('session-list'); if (!list) return;
-  var card = document.createElement('div');
-  card.id = 'note-card'; card.className = 'note-card'; card.setAttribute('title', 'Your answers, one click away during a call');
-  card.onclick = openNote;
-  card.innerHTML = '<div class="note-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></div>'
-    + '<div class="s-info"><div class="s-company">Answer Note</div><div class="s-role">Your answers, ready to read on a call</div></div>'
-    + '<svg class="note-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
-  list.parentNode.insertBefore(card, list);
-}
-function openNote() { // owner 24 Oct: hidden from screen sharing like xHire itself, so it opens IN this protected window
-  var url = SERVER + '/note?token=' + encodeURIComponent(authToken);
-  if (window.electronAPI && window.electronAPI.openNote) window.electronAPI.openNote(url + '&win=1'); // 1.1.7+: its own window, hidden from screen share
-  else if (window.electronAPI) window.electronAPI.loadCanvas(url); // older app: inside this protected window (never an unprotected one)
-  else window.open(url, 'xhire-note');
+  if (id === 'step-sessions') { renderJobScout(); renderAssessmentCard(); } // owner 25 Oct: the Answer Note opens from inside a session (its job), never from this list
 }
 
 // Job Scout entry — WEB ONLY. Never rendered inside the Electron desktop app
