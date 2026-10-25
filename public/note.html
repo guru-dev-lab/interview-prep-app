@@ -1427,14 +1427,17 @@ function smartHeard(text, key) { // ~1 s later: which question it really is + th
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       if (!j || key !== heardText) return; // a newer question came in meanwhile
-      heardPending = !j.groupId && !j.question;
+      // Never switch on an unfinished sentence (measured 25 Oct: every wrong switch on a cut-off question was a guess at
+      // how it ends). Unfinished: marked only, and matched again as a whole once they stop talking.
+      var unfinished = !/[?.!]["')\]]*\s*$/.test(text.trim());
+      heardPending = (!j.groupId && !j.question) || (!!j.groupId && unfinished);
       if (heardPending && text === key && themAfter.trim()) setTimeout(function () { if (key === heardText && heardPending && saidText.length < 20) smartHeard((key + ' ' + themAfter.trim()).slice(-600), key); }, Math.max(0, COACH_QUIET - (Date.now() - lastThemAt))); // they already went on: check the whole question
       if (j.groupId && findGroup(j.groupId)) {
         setHeard(j.groupId);
         writeHeard(j.groupId, j.itemId);
         hot = j.line ? { gid: j.groupId, text: j.line } : null;
         showHeard(text, j.groupId, j.itemId, j.name);
-        if (N.settings.autoSwitch && j.groupId !== cur.gid && !typingInNote()) select(j.groupId, j.itemId, { flash: true });
+        if (N.settings.autoSwitch && !unfinished && j.groupId !== cur.gid && !typingInNote()) select(j.groupId, j.itemId, { flash: true });
         markLines();
       } else if (j.question) {
         setHeard(null);
