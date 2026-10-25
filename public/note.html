@@ -1674,13 +1674,14 @@ function markLines() { // display only: the line to read (data-hot), lines alrea
   clearMarks(ed);
   drawDiagrams();
   var els = [].filter.call(ed.querySelectorAll('li, p, h2, h3, pre'), function (el) { return !el.classList.contains('diagram'); }), said = saidText ? NoteMatch.stems(saidText) : null, all = [];
-  els.forEach(function (el) { NoteMatch.powerWords(el.textContent).forEach(function (w) { if (all.indexOf(w) < 0) all.push(w); }); });
+  // code (a <pre>) is never "impressive words": SELECT, AS, OVER are the language, not his numbers, names and tools
+  els.forEach(function (el) { if (el.tagName === 'PRE') return; NoteMatch.powerWords(el.textContent).forEach(function (w) { if (all.indexOf(w) < 0) all.push(w); }); });
   $('pwrow').innerHTML = all.slice(0, 8).map(function (w) { return '<span class="' + (said && NoteMatch.powerSaid(w, said) ? 'said' : '') + '">' + esc(w) + '</span>'; }).join('');
   if (!els.length || document.activeElement === ed) return; // never while he is typing in it
   els.forEach(function (el) {
     var txt = el.textContent.trim();
     if (said && (NoteMatch.lineSaid(txt, said) || aiSaid[txt])) el.setAttribute('data-said', '1');
-    wrapPower(el, NoteMatch.powerWords(txt), said);
+    if (el.tagName !== 'PRE') wrapPower(el, NoteMatch.powerWords(txt), said);
   });
   if (hot && hot.gid === cur.gid) {
     var best = null, bs = 0; els.forEach(function (el) { var sc = NoteMatch.dice(hot.text, el.textContent); if (sc > bs) { bs = sc; best = el; } });
