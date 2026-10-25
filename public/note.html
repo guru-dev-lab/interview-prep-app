@@ -1113,6 +1113,7 @@ $('btn-menu').onclick = function () {
   if (pop.classList.contains('open')) { closePop(); return; }
   var dark = document.body.classList.contains('dark');
   openPop($('btn-menu'), '<button class="mi" data-a="follow">Show what the call hears<span class="r">' + (follow ? 'On' : 'Off') + '</span></button>'
+    + '<button class="mi" data-a="coach" title="What they want and a line to say, under the answer during a call">Coach line<span class="r">' + (N.settings.coach === false ? 'Off' : 'On') + '</span></button>'
     + '<button class="mi" data-a="autoswitch"' + (follow ? '' : ' disabled style="opacity:.5"') + ' title="When they ask a question in your note, open it for you">Open the question they ask<span class="r">' + (N.settings.autoSwitch ? 'On' : 'Off') + '</span></button>'
     + '<button class="mi" data-a="theme">' + (dark ? 'Light' : 'Dark') + ' mode</button>'
     + '<div class="mi" style="cursor:default">Text size<span class="r"><button class="chip" data-a="smaller" style="height:26px">A&#8722;</button> <span id="pop-size">' + fontSize + '</span> <button class="chip" data-a="larger" style="height:26px">A+</button></span></div>'
@@ -1126,6 +1127,7 @@ $('btn-menu').onclick = function () {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
       e.stopPropagation(); var a = b.dataset.a;
       if (a === 'follow') { follow = !follow; lsSet('xhire_note_follow', follow ? '1' : '0'); b.querySelector('.r').textContent = follow ? 'On' : 'Off'; toast(follow ? 'Questions heard on the call are marked' : 'Questions heard on the call are not marked'); if (!follow) { heardGid = null; heardSec = null; renderList(); $('heard').classList.remove('open'); } }
+      else if (a === 'coach') { var co = N.settings.coach === false; saveSettings({ coach: co }); b.querySelector('.r').textContent = co ? 'On' : 'Off'; if (!co) hideCoach(); toast(co ? 'The coach line shows during calls' : 'No coach line during calls'); }
       else if (a === 'autoswitch') { var on = !N.settings.autoSwitch; saveSettings({ autoSwitch: on }); b.querySelector('.r').textContent = on ? 'On' : 'Off'; toast(on ? 'The question they ask opens for you' : 'Questions they ask are only marked on the left'); }
       else if (a === 'theme') { var d = !document.body.classList.contains('dark'); document.body.classList.toggle('dark', d); lsSet('xhire_note_theme', d ? 'dark' : 'light'); saveSettings({ theme: d ? 'dark' : 'light' }); closePop(); }
       else if (a === 'smaller' || a === 'larger') { fontSize = a === 'smaller' ? Math.max(12, fontSize - 1) : Math.min(36, fontSize + 1); applyFontSize(); $('pop-size').textContent = fontSize; }
@@ -1327,7 +1329,7 @@ var seenIn = {};
 function firstTime(kind, text) { var k = kind + '|' + text, now = Date.now(); if (seenIn[k] && now - seenIn[k] < 8000) return false; seenIn[k] = now; return true; }
 function onHeard(text) {
   if (SOLO || !follow || !N || !text || !firstTime('q', text)) return;
-  heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; heardPending = false; // a new question: ticks start over
+  heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; heardPending = false; chatText = ''; clearTimeout(chatTimer); chatKey = null; // a question wins over chat // a new question: ticks start over
   // Owner 25 Oct (screenshots): the instant guess by wording named the wrong card ("could you tell me a little" -> Start
   // date, "an example of that?" -> Great teamwork). Nothing is named or marked until the smart match (~0.8 s) says so.
   setHeard(null);
@@ -1346,6 +1348,7 @@ var coachCtl = null, coachNow = null, coachT = null, recentQs = [], coachShown =
 function onThem(text) {
   if (SOLO || !text || !firstTime('t', text)) return;
   themText = (themText + ' ' + text).slice(-2500); lastThemAt = Date.now();
+  chatText = (chatText + ' ' + text).trim().slice(-1200); clearTimeout(chatTimer); chatTimer = setTimeout(chatCoach, CHAT_QUIET);
   if (heardText && heardText.indexOf(text.trim()) < 0) themAfter += ' ' + text;
   // Owner: lines on screen only GROW, never swap ("you dont want to start speaking on something and it changes").
   // Once he is answering, more talk from them clears only a line he has not started saying.
@@ -1365,20 +1368,34 @@ function onThem(text) {
   }
 }
 var COACH_QUIET = 700, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '';
-function coachFor(text, add, retry, key, grow) {
+// Owner 25 Oct: "The coach is going to be useful for the waiting part and would let you have good small talks,
+// sometimes interviewers like to engage to see alignment if you are outspoken" ... "down to small jokes and humor
+// sometimes but must not be important than real question hint or subs or starter". When the interviewer finishes a turn
+// of chat (no question) and he has not jumped in, one line back. A question always wins: its line replaces a chat line,
+// a chat line never replaces any line on screen, and a chat line still on its way when a question comes is dropped.
+var chatText = '', chatTimer = null, chatKey = null, lastSaidAt = 0, CHAT_QUIET = 1200;
+function chatCoach() {
+  var t = chatText.trim(); chatText = '';
+  if (SOLO || !follow || !N || t.split(/\s+/).length < 6) return;
+  if (Date.now() - lastSaidAt < 1500) return;                                    // he already jumped in
+  if (coachNow && !$('coach').classList.contains('done')) return;                // a line he may be reading stays
+  if (heardText && Date.now() - heardAt < 20000 && saidText.length < 20) return;  // a question is waiting for his answer
+  chatKey = 'chat|' + t; coachFor(t, false, false, chatKey, false, true);
+}
+function coachFor(text, add, retry, key, grow, chat) {
   key = key || text;
-  if (!add && !retry) { hideCoach(); coachAdds = 0; coachShown = []; heardAt = Date.now(); }
-  var sid = $('job') && $('job').value; if (!sid) return;
+  if (!add && !retry) { hideCoach(); coachAdds = 0; coachShown = []; if (!chat) heardAt = Date.now(); }
+  var sid = $('job') && $('job').value; if (!sid || N.settings.coach === false) return; // owner: the coach can always be turned off
   if (coachCtl) try { coachCtl.abort(); } catch (e) {}
   var ctl = coachCtl = (window.AbortController ? new AbortController() : null), recent = add ? recentQs.slice(-4, -1) : recentQs.slice(-3);
-  if (!add && !retry) { recentQs.push(text); recentQs = recentQs.slice(-6); }
+  if (!add && !retry && !chat) { recentQs.push(text); recentQs = recentQs.slice(-6); }
   coachLast = Date.now(); var asked = saidText;
-  fetch(location.origin + '/api/note/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, sessionId: sid, recent: recent, theySaid: themText, youSaid: add ? saidText : '', shown: coachShown }), signal: ctl ? ctl.signal : undefined })
+  fetch(location.origin + '/api/note/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, sessionId: sid, recent: recent, theySaid: chat ? '' : themText, youSaid: add ? saidText : '', shown: coachShown, chat: !!chat }), signal: ctl ? ctl.signal : undefined })
     .then(function (r) { // two questions within 0.7 s: the server refuses the second as too fast, so it asks once more
-      if (r.status === 429 && !retry) { setTimeout(function () { if (key === heardText) coachFor(text, add, true, key, grow); }, 800); return null; }
+      if (r.status === 429 && !retry) { setTimeout(function () { if (key === heardText || key === chatKey) coachFor(text, add, true, key, grow, chat); }, 800); return null; }
       return r.ok ? r.json() : null;
     })
-    .then(function (j) { if (j && j.coach && key === heardText) { if (grow && coachNow) growCoach(j.coach); else if (!add || !coachNow) showCoach(j.coach, add); } })
+    .then(function (j) { if (chat && (key !== chatKey || (coachNow && !$('coach').classList.contains('done')))) return; if (j && j.coach && (key === heardText || chat)) { if (grow && coachNow) growCoach(j.coach); else if (!add || !coachNow) showCoach(j.coach, add); } })
     .catch(function () {});
 }
 function showCoach(c, add) {
@@ -1587,7 +1604,7 @@ function lightFlow(view, src) {
 }
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
   if (SOLO || !follow || !N || !text || !firstTime('s', text)) return;
-  saidText += ' ' + text; markLines();
+  saidText += ' ' + text; markLines(); lastSaidAt = Date.now(); chatText = ''; clearTimeout(chatTimer); themText = ''; // what they said is kept only for their current turn (the dog from two turns ago kept coming back)
   coachOnSaid(text);
   clearTimeout(saidTimer); saidTimer = setTimeout(checkSaidByMeaning, 2200); // when he pauses
 }
