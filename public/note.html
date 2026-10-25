@@ -182,8 +182,12 @@ body.calls .side-foot{display:none}
 /* Live coach (owner 24 Oct): "on the Note like subtitle and goes and come when need and not needed". Same dark strip in
    every theme so it reads like a subtitle over any background. */
 .pagewrap{position:relative}
-.coach{position:absolute;left:50%;bottom:60px;transform:translate(-50%,10px);width:max-content;max-width:min(640px,calc(100% - 32px));background:#121419;border:1px solid rgba(252,211,77,.4);color:#fff;border-radius:12px;padding:9px 16px 11px;box-shadow:0 10px 32px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .35s ease,transform .35s ease;z-index:40;text-align:center;cursor:pointer}
-.coach.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.coach{order:2;flex-shrink:0;align-self:center;position:relative;display:none;width:max-content;max-width:min(640px,calc(100% - 32px));margin:6px 16px 12px;background:#121419;border:1px solid rgba(252,211,77,.4);color:#fff;border-radius:12px;padding:9px 30px 11px;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:40;text-align:center;cursor:pointer}
+/* owner 25 Oct: "dont let it cover it ... it should come down or move the page up a little and let it have small x": it sits in its own band under the page (the page gets shorter, nothing is covered) */
+.coach .cx{position:absolute;top:4px;right:6px;width:20px;height:20px;border-radius:10px;font-size:14px;line-height:20px;color:rgba(255,255,255,.55);background:none;border:none;cursor:pointer;padding:0}
+.coach .cx:hover{color:#fff;background:rgba(255,255,255,.12)}
+@keyframes coachIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.coach.show{display:block;animation:coachIn .3s ease}
 .coach .cw{font-size:12.5px;line-height:1.35;color:#FCD34D;margin-bottom:3px}
 .coach .cw b{font-weight:700;margin-right:4px}
 .coach .cs{font-size:17px;font-weight:600;line-height:1.38}
@@ -333,7 +337,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   </aside>
   <div class="resizer" id="resizer" title="Drag to resize. Double-click to hide."></div>
   <section class="pagewrap">
-    <div class="coach" id="coach" title="Click to hide"><div class="cw"><b id="coach-lbl">They want:</b><span id="coach-want"></span></div><div class="cs" id="coach-say"></div></div>
+    <div class="coach" id="coach" title="Click to hide"><button class="cx" title="Hide" aria-label="Hide">&times;</button><div class="cw"><b id="coach-lbl">They want:</b><span id="coach-want"></span></div><div class="cs" id="coach-say"></div></div>
     <div class="page" id="page"><div class="sheet">
       <div class="empty" id="empty">Pick a question on the left.</div>
       <div id="call-wrap" class="hidden"></div>
