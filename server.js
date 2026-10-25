@@ -3348,6 +3348,7 @@ FIT: aim it at THIS role at THIS company. Lean on what the job description cares
 SHAPE: plain paragraphs separated by one blank line, 2 to 4 sentences each, one paragraph per step of the path below. Length: ${length}.
 PATH:
 ${quick ? quickPath(DETAIL_ARCS_TEXT(arc)) : DETAIL_ARCS_TEXT(arc)}${voiceProfile ? `\nHOW THIS CANDIDATE TALKS (match it): ${voiceProfile}` : ''}
+${answerNote.EXAMPLE_RULE}
 ${answerNote.AI_RULE}
 Last line, outside the answer: KEY: <at most 12 words, the one thing to remember>`;
   const instruction = answerNote.changeInstruction(mode, custom);
@@ -3552,6 +3553,7 @@ Layout:
 <h3>How to say it</h3> 3 to 5 short bullets in the first person, one sentence each (under 20 words). ${answerNote.READ_ALOUD}
 A <table> where it makes things clearer: for any "tell me about a time" or story question ALWAYS a STAR table (Situation, Task, Action, Result); steps for a process; before/after numbers; or a comparison.
 <h3>If they push</h3> 1 or 2 follow-ups they may ask, each with a one-line answer they can read out as it is.
+${answerNote.EXAMPLE_RULE} In "How to say it" the first bullet is the plain idea; examples come after it.
 Rules: only facts from the resume, Q&A bank and what was said on the call; never invent a number, tool, employer or title. If the resume has no exact match, never say they have not done it: answer confidently from the closest real experience in the resume (the same skill, a similar situation) and tell it as their story. Plain words, no em dashes, no buzzwords.
 Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`;
   const said = answerNote.htmlToText(item.answer_html);
@@ -5322,19 +5324,21 @@ wss.on('connection', (ws) => {
                   const fullUtterance = userBuffer.trim();
                   userBuffer = '';
                   resetIdleTimer();
-                  ws.send(JSON.stringify({ type: 'user_transcript', text: fullUtterance, isFinal: true }));
-                  broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true }, ws);
+                  // Only REAL candidate speech ends the follow-up window — not the interviewer leaking into the mic. Loudness
+                  // decides (bleed is quieter on the mic than in the call audio); text similarity as a backup.
+                  const uLoud = userBufStartWall ? channelLoudness(userBufStartWall, userBufStartWall + 1500) : null;
+                  const isBleed = (uLoud && uLoud.c1 > uLoud.c2 * 1.2) || transcript.some(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000 &&
+                    stringSimilarity.compareTwoStrings(fullUtterance.toLowerCase(), (t.text || '').toLowerCase()) > 0.6);
+                  // Owner 25 Oct: a mock video on his speakers greyed his answer lines (the mic heard the video). Bleed is judged
+                  // BEFORE it goes out, and marked, so the note and the coach never take it as his words.
+                  ws.send(JSON.stringify({ type: 'user_transcript', text: fullUtterance, isFinal: true, bleed: !!isBleed }));
+                  broadcastToSession(sessionId, { type: 'user_transcript', text: fullUtterance, isFinal: true, bleed: !!isBleed }, ws);
                   transcript.push({ text: '[You] ' + fullUtterance, ts: Date.now(), isUser: true });
                   ws._recentTranscript = transcript.slice(-6).map(t => t.text);
                   maybeDigestCurrentCall(ws);
 
                   // Store for echo detection — Ch1 transcripts will be compared against these
                   recentUserUtterances.push({ text: fullUtterance, ts: Date.now(), startWall: userBufStartWall });
-                  // Only REAL candidate speech ends the follow-up window — not the interviewer leaking into the mic. Loudness
-                  // decides (bleed is quieter on the mic than in the call audio); text similarity as a backup.
-                  const uLoud = userBufStartWall ? channelLoudness(userBufStartWall, userBufStartWall + 1500) : null;
-                  const isBleed = (uLoud && uLoud.c1 > uLoud.c2 * 1.2) || transcript.some(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000 &&
-                    stringSimilarity.compareTwoStrings(fullUtterance.toLowerCase(), (t.text || '').toLowerCase()) > 0.6);
                   if (!isBleed) recordCallEvent(sessionId, ws._callId, 'you', fullUtterance, {});
                   if (!isBleed) ws._lastUserSpeechTs = Date.now();
                   userBufStartWall = null;
@@ -6244,6 +6248,7 @@ QUALITY:
 - Never fabricate. Facts about the candidate come only from the resume, the Q&A bank, and what they said earlier — no new people, events, reactions, projects, numbers, tools, skills or "I taught myself…" claims.
 - Never change what an employer is or does (industry, product, customers) to fit the job — Midwest Health Clinics stays a health clinic, a retailer stays a retailer. Transferable SKILLS can be drawn out; the business can't be rewritten.
 - If they ask about experience the candidate doesn't have (nothing in the resume or earlier answers), say so briefly and bridge to the closest REAL experience — never invent some. (AI questions: the next rule instead.)
+- ${answerNote.EXAMPLE_RULE}
 - ${answerNote.AI_RULE}
 - The question came from live speech transcription and may be garbled — never ask for clarification; answer the most likely intent.
 - Never quote the candidate's own sentences back, but stay consistent with the facts they stated about themselves.

@@ -36,8 +36,8 @@ async function seed() {
 async function scenario(name, { lines, click, waitMs = 9000, expectText }) {
   const { token, sessionId } = await seed();
   const ws = new WebSocket(BASE.replace(/^http/, 'ws'));
-  const got = [];
-  ws.on('message', d => { try { const m = JSON.parse(d); m._t = Date.now(); if (m.type !== 'transcript' && m.type !== 'user_transcript') got.push(m); } catch (e) {} });
+  const got = [], mics = [];
+  ws.on('message', d => { try { const m = JSON.parse(d); m._t = Date.now(); if (m.type === 'user_transcript') mics.push(m); else if (m.type !== 'transcript') got.push(m); } catch (e) {} });
   await new Promise(r => ws.on('open', r));
   ws.send(JSON.stringify({ type: 'start', token, sessionId, mode: 'full', platform: 'electron', dualStream: true }));
   await sleep(1500);
@@ -80,6 +80,7 @@ async function scenario(name, { lines, click, waitMs = 9000, expectText }) {
   console.log('  detected :', detected ? `${detected.source}: "${detected.text}"` : '— none —');
   console.log('  card     :', card ? `${card.type}: "${card.questionText}"` : '— NOTHING ON SCREEN —');
   if (errs.length) console.log('  errors   :', errs.join(' | '));
+  if (mics.length) console.log('  mic      :', mics.map(m => (m.bleed ? '[bleed] ' : '[you] ') + m.text.slice(0, 60)).join(' | '));
   // Instant jump check: first answer-bearing event after the click is a 'match' within 800 ms, and no new card/rewrite.
   let jump = null;
   if (click) {
@@ -91,7 +92,7 @@ async function scenario(name, { lines, click, waitMs = 9000, expectText }) {
     jump = { ok: !!first && first.type === 'match' && first._t - clickT < 800 && newCards === 0 && rewrites === 0, ms: first ? first._t - clickT : null, newCards, rewrites };
     console.log(`  jump     : ${first ? first.type + ' in ' + jump.ms + ' ms' : 'nothing'}, new cards after click ${newCards}, rewrites ${rewrites}`);
   }
-  return { detected: !!detected, card: !!card, cardText: card ? (card.questionText || '') : '', errs, jump };
+  return { detected: !!detected, card: !!card, cardText: card ? (card.questionText || '') : '', errs, jump, mics };
 }
 
 (async () => {
@@ -123,7 +124,11 @@ async function scenario(name, { lines, click, waitMs = 9000, expectText }) {
     if (only && !n.includes(only)) continue;
     const r = await scenario(n, c);
     const ok = c.expectJump ? (r.jump && r.jump.ok) : c.expectNone ? !r.card : c.expectText ? r.card && c.expectText.test(r.cardText) : c.lines.length ? r.card : r.errs.length > 0; // spoken question → card; candidate/small talk → no card; nothing spoken → a visible reason
-    if (!ok) fails++; console.log('  RESULT   :', ok ? 'PASS' : 'FAIL');
+    // Owner 25 Oct: the note greys lines from what the mic hears; bleed (the call through his mic) must be marked, his own voice never
+    const isBleedCase = c.lines.some(l => l && l.bleed), isYouCase = c.lines.some(l => l && l.you);
+    const micOk = isBleedCase ? r.mics.every(m => m.bleed) : isYouCase ? r.mics.some(m => !m.bleed) : true;
+    if (!micOk) console.log('  MIC FLAG :', isBleedCase ? 'bleed went out as his words' : 'his words were marked as bleed');
+    if (!ok || !micOk) fails++; console.log('  RESULT   :', ok && micOk ? 'PASS' : 'FAIL');
   }
   await pool.end(); fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`\n${fails ? fails + ' FAILED' : 'ALL PASS'}`); process.exit(fails ? 1 : 0);
