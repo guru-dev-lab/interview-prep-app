@@ -1113,6 +1113,7 @@ $('btn-menu').onclick = function () {
   if (pop.classList.contains('open')) { closePop(); return; }
   var dark = document.body.classList.contains('dark');
   openPop($('btn-menu'), '<button class="mi" data-a="follow">Show what the call hears<span class="r">' + (follow ? 'On' : 'Off') + '</span></button>'
+    + '<button class="mi" data-a="autoswitch"' + (follow ? '' : ' disabled style="opacity:.5"') + ' title="When they ask a question in your note, open it for you">Open the question they ask<span class="r">' + (N.settings.autoSwitch ? 'On' : 'Off') + '</span></button>'
     + '<button class="mi" data-a="theme">' + (dark ? 'Light' : 'Dark') + ' mode</button>'
     + '<div class="mi" style="cursor:default">Text size<span class="r"><button class="chip" data-a="smaller" style="height:26px">A&#8722;</button> <span id="pop-size">' + fontSize + '</span> <button class="chip" data-a="larger" style="height:26px">A+</button></span></div>'
     + '<label class="mi" style="cursor:pointer">Page colour<span class="r"><input type="color" id="pop-bg" value="' + esc((N.settings && N.settings.bg) || (dark ? '#1e1e20' : '#fffdf8')) + '" style="width:30px;height:22px;border:none;background:none;cursor:pointer"></span></label>'
@@ -1125,6 +1126,7 @@ $('btn-menu').onclick = function () {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
       e.stopPropagation(); var a = b.dataset.a;
       if (a === 'follow') { follow = !follow; lsSet('xhire_note_follow', follow ? '1' : '0'); b.querySelector('.r').textContent = follow ? 'On' : 'Off'; toast(follow ? 'Questions heard on the call are marked' : 'Questions heard on the call are not marked'); if (!follow) { heardGid = null; heardSec = null; renderList(); $('heard').classList.remove('open'); } }
+      else if (a === 'autoswitch') { var on = !N.settings.autoSwitch; saveSettings({ autoSwitch: on }); b.querySelector('.r').textContent = on ? 'On' : 'Off'; toast(on ? 'The question they ask opens for you' : 'Questions they ask are only marked on the left'); }
       else if (a === 'theme') { var d = !document.body.classList.contains('dark'); document.body.classList.toggle('dark', d); lsSet('xhire_note_theme', d ? 'dark' : 'light'); saveSettings({ theme: d ? 'dark' : 'light' }); closePop(); }
       else if (a === 'smaller' || a === 'larger') { fontSize = a === 'smaller' ? Math.max(12, fontSize - 1) : Math.min(36, fontSize + 1); applyFontSize(); $('pop-size').textContent = fontSize; }
       else if (a === 'bgreset') { setNoteBg(''); saveSettings({ bg: '' }); closePop(); toast('Page colour reset'); }
@@ -1324,7 +1326,7 @@ var seenIn = {};
 function firstTime(kind, text) { var k = kind + '|' + text, now = Date.now(); if (seenIn[k] && now - seenIn[k] < 8000) return false; seenIn[k] = now; return true; }
 function onHeard(text) {
   if (SOLO || !follow || !N || !text || !firstTime('q', text)) return;
-  heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; // a new question: ticks start over
+  heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; heardPending = false; // a new question: ticks start over
   var m = NoteMatch.closest(N.groups, text); // instant: by wording
   setHeard(m ? m.groupId : null);
   showHeard(text, m && m.groupId, m && m.itemId, m ? (findGroup(m.groupId) || {}).name || m.question : '');
@@ -1354,6 +1356,7 @@ function onThem(text) {
     coachWait = setTimeout(function () {
       if (key !== heardText || saidText.length >= 20) return;
       coachQ = (key + ' ' + themAfter.trim()).slice(-600);
+      if (heardPending) smartHeard(coachQ, key); // it was cut off: match the whole question now
       if (coachNow) coachFor(coachQ, false, true, key, true); // a line is up: add under it for the rest of the question
       else { coachShown = []; coachFor(coachQ, false, true, key); }
     }, COACH_QUIET);
@@ -1413,18 +1416,25 @@ function coachOnSaid(text) {
     coachAdds++; coachFor(coachQ || heardText, true, false, heardText);
   }, 2500);
 }
-function smartHeard(text) { // ~1 s later: which question it really is + the line to read. The newest question wins.
+// Owner 25 Oct: "a setting for auto switch, on and off", once matching proved over 96% (measured: 98-99% of switches
+// land on the right card; a half-heard question never switches). Only the smart match switches, never while he types.
+var heardPending = false; // the question was cut off before its ask was clear: checked again when they stop talking
+function typingInNote() { var a = document.activeElement; return !!a && (/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) || !!(a.closest && a.closest('#editor'))); }
+function smartHeard(text, key) { // ~1 s later: which question it really is + the line to read. The newest question wins. key = the question it belongs to
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
-  var ctl = heardCtl = (window.AbortController ? new AbortController() : null);
+  var ctl = heardCtl = (window.AbortController ? new AbortController() : null); key = key || text;
   fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, currentGroupId: cur.gid, sessionId: JOB }), signal: ctl ? ctl.signal : undefined })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
-      if (!j || text !== heardText) return; // a newer question came in meanwhile
+      if (!j || key !== heardText) return; // a newer question came in meanwhile
+      heardPending = !j.groupId && !j.question;
+      if (heardPending && text === key && themAfter.trim()) setTimeout(function () { if (key === heardText && heardPending && saidText.length < 20) smartHeard((key + ' ' + themAfter.trim()).slice(-600), key); }, Math.max(0, COACH_QUIET - (Date.now() - lastThemAt))); // they already went on: check the whole question
       if (j.groupId && findGroup(j.groupId)) {
         setHeard(j.groupId);
         writeHeard(j.groupId, j.itemId);
         hot = j.line ? { gid: j.groupId, text: j.line } : null;
         showHeard(text, j.groupId, j.itemId, j.name);
+        if (N.settings.autoSwitch && j.groupId !== cur.gid && !typingInNote()) select(j.groupId, j.itemId, { flash: true });
         markLines();
       } else if (j.question) {
         setHeard(null);
