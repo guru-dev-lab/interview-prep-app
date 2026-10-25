@@ -710,6 +710,26 @@ function sectionDrop(h, name) {
     var d = e.dataTransfer.getData('text/plain'); if (d.indexOf('s:') === 0) moveSectionTo(d.slice(2), name, after);
   };
 }
+// Owner 25 Oct: "do we have things to clear all answers?" The job at the top only; his every-job answers only if ticked.
+// Everything cleared stays in each answer's History.
+function clearAllAnswers() {
+  var co = (N.job && N.job.company) || 'this job';
+  openPop($('btn-menu'), '<div class="note"><b>Clear all answers for ' + esc(co) + '?</b><br>Each one is kept in its History, so you can bring any one back.</div>'
+    + '<label class="note" style="display:flex;gap:6px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="ca-you" style="margin-top:3px"> Also clear my every-job answers (Weakness, Strengths, Why I\'m leaving...)</label>'
+    + '<div style="display:flex;gap:6px;padding:4px 8px 6px"><button class="chip" id="ca-keep">Keep them</button><button class="chip" id="ca-go" style="border-color:var(--bad);color:var(--bad)">Clear all</button></div>', function () {
+    $('ca-keep').onclick = closePop;
+    $('ca-go').onclick = async function () {
+      var you = $('ca-you').checked; closePop();
+      if (genAll && genAll.running) genAll.stop = true;
+      flushEditor(); Object.keys(pending).forEach(function (k) { clearTimeout(timers[k]); runSave(k); });
+      for (var i = 0; i < 60 && (Object.keys(pending).length || Object.keys(inflight).length || Object.keys(busy).length); i++) await new Promise(function (r) { setTimeout(r, 100); });
+      var r = await api('POST', '/api/note/clear-all', { sessionId: JOB, includeYou: you }).catch(function () { return { ok: false, json: {} }; });
+      if (!r.ok) { toast(r.json.error || 'Could not clear the answers', 3000); return; }
+      await switchJob(); // reload this job's answers (all empty now)
+      toast(r.json.cleared ? 'Cleared ' + r.json.cleared + ' answer' + (r.json.cleared > 1 ? 's' : '') + '. Each one is in its History.' : 'There were no answers to clear', 3500);
+    };
+  });
+}
 function moveSectionTo(from, to, after) {
   if (from === to) return;
   var ids = NoteMatch.moveSection(N.groups, from, to, after, secOf);
@@ -1127,10 +1147,12 @@ $('btn-menu').onclick = function () {
     + (CAN_GLASS ? '<button class="mi" data-a="glass">Glass, like the xHire overlay<span class="r">' + (glass ? 'On' : 'Off') + '</span></button>'
       + '<div class="mi" style="cursor:default' + (glass ? '' : ';opacity:.5') + '" title="' + (glass ? 'Drag right to see more of what is behind' : 'Turn Glass on to use this') + '">See-through<span class="r"><input type="range" id="pop-see" min="0" max="60" step="2" value="' + seeThrough + '" style="width:120px"' + (glass ? '' : ' disabled') + '></span></div>' : '')
     + (document.body.classList.contains('narrow') ? '<button class="mi" data-a="genall">' + (genAll && genAll.running ? 'Stop writing answers' : 'Write all answers') + '</button>' : '')
+    + (JOB ? '<button class="mi" data-a="clearall">Clear all answers<span class="r" style="color:var(--muted)">this job</span></button>' : '')
     + '<div class="hr"></div><button class="mi" data-a="help">Keyboard shortcuts<span class="r">?</span></button>', function (p) {
     p.querySelectorAll('[data-a]').forEach(function (b) { b.onclick = function (e) {
       e.stopPropagation(); var a = b.dataset.a;
       if (a === 'follow') { follow = !follow; lsSet('xhire_note_follow', follow ? '1' : '0'); b.querySelector('.r').textContent = follow ? 'On' : 'Off'; toast(follow ? 'Questions heard on the call are marked' : 'Questions heard on the call are not marked'); if (!follow) { heardGid = null; heardSec = null; renderList(); $('heard').classList.remove('open'); } }
+      else if (a === 'clearall') { clearAllAnswers(); }
       else if (a === 'coach') { var co = N.settings.coach === false; saveSettings({ coach: co }); b.querySelector('.r').textContent = co ? 'On' : 'Off'; if (!co) hideCoach(); toast(co ? 'The coach line shows during calls' : 'No coach line during calls'); }
       else if (a === 'autoswitch') { var on = !N.settings.autoSwitch; saveSettings({ autoSwitch: on }); b.querySelector('.r').textContent = on ? 'On' : 'Off'; toast(on ? 'The question they ask opens for you' : 'Questions they ask are only marked on the left'); }
       else if (a === 'theme') { var d = !document.body.classList.contains('dark'); document.body.classList.toggle('dark', d); lsSet('xhire_note_theme', d ? 'dark' : 'light'); saveSettings({ theme: d ? 'dark' : 'light' }); closePop(); }
