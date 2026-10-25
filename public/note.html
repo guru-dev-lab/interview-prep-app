@@ -323,6 +323,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
       <div id="call-wrap" class="hidden"></div>
       <div id="answer-wrap" class="hidden">
         <div class="crumb"><span id="crumb-sec"></span><span id="crumb-dot">&middot;</span><b id="crumb-title"></b><span class="grow"></span>
+          <button class="ibtn" id="btn-scope" title=""></button>
           <button class="ibtn" id="btn-copy" title="Copy the question and answer (Cmd+Shift+C)">Copy</button>
           <button class="ibtn only-full" id="btn-pop" title="Open this question in its own small window">Pop out</button>
           <button class="ibtn" id="btn-hist" title="Every earlier version of this answer">History</button>
@@ -388,6 +389,7 @@ var TOKEN = params.get('token') || lsGet('xhire_note_token') || lsGet('token') |
 if (params.get('token')) lsSet('xhire_note_token', TOKEN);
 var SESSION_PARAM = params.get('session') || '';
 var SOLO = params.get('solo') || '';               // a popped-out window: one question only
+var JOB = SESSION_PARAM;                           // the job whose answers are on screen (owner 25 Oct: answers per job); the server fills it in
 // Owner 24 Oct: the note must be as hidden from screen sharing as xHire itself. In the desktop app it never opens a
 // window of its own (a new window is NOT protected): from the home screen it fills the protected xHire window
 // (DESKTOP), during a call it is a panel inside the call overlay (EMBED). Pop out is a browser-only extra.
@@ -434,6 +436,7 @@ function setNarrow() { var n = window.innerWidth < 700; if (n !== document.body.
 setNarrow(); window.addEventListener('resize', setNarrow);
 
 async function api(method, path, body) {
+  if (JOB && /^\/api\/note(\/|$)/.test(path) && !/sessionId=/.test(path)) path += (path.indexOf('?') < 0 ? '?' : '&') + 'sessionId=' + encodeURIComponent(JOB); // every read and write is for the job on screen
   var r = await fetch(location.origin + path, { method: method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: body ? JSON.stringify(body) : undefined });
   var j = {}; try { j = await r.json(); } catch (e) {}
   if (r.status === 401) { showGate(); throw new Error('Not signed in'); }
@@ -504,7 +507,7 @@ window.addEventListener('online', function () { Object.keys(pending).forEach(fun
 window.addEventListener('beforeunload', function (e) { if (Object.keys(pending).length || Object.keys(inflight).length) { e.preventDefault(); e.returnValue = ''; } });
 
 // draft cache: the editor's text per item, applied on load only when the server row has not moved on
-function draftKey(iid) { return 'xhire_note_draft:' + iid; }
+function draftKey(iid) { return 'xhire_note_draft:' + iid + (JOB ? ':' + JOB : ''); }
 function writeDraft(it) { lsSet(draftKey(it.id), JSON.stringify({ html: it.answer_html, key: it.key_points, base: it.version, ts: Date.now() })); }
 function applyDrafts() {
   N.groups.forEach(function (g) { g.items.forEach(function (it) {
@@ -517,8 +520,9 @@ function applyDrafts() {
   }); });
 }
 function saveContent(it) {
+  var sid = JOB; // saved to the job it was typed for, even if another job is picked before it lands
   return async function () {
-    var r = await api('PUT', '/api/note/items/' + it.id, { answer_html: it.answer_html, key_points: it.key_points, baseVersion: it.version });
+    var r = await api('PUT', '/api/note/items/' + it.id, { answer_html: it.answer_html, key_points: it.key_points, baseVersion: it.version, sessionId: sid });
     if (r.status === 409) { onConflict(it, r.json.item); return; }
     if (!r.ok) throw new Error(r.json.error || 'save failed');
     it.version = r.json.version; it.versions = r.json.versions; it.edited_by = r.json.edited_by; it.edit_label = r.json.edit_label; it.updated_at = r.json.updated_at; it._draft = false;
@@ -545,9 +549,10 @@ async function load() {
   if (!TOKEN) { showGate(); return; }
   var r = await api('GET', '/api/note');
   if (!r.ok) { toast(r.json.error || 'Could not load the note', 3000); return; }
-  N = r.json; N.groups.forEach(function (g) { g.items = g.items || []; });
+  N = r.json; N.groups.forEach(function (g) { g.items = g.items || []; }); if (N.job) JOB = N.job.id;
   applySettings(); applyDrafts();
   if (!SOLO) await loadJobs().catch(function () {});
+  buildJob();
   api('GET', '/api/note/asked').then(function (r) { if (r.ok) { ASKED = r.json.counts || {}; renderList(); } }).catch(function () {}); // the job at the top is set BEFORE anything is written: opened from a session, it is that session (owner 24 Oct)
   if (SOLO && findGroup(SOLO)) { var sg = findGroup(SOLO); document.title = sg.name + ' | Answer Note'; select(sg.id, (sg.items[0] || {}).id); return; }
   var gs = navGroups();
@@ -577,10 +582,46 @@ async function loadJobs() {
   var sel = $('job');
   r.json.forEach(function (s) { var o = document.createElement('option'); o.value = s.id; o.textContent = (s.company || 'Untitled') + (s.role ? ' \u00b7 ' + s.role : ''); sel.appendChild(o); });
   if (SESSION_PARAM && [].some.call(sel.options, function (o) { return o.value === SESSION_PARAM; })) sel.value = SESSION_PARAM;
-  jobTitle();
+  latestLabel(); jobTitle();
+}
+function latestLabel() { var o = $('job').options[0]; if (o && !o.value) o.textContent = 'Latest résumé' + (!$('job').value && N.job && N.job.company ? ': ' + N.job.company + (N.job.role ? ' \u00b7 ' + N.job.role : '') : ''); }
+// Another job picked: its answers and its questions come up (what is being typed is saved first, for the job it was typed for)
+var switching = false;
+async function switchJob() {
+  if (switching) return; switching = true;
+  try {
+    if (genAll && genAll.running) { genAll.stop = true; }
+    flushEditor();
+    Object.keys(pending).forEach(function (k) { clearTimeout(timers[k]); runSave(k); });
+    for (var i = 0; i < 60 && (Object.keys(pending).length || Object.keys(inflight).length || Object.keys(busy).length); i++) await new Promise(function (r) { setTimeout(r, 100); });
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    var keep = cur.gid && findGroup(cur.gid) ? findGroup(cur.gid).name : '';
+    cur = { gid: null, iid: null }; // the box still holds the old job's text: nothing may save it into the new job
+    var was = JOB; JOB = $('job').value || '';
+    var r = await api('GET', '/api/note').catch(function () { return { ok: false, json: {} }; });
+    if (!r.ok) { JOB = was; $('job').value = [].some.call($('job').options, function (o) { return o.value === was; }) ? was : ''; jobTitle(); var kg = keep && N.groups.find(function (g) { return g.name === keep; }); if (kg) select(kg.id, (kg.items[0] || {}).id); toast(r.json.error || 'Could not load that job', 3000); return; }
+    N = r.json; N.groups.forEach(function (g) { g.items = g.items || []; }); if (N.job) JOB = N.job.id;
+    applyDrafts(); latestLabel(); jobTitle(); hot = null; heardGid = null;
+    var same = keep && N.groups.find(function (g) { return g.name === keep; }), gs = navGroups();
+    if (same) select(same.id, (same.items[0] || {}).id); else if (gs.length && gs[0].items.length) select(gs[0].id, gs[0].items[0].id); else { cur = { gid: null, iid: null }; renderAll(); }
+    buildJob();
+  } finally { switching = false; }
+}
+// First time the note opens for a job: its own questions are made from the job (one call, once per job)
+async function buildJob() {
+  if (SOLO || !N || !N.needsBuild || !N.job) return;
+  var forJob = N.job.id; $('progress').textContent = 'Making the questions for this job...';
+  var r = await api('POST', '/api/note/build', { sessionId: forJob }).catch(function () { return { ok: false, json: {} }; });
+  if (JOB === forJob) $('progress').textContent = '';
+  if (!r.ok || JOB !== forJob) return;
+  var have = {}; N.groups.forEach(function (g) { have[g.id] = 1; });
+  var fresh = r.json.groups.filter(function (g) { return !have[g.id]; });
+  fresh.forEach(function (g) { N.groups.push(g); }); N.needsBuild = false;
+  renderList();
+  if (fresh.length) toast(fresh.length + ' questions for this job added on the left', 3000);
 }
 function jobTitle() { var o = $('job').selectedOptions && $('job').selectedOptions[0]; $('job').title = 'Answers are written for: ' + (o && o.value ? o.textContent : 'your latest résumé'); }
-$('job').onchange = function () { jobTitle(); toast('New answers will be written for ' + ($('job').value ? $('job').selectedOptions[0].textContent : 'your latest résumé')); CALLS = null; curCall = null; if (view === 'calls') loadCalls(); };
+$('job').onchange = function () { jobTitle(); CALLS = null; curCall = null; switchJob().then(function () { if (view === 'calls') loadCalls(); }); };
 
 // ===== render =====
 function renderAll() { renderList(); renderAnswer(true); }
@@ -663,6 +704,8 @@ function renderAnswer(force) {
   if (!it) { $('empty').textContent = g ? 'This question has no wording yet. Add one.' : 'Pick a question on the left.'; return; }
   $('crumb-sec').textContent = g.section || (g.pinned ? 'Pinned' : OWN);
   $('crumb-title').textContent = g.name; $('crumb-title').style.color = g.color || '';
+  var sc = $('btn-scope'); sc.textContent = g.scope === 'you' ? 'Every job' : 'This job only';
+  sc.title = g.scope === 'you' ? 'One answer for every job (it is about you). Click to keep a separate answer for each job.' : 'This answer is for ' + ((N.job && N.job.company) || 'this job') + ' only. Click to use one answer for every job.';
   $('q').textContent = it.question;
   renderWays();
   var ed = $('editor'), kp = $('key');
@@ -889,7 +932,7 @@ async function aiChange(it, mode, instruction) {
   flushEditor();
   busy[it.id] = true; if (cur.iid === it.id) renderAnswer(); else if (cur.gid === it.group_id) renderWays(); renderList();
   try {
-    var r = await api('POST', '/api/note/items/' + it.id + '/generate', { mode: mode, instruction: instruction || '', sessionId: $('job').value || '' });
+    var r = await api('POST', '/api/note/items/' + it.id + '/generate', { mode: mode, instruction: instruction || '', sessionId: JOB });
     if (!r.ok) { toast(r.json.error || 'Could not write the answer', 3500); return false; }
     var before = it.versions ? it.versions.length : 0;
     delete it._conflict; lsDel(draftKey(it.id));
@@ -977,10 +1020,21 @@ function popOut(g) {
   if (!CAN_POP) return;
   g = g || (cur.gid && findGroup(cur.gid)); if (!g) return;
   flushEditor();
-  var w = window.open(location.origin + '/note?token=' + encodeURIComponent(TOKEN) + '&solo=' + encodeURIComponent(g.id), 'xhire-note-' + g.id, 'width=560,height=680');
+  var w = window.open(location.origin + '/note?token=' + encodeURIComponent(TOKEN) + '&solo=' + encodeURIComponent(g.id) + (JOB ? '&session=' + encodeURIComponent(JOB) : ''), 'xhire-note-' + g.id, 'width=560,height=680');
   if (!w) toast('Your browser blocked the new window', 2500);
 }
 $('btn-pop').onclick = function () { popOut(); };
+$('btn-scope').onclick = async function () {
+  var g = cur.gid && findGroup(cur.gid); if (!g) return;
+  var to = g.scope === 'you' ? 'job' : 'you';
+  flushEditor(); Object.keys(pending).forEach(function (k) { clearTimeout(timers[k]); runSave(k); });
+  for (var i = 0; i < 40 && (Object.keys(pending).length || Object.keys(inflight).length); i++) await new Promise(function (r) { setTimeout(r, 100); });
+  var r = await api('PUT', '/api/note/groups/' + g.id, { scope: to }).catch(function () { return { ok: false, json: {} }; });
+  if (!r.ok) { toast(r.json.error || 'Could not change it', 2500); return; }
+  var t = await api('GET', '/api/note'); if (!t.ok) return;
+  var fresh = t.json.groups.find(function (x) { return x.id === g.id; }); if (fresh) { g.scope = fresh.scope; g.items = fresh.items; }
+  renderAll(); toast(to === 'you' ? 'One answer for every job now' : 'A separate answer for each job now', 2500);
+};
 $('btn-glass').onclick = function () { toggleGlass(); };
 
 // ===== the ... menu: follow the call, text size, background, theme, help =====
@@ -1177,7 +1231,7 @@ async function addFromCall(list, btn) {
   if (!list || !list.length) return;
   if (btn) btn.disabled = true;
   var section = 'From calls: ' + ((CALLS.session && CALLS.session.company) || 'this job');
-  var r = await api('POST', '/api/note/from-call', { questions: list, section: section }).catch(function () { return { ok: false, json: {} }; });
+  var r = await api('POST', '/api/note/from-call', { questions: list, section: section, sessionId: CALLS.session && CALLS.session.id }).catch(function () { return { ok: false, json: {} }; });
   if (!r.ok) { if (btn) btn.disabled = false; toast(r.json.error || 'Could not add to the note', 3000); return; }
   r.json.added.forEach(function (g) { N.groups.push(g); });
   toast((r.json.added.length ? 'Added ' + r.json.added.length + ' to your note under "' + section + '"' : 'Nothing new') + (r.json.skipped.length ? '. ' + r.json.skipped.length + ' already in it' : ''), 3500);
@@ -1298,7 +1352,7 @@ function coachOnSaid(text) {
 function smartHeard(text) { // ~1 s later: which question it really is + the line to read. The newest question wins.
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
   var ctl = heardCtl = (window.AbortController ? new AbortController() : null);
-  fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, currentGroupId: cur.gid }), signal: ctl ? ctl.signal : undefined })
+  fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, currentGroupId: cur.gid, sessionId: JOB }), signal: ctl ? ctl.signal : undefined })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       if (!j || text !== heardText) return; // a newer question came in meanwhile
@@ -1332,7 +1386,8 @@ var pendingNew = '';
 function addNewQuestion(title, question) {
   if (!question) return;
   pendingNew = question;
-  var hit = NoteMatch.closest(N.groups, question, NoteMatch.SAME_QUESTION); if (hit) return; // already in the note
+  var hit = NoteMatch.closest(N.groups, question, NoteMatch.SAME_QUESTION);
+  if (hit) { var hg = findGroup(hit.groupId); setHeard(hit.groupId); writeHeard(hit.groupId, hit.itemId); showHeard(heardText, hit.groupId, hit.itemId, hg ? hg.name : ''); return; } // already in the note (e.g. made for this job): marked and written like any match, never dropped
   api('POST', '/api/note/from-call', { questions: [{ title: title, question: question, ways: [] }], section: NEWQ }).then(function (r) {
     if (!r.ok) return;
     r.json.added.forEach(function (g) { N.groups.push(g); attachLive(g); });

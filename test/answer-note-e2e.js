@@ -29,14 +29,16 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
 
   // 1. first open seeds the mined groups
   let { j } = await api('GET', '/api/note');
-  const nItems = j.groups.reduce((n, g) => n + g.items.length, 0);
-  check(j.id && j.groups.length === 48 && nItems === 192, 'first open: 48 questions, 192 wordings seeded', JSON.stringify([j.groups.length, nItems]));
+  // Per job (25 Oct): all 48 are stored; the 24 data-job ones show only once a job they fit is built
+  const dbCount = async noteId => (await pool.query('SELECT (SELECT count(*) FROM answer_note_groups WHERE note_id = $1)::int g, (SELECT count(*) FROM answer_note_items WHERE note_id = $1)::int i', [noteId])).rows[0];
+  const c1 = await dbCount(j.id);
+  check(j.id && c1.g === 48 && c1.i === 192 && j.groups.length === 24 && !j.groups.some(g => g.jobOnly), 'first open: 48 questions, 192 wordings seeded; the 24 for any job show', JSON.stringify([c1, j.groups.length]));
   check(j.groups[0].name === 'About me' && j.groups[0].section === 'About you' && j.groups[0].items[0].question === 'Tell me about yourself.' && j.groups[0].items[0].version === 0, 'seed order kept: short title, section, full question first, answers empty');
   check(j.settings.seedVersion === 3, 'a fresh note is born on the current seed (v3, never upgraded again)');
   const cap = await api('POST', '/api/note/groups/' + j.groups[0].id + '/items', { question: 'A fifth wording' });
   check(cap.r.status === 400 && /at most 3/.test(cap.j.error || ''), 'a question already holding 3 other ways refuses a 4th', cap.r.status + ' ' + JSON.stringify(cap.j));
   const again = (await api('GET', '/api/note')).j;
-  check(again.id === j.id && again.groups.length === 48, 'second open: same note, not seeded twice');
+  check(again.id === j.id && (await dbCount(j.id)).g === 48 && again.groups.length === 24, 'second open: same note, not seeded twice');
   const g0 = j.groups[0], item = g0.items[0];
 
   // 2. manual save with history + stale write refused
@@ -84,7 +86,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   check(tree.groups[0].id === ng.id, 'pinned group comes first');
   const ids = tree.groups.map(g => g.id);
   const ord = (await api('PUT', '/api/note/groups/order', { ids: [ids[2], ids[1], 'not-an-id'].concat(ids.slice(3)) })).j;
-  check(ord.ids.length === ids.length && ord.ids[0] === ids[2] && ord.ids[1] === ids[1] && ord.ids.includes(ids[0]), 'reorder groups: bad id ignored, nothing lost', JSON.stringify(ord.ids.slice(0, 3)));
+  check(ord.ids.length === 49 && ord.ids[0] === ids[2] && ord.ids[1] === ids[1] && ord.ids.includes(ids[0]), 'reorder groups: bad id ignored, nothing lost', JSON.stringify(ord.ids.slice(0, 3)));
   const ni = (await api('POST', '/api/note/groups/' + ng.id + '/items', { question: 'A brand new way to ask' })).j;
   check(ni.id && ni.question === 'A brand new way to ask' && ni.group_id === ng.id, 'add a variation');
   const ni2 = (await api('POST', '/api/note/groups/' + ng.id + '/items', { question: 'Second one' })).j;
@@ -96,7 +98,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const di = await api('DELETE', '/api/note/items/' + ni2.id);
   const dg = await api('DELETE', '/api/note/groups/' + ng.id);
   tree = (await api('GET', '/api/note')).j;
-  check(di.j.removed && dg.j.removed && !tree.groups.some(g => g.id === ng.id) && tree.groups.length === 48, 'delete a variation and a group (its items go with it)');
+  check(di.j.removed && dg.j.removed && !tree.groups.some(g => g.id === ng.id) && tree.groups.length === 24 && (await dbCount(j.id)).g === 48, 'delete a variation and a group (its items go with it)');
   const other = (await pool.query("SELECT i.id FROM answer_note_items i JOIN answer_notes n ON n.id=i.note_id WHERE n.user_id<>$1 LIMIT 1", [u.id])).rows[0];
   if (other) { const x = await api('PUT', '/api/note/items/' + other.id, { answer_html: 'x', baseVersion: 0 }); check(x.r.status === 404, "another user's item → 404"); }
   else check(true, "another user's item → 404 (no other note locally, skipped)");
@@ -116,7 +118,8 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   await pool.query("UPDATE answer_note_items SET answer_html = '<ul><li>MY-OWN-ANSWER</li></ul>', version = 1 WHERE id = $1", [pri.ids[3]]);
   const mine = await mkG('My own group', 0, ['My own question']);
   const t3 = jwt.sign({ userId: u3.id, name: u3.name, email: u3e, isAdmin: false, plan: 'premium', suspended: false }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  const get3 = async () => (await fetch(BASE + '/api/note', { headers: { Authorization: 'Bearer ' + t3 } })).json();
+  const dbGroups = async noteId => { const gs = (await pool.query('SELECT * FROM answer_note_groups WHERE note_id = $1 ORDER BY sort_order, created_at', [noteId])).rows; const its = (await pool.query('SELECT * FROM answer_note_items WHERE note_id = $1 ORDER BY sort_order, created_at', [noteId])).rows; return gs.map(g => ({ id: g.id, name: g.name, section: g.section, items: its.filter(i => i.group_id === g.id) })); };
+  const get3 = async () => { const t = await (await fetch(BASE + '/api/note', { headers: { Authorization: 'Bearer ' + t3 } })).json(); return { settings: t.settings, groups: await dbGroups(n3.id) }; };
   const up = await get3();
   const upPri = up.groups.find(g => g.id === pri.id);
   const kept = upPri && upPri.items.find(i => i.id === pri.ids[3]);
@@ -139,7 +142,7 @@ const check = (ok, label, detail) => { ok ? pass++ : fail++; console.log((ok ? '
   const before4 = (await pool.query("SELECT id FROM answer_note_items WHERE note_id = $1 AND question = 'What tools, platforms and databases have you used?'", [n4.id])).rows[0];
   await pool.query("UPDATE answer_note_items SET answer_html = '<p>MY-TOOLS-ANSWER</p>', version = 1 WHERE id = $1", [before4.id]);
   const t4 = jwt.sign({ userId: u4.id, name: u4.name, email: u4e, isAdmin: false, plan: 'premium', suspended: false }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  const get4 = async () => (await fetch(BASE + '/api/note', { headers: { Authorization: 'Bearer ' + t4 } })).json();
+  const get4 = async () => { const t = await (await fetch(BASE + '/api/note', { headers: { Authorization: 'Bearer ' + t4 } })).json(); return { settings: t.settings, groups: await dbGroups(n4.id) }; };
   const v3 = await get4();
   const names = v3.groups.map(g => g.name);
   const ai = names.indexOf('My tools');
