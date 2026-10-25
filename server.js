@@ -3546,10 +3546,12 @@ async function generateStudyNote(session, userId, item) {
   const question = String(item.question || '').trim();
   const bankRows = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 8", [session.id])).rows;
   const material = `THE CANDIDATE AND THE JOB:\nTHIS NOTE IS FOR: ${session.role || 'this role'} at ${session.company || 'the company'}.\n\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (the candidate's real experience):\n${bankRows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n') || 'N/A'}`;
-  const rules = `You write a clean study note the candidate reads before the next interview, on how to answer one question well. Output an HTML fragment ONLY (no markdown, no code fences), using only these tags: h3, p, b, i, ul, li, table, thead, tbody, tr, th, td, and ONE <pre class="diagram">...</pre> holding a Mermaid flowchart.
+  const rules = `You write a clean study note the candidate reads before the next interview, on how to answer one question well. Output an HTML fragment ONLY (no markdown, no code fences), using only these tags: h3, p, b, i, ul, li, table, thead, tbody, tr, th, td, ONE <pre class="diagram">...</pre> holding a Mermaid flowchart, and for code ONE plain <pre>...</pre>.
+${answerNote.CODE_RULE}
 FLOW (owner: "if explain something more like process, steps, for example Fabric architecture"): whenever the answer explains a process, steps, a pipeline, a workflow or an architecture, ALWAYS draw it: "flowchart LR", short node labels (2 to 4 words), up to 10 nodes, one "subgraph" per layer when there are layers (for example Microsoft Fabric: Sources -> Data Factory pipelines -> OneLake Lakehouse -> Warehouse -> Semantic model -> Power BI reports). Plain node ids (A, B, C), labels in square brackets, no special characters inside labels. No diagram for a pure opinion or a yes/no answer.
 Layout:
 <p><b>One-line takeaway: the point to land.</b></p>
+For a code question, the one <pre> with the code comes here, before "How to say it".
 <h3>How to say it</h3> 3 to 5 short bullets in the first person, one sentence each (under 20 words). ${answerNote.READ_ALOUD}
 A <table> where it makes things clearer: for any "tell me about a time" or story question ALWAYS a STAR table (Situation, Task, Action, Result); steps for a process; before/after numbers; or a comparison.
 <h3>If they push</h3> 1 or 2 follow-ups they may ask, each with a one-line answer they can read out as it is.
@@ -3562,7 +3564,7 @@ Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`
   const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1800, MODEL_SONNET, { __tag: 'note-study', thinking: { type: 'disabled' } });
   const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/^\s*```(?:html)?\s*/i, '').replace(/```\s*$/m, ''));
   const html = answerNote.sanitizeHtml(answer.replace(/```(?:html)?/gi, '').trim());
-  console.log(`[Note] study note ${Date.now() - t0}ms table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} q="${question.slice(0, 50)}"`);
+  console.log(`[Note] study note ${Date.now() - t0}ms table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} code=${/<pre>/.test(html)} q="${question.slice(0, 50)}"`);
   if (!answerNote.htmlToText(html)) throw new Error('The writer gave no usable study note. Try again.');
   return { answerHtml: html, keyPoints };
 }
