@@ -972,6 +972,15 @@ function tellAnswerNoteThem(text) { // what THEY said (system audio, final, not 
   try { new BroadcastChannel('xhire-note').postMessage({ type: 'them', text: text }); } catch (e) {}
   try { localStorage.setItem('xhire_note_them', JSON.stringify({ text: text, ts: Date.now() })); } catch (e) {}
 }
+// Owner 25 Oct: what Assist answered (screen + voice) goes to the note too, so a question that only showed on screen is
+// kept and written with the screen's real names and values. Fire-and-forget, like the others.
+var copilotAsks = {};
+function tellAnswerNoteAssist(ask, answer) {
+  if (!answer) return;
+  var m = { type: 'assist', ask: ask || '', answer: answer };
+  try { new BroadcastChannel('xhire-note').postMessage(m); } catch (e) {}
+  try { localStorage.setItem('xhire_note_assist', JSON.stringify(Object.assign({ ts: Date.now() }, m))); } catch (e) {}
+}
 function tellAnswerNote(text) {
   if (!text) return;
   try { new BroadcastChannel('xhire-note').postMessage({ type: 'question', text: text }); } catch (e) {}
@@ -1478,11 +1487,11 @@ function connect() {
         addCard(msg.questionId, msg.questionText || 'Screen Assist', msg.answer || '', 'screen', 0, false, true);
       }
     }
-    else if (msg.type === 'copilot_start') { copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason, msg.say); }
+    else if (msg.type === 'copilot_start') { copilotAsks[msg.cardId] = msg.ask || ''; copilotCardStart(msg.cardId, msg.ask, msg.mode, msg.screen, msg.reason, msg.say); }
     else if (msg.type === 'copilot_dup') { var dEl = document.getElementById('card-' + msg.cardId); if (dEl) { dEl.scrollIntoView({ behavior: 'smooth', block: 'end' }); dEl.classList.add('flash'); setTimeout(function () { dEl.classList.remove('flash'); }, 900); showToast('Asked again — already answered here', 'info', 1500); } } // heard the same question again: the existing card, no new answer
     else if (msg.type === 'copilot_say') { copilotSay(msg.text); } // Say pressed in co-pilot mode: the server caught what they just asked
     else if (msg.type === 'copilot_delta') { copilotCardDelta(msg.cardId, msg.text); }
-    else if (msg.type === 'copilot_done') { copilotCardDone(msg.cardId, msg.answer); }
+    else if (msg.type === 'copilot_done') { copilotCardDone(msg.cardId, msg.answer); try { tellAnswerNoteAssist(copilotAsks[msg.cardId], msg.answer); delete copilotAsks[msg.cardId]; } catch (e) {} }
     else if (msg.type === 'copilot_captured') { if (copilotPendingKeys.has(msg.key)) { copilotPendingKeys.delete(msg.key); var cel = $('copilot-count'); if (cel) { cel.classList.add('flash'); setTimeout(function () { cel.classList.remove('flash'); }, 600); } } else copilotNoteCapture(); showToast('📸 Page captured', 'info', 1200); } // read happens at Assist (data collection only)
     else if (msg.type === 'status') {
       // Server status message (e.g. "Canvas connected")
@@ -2165,6 +2174,7 @@ async function sendScreenCapture(base64, opts) {
     // Update cards array
     var c = cards.find(function(x) { return x.id === cardId; });
     if (c) { c.answer = data.answer; if (data.questionText) c.question = data.questionText; }
+    try { tellAnswerNoteAssist(data.questionText || opts.instruction || '', data.answer); } catch (e) {}
   } catch(e) {
     var el = document.getElementById('card-' + cardId);
     if (el) {

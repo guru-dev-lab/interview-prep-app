@@ -3303,7 +3303,8 @@ async function generateNoteAnswer(session, userId, item, mode, custom) {
   const vp = await pool.query('SELECT voice_profile FROM users WHERE id = $1', [userId]);
   const voiceProfile = (process.env.VOICE_PROFILE !== '0' && vp.rows[0] && vp.rows[0].voice_profile) || '';
   const styleKey = session.answer_style || 'conversational';
-  const system = composeLiveSystemPrompt({ shape, technical, styleKey, maxLines: 0, voiceProfile, withConversation: false, questionText: question, employerLine: true });
+  const calls = await noteCallContext(session.id, userId);
+  const system = composeLiveSystemPrompt({ shape, technical, styleKey, maxLines: 0, voiceProfile, withConversation: !!calls, questionText: question, employerLine: true });
   const bankRows = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 8", [session.id])).rows;
   const bank = bankRows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n');
   const material = `SESSION MATERIAL — the candidate and the job:\nTHIS NOTE IS FOR: ${session.role || 'this role'} at ${session.company || 'the company'}. Reference them naturally when a question asks "why this role/company"; never parrot the JD.\n\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bank || 'N/A'}`;
@@ -3318,12 +3319,12 @@ async function generateNoteAnswer(session, userId, item, mode, custom) {
   const changeBlock = instruction && current
     ? `\n\nCURRENT ANSWER (the candidate's note as it stands):\n${current}\n\nCHANGE REQUESTED: ${instruction}\nKeep every fact that is still true; add nothing the resume or Q&A bank does not have.`
     : (instruction ? `\n\nINSTRUCTION: ${instruction}` : '');
-  const user = `${todayLine}${expFacts ? expFacts + '\n' : ''}${changeBlock}\n\nQUESTION (one way an interviewer phrases it — this is a prepared note read from during a call, so the answer must stand on its own):\n${question}\n\nAnswer in the LAYOUT above. Then, as the very last line, exactly: KEY: <at most 12 words — the one thing to remember to say>\n\nAnswer:`;
+  const user = `${todayLine}${expFacts ? expFacts + '\n' : ''}${calls ? `\nTHE CONVERSATION:\n${calls}\n` : ''}${changeBlock}\n\nQUESTION (one way an interviewer phrases it — this is a prepared note read from during a call, so the answer must stand on its own):\n${question}\n\nAnswer in the LAYOUT above. Then, as the very last line, exactly: KEY: <at most 12 words — the one thing to remember to say>\n\nAnswer:`;
   const t0 = Date.now();
   const raw = await callClaude(systemBlocks, user, shape === 'code' ? 1000 : 600, MODEL_HAIKU, { __tag: 'note-answer' });
   const { answer, keyPoints } = answerNote.parseGenerated(raw);
   const text = normalizeLiveAnswer(answer, shape, { cap: liveLineCap(styleKey, 0, shape), employerLineAllowed: true, cueOnly: (STYLE_LAYOUT[styleKey] || {}).unit === 'cue' && shape !== 'code' });
-  console.log(`[Note] ${mode || 'regenerate'} shape=${shape} ${Date.now() - t0}ms lines=${(text || '').split('\n').length} key=${keyPoints ? 'yes' : 'no'} q="${question.slice(0, 50)}"`);
+  console.log(`[Note] ${mode || 'regenerate'} shape=${shape} ${Date.now() - t0}ms calls=${calls.length} lines=${(text || '').split('\n').length} key=${keyPoints ? 'yes' : 'no'} q="${question.slice(0, 50)}"`);
   if (!text || isNonAnswer(text)) throw new Error('The writer gave no usable answer. Try again.');
   return { answerHtml: answerNote.answerToHtml(text), keyPoints };
 }
@@ -3354,13 +3355,14 @@ Last line, outside the answer: KEY: <at most 12 words, the one thing to remember
   const instruction = answerNote.changeInstruction(mode, custom);
   const current = answerNote.htmlToText(item.answer_html);
   const changeBlock = instruction && current ? `\nCURRENT ANSWER:\n${current}\n\nCHANGE REQUESTED: ${instruction}\nKeep the spoken paragraphs and the path; keep every fact that is still true; add nothing the resume or Q&A bank does not have.\n` : '';
-  const user = `TODAY: ${new Date().toISOString().slice(0, 10)}\n${changeBlock}\nQUESTION: ${question}\n\nWrite what they will say now.`;
+  const calls = await noteCallContext(session.id, userId);
+  const user = `TODAY: ${new Date().toISOString().slice(0, 10)}\n${calls ? `\nTHE CALLS FOR THIS JOB:\n${calls}\n\n${NOTE_CALLS_RULE}\n` : ''}${changeBlock}\nQUESTION: ${question}\n\nWrite what they will say now.`;
   const t0 = Date.now();
   const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1400, MODEL_SONNET, { __tag: 'note-detailed', thinking: { type: 'disabled' } });
   const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/\u2014/g, ', '));
   const html = answerNote.paragraphsToHtml(answer);
   const words = answerNote.htmlToText(html).split(/\s+/).filter(Boolean).length;
-  console.log(`[Note] detailed ${arc} ${mode || 'regenerate'} ${Date.now() - t0}ms words=${words} paragraphs=${(html.match(/<p>/g) || []).length} q="${question.slice(0, 50)}"`);
+  console.log(`[Note] detailed ${arc} ${mode || 'regenerate'} ${Date.now() - t0}ms calls=${calls.length} words=${words} paragraphs=${(html.match(/<p>/g) || []).length} q="${question.slice(0, 50)}"`);
   if (!words || isNonAnswer(answer)) throw new Error('The writer gave no usable answer. Try again.');
   return { answerHtml: html, keyPoints };
 }
@@ -3537,6 +3539,36 @@ app.get('/api/note/asked', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Owner 25 Oct: "xhire uses history to better next answer ... make sure note using that". The note's writers get the
+// same history xHire's live answers get, with no extra model call: during a call, buildConversationContext (earlier
+// calls' notes, this call's notes, the newest talk word for word, what they care about); after it, the notes each call
+// saved when it ended. With screens (new questions): what the shared screen showed and what Assist answered, as xHire
+// read and wrote them. Empty when this job has had no calls.
+async function noteCallContext(sessionId, userId, opts = {}) {
+  try {
+    const live = liveWsForSession(sessionId), parts = [];
+    if (live) { const c = buildConversationContext(live); if (c) parts.push(c); }
+    else {
+      const m = (await pool.query("SELECT memory, started_at FROM live_transcripts WHERE session_id = $1 AND user_id = $2 AND coalesce(memory, '') <> '' ORDER BY started_at DESC LIMIT 5", [sessionId, userId])).rows.reverse();
+      if (m.length) parts.push('FROM EARLIER CALLS IN THIS INTERVIEW PROCESS:\n' + m.map(r => `EARLIER CALL (${new Date(r.started_at).toISOString().slice(0, 10)}):\n${r.memory}`).join('\n\n'));
+    }
+    if (opts.screens) {
+      const callId = (live && live._callId) || ((await pool.query('SELECT id FROM live_transcripts WHERE session_id = $1 AND user_id = $2 ORDER BY started_at DESC LIMIT 1', [sessionId, userId])).rows[0] || {}).id;
+      if (callId) {
+        const ev = (await pool.query("SELECT kind, text, meta FROM call_events WHERE call_id = $1 AND session_id = $2 AND kind IN ('seen', 'said') ORDER BY ts DESC LIMIT 30", [callId, sessionId])).rows;
+        const seen = [], said = [];
+        for (const e of ev) {
+          if (e.kind === 'seen' && seen.length < 3 && !seen.includes(e.text)) seen.push(e.text);
+          if (e.kind === 'said' && said.length < 4) said.push(((e.meta || {}).ask ? `(he asked: ${e.meta.ask})\n` : '') + e.text);
+        }
+        if (seen.length) parts.push('ON THE SHARED SCREEN (read by xHire, newest last):\n' + seen.reverse().map(t => t.slice(0, 2500)).join('\n---\n'));
+        if (said.length) parts.push('WHAT XHIRE ASSIST ANSWERED ON THE CALL (newest last):\n' + said.reverse().join('\n---\n'));
+      }
+    }
+    return parts.join('\n\n').slice(-12000);
+  } catch (e) { console.error('[Note] call history failed:', e.message); return ''; }
+}
+const NOTE_CALLS_RULE = 'THE CALLS FOR THIS JOB are background: aim the answer at what they said they care about. When the question is about something shown on the shared screen (a table, a dataset, a task, a page), use its real names, columns and values exactly as xHire read them. Facts about the candidate still come only from the resume, the Q&A bank and what the candidate said on the call.';
 // ---- New questions (owner, 24 Oct): "we should have one that is plain.. when [the note] finds a question, especially
 // the one xHire got.. it should pick it up, and answer its own way.. be more clean, can put table, can draw, use image".
 // The note adds a question heard on a call to the plain "New questions" section (from-call route), keeps what xHire
@@ -3559,12 +3591,13 @@ ${answerNote.EXAMPLE_RULE} In "How to say it" the first bullet is the plain idea
 Rules: only facts from the resume, Q&A bank and what was said on the call; never invent a number, tool, employer or title. If the resume has no exact match, never say they have not done it: answer confidently from the closest real experience in the resume (the same skill, a similar situation) and tell it as their story. Plain words, no em dashes, no buzzwords.
 Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`;
   const said = answerNote.htmlToText(item.answer_html);
-  const user = `QUESTION: ${question}\n${said ? `\nWHAT XHIRE SAID LIVE ON THE CALL (rough, build on it):\n${said}\n` : ''}\nWrite the study note now.`;
+  const calls = await noteCallContext(session.id, userId, { screens: true });
+  const user = `${calls ? `THE CALLS FOR THIS JOB:\n${calls}\n\n${NOTE_CALLS_RULE}\n\n` : ''}QUESTION: ${question}\n${said ? `\nWHAT XHIRE SAID LIVE ON THE CALL (rough, build on it):\n${said}\n` : ''}\nWrite the study note now.`;
   const t0 = Date.now();
   const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1800, MODEL_SONNET, { __tag: 'note-study', thinking: { type: 'disabled' } });
   const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/^\s*```(?:html)?\s*/i, '').replace(/```\s*$/m, ''));
   const html = answerNote.sanitizeHtml(answer.replace(/```(?:html)?/gi, '').trim());
-  console.log(`[Note] study note ${Date.now() - t0}ms table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} code=${/<pre>/.test(html)} q="${question.slice(0, 50)}"`);
+  console.log(`[Note] study note ${Date.now() - t0}ms calls=${calls.length} table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} code=${/<pre>/.test(html)} q="${question.slice(0, 50)}"`);
   if (!answerNote.htmlToText(html)) throw new Error('The writer gave no usable study note. Try again.');
   return { answerHtml: html, keyPoints };
 }
