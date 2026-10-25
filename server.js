@@ -3499,9 +3499,9 @@ app.post('/api/note/coach', authMiddleware, async (req, res) => {
     const shown = (Array.isArray(req.body?.shown) ? req.body.shown : []).map(t => String(t || '').slice(0, 200)).filter(Boolean).slice(-4);
     const t0 = Date.now(), coachFast = process.env.NOTE_COACH_MODEL === 'haiku';
     const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: answerNote.COACH_PROMPT }],
-      `${recent.length ? 'ASKED EARLIER IN THIS CALL:\n' + recent.join('\n') + '\n\n' : ''}${theySaid ? 'THE INTERVIEWER SAID, LEADING UP TO NOW:\n' + theySaid + '\n\n' : ''}INTERVIEWER JUST ASKED: ${text}\n\n${youSaid ? 'THE CANDIDATE HAS SAID SO FAR:\n' + youSaid : 'The candidate has not started answering.'}${shown.length ? '\n\nALREADY SUGGESTED FOR THIS QUESTION (never repeat these or their facts; give a new point or NONE):\n' + shown.join('\n') : ''}`, 160, coachFast ? MODEL_HAIKU : MODEL_SONNET, Object.assign({ __tag: 'note-coach' }, coachFast ? { temperature: 0 } : { thinking: { type: 'disabled' } })); // Sonnet 5: no temperature; thinking ate the whole budget (stop=max_tokens, no text)
+      `${recent.length ? 'ASKED EARLIER IN THIS CALL:\n' + recent.join('\n') + '\n\n' : ''}${theySaid ? 'THE INTERVIEWER SAID, LEADING UP TO NOW:\n' + theySaid + '\n\n' : ''}${req.body?.chat ? 'INTERVIEWER JUST SAID (chatting, no question)' : 'INTERVIEWER JUST ASKED'}: ${text}\n\n${youSaid ? 'THE CANDIDATE HAS SAID SO FAR:\n' + youSaid : 'The candidate has not started answering.'}${shown.length ? '\n\nALREADY SUGGESTED FOR THIS QUESTION (never repeat these or their facts; give a new point or NONE):\n' + shown.join('\n') : ''}`, 160, coachFast ? MODEL_HAIKU : MODEL_SONNET, Object.assign({ __tag: 'note-coach' }, coachFast ? { temperature: 0 } : { thinking: { type: 'disabled' } })); // Sonnet 5: no temperature; thinking ate the whole budget (stop=max_tokens, no text)
     const coach = answerNote.parseCoach(raw);
-    console.log(`[Note] coach${youSaid ? ' add' : ''} ${Date.now() - t0}ms → ${coach ? 'want "' + coach.want + '"' : 'nothing shown (' + String(raw || '').replace(/\s+/g, ' ').slice(0, 120) + ')'} q="${text.slice(0, 50)}"`);
+    console.log(`[Note] coach${req.body?.chat ? ' chat' : ''}${youSaid ? ' add' : ''} ${Date.now() - t0}ms → ${coach ? 'want "' + coach.want + '"' : 'nothing shown (' + String(raw || '').replace(/\s+/g, ' ').slice(0, 120) + ')'} q="${text.slice(0, 50)}"`);
     res.json({ coach });
   } catch (e) { console.error('[Note] coach failed:', e.message); res.status(500).json({ error: e.message }); }
 });
@@ -3584,7 +3584,7 @@ app.get('/api/note', authMiddleware, async (req, res) => {
   try { const note = await loadNote(req.userId); res.json(await noteTree(note, await noteSes(req))); }
   catch (e) { console.error('[Note] load failed:', e.message); res.status(500).json({ error: e.message }); }
 });
-const NOTE_SETTING_KEYS = ['bg', 'theme', 'fontFamily', 'fontSize', 'sessionId', 'readMode', 'autoGenerate', 'railWidth', 'seeThrough', 'autoSwitch'];
+const NOTE_SETTING_KEYS = ['bg', 'theme', 'fontFamily', 'fontSize', 'sessionId', 'readMode', 'autoGenerate', 'railWidth', 'seeThrough', 'autoSwitch', 'coach'];
 app.put('/api/note/settings', authMiddleware, async (req, res) => {
   try {
     const note = await loadNote(req.userId);
