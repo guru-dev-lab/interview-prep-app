@@ -3618,6 +3618,28 @@ app.put('/api/note/people', authMiddleware, async (req, res) => {
     res.json({ ok: true, people: text });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Owner 25 Oct: "do we have things to clear all answers?" -> the job on screen; his every-job answers only when he ticks
+// it. Each cleared answer goes to its History (the same write as any edit), so any one comes back.
+app.post('/api/note/clear-all', authMiddleware, async (req, res) => {
+  try {
+    const note = await loadNote(req.userId);
+    const ses = await noteSes(req);
+    if (!ses) return res.status(400).json({ error: 'Pick a job first' });
+    const includeYou = !!req.body?.includeYou;
+    let cleared = 0;
+    for (const g of (await noteTree(note, ses)).groups) {
+      if (g.scope === 'you' && !includeYou) continue;
+      for (const it of g.items) {
+        if (!it.answer_html && !it.key_points) continue;
+        const item = await ownNoteItem(req.userId, it.id, ses); if (!item) continue;
+        const change = answerNote.applyChange(item, { answer_html: '', key_points: '' }, { by: 'you', label: 'Cleared' });
+        if (change.changed) { await writeNoteItem(item, change); cleared++; }
+      }
+    }
+    console.log(`[Note] cleared ${cleared} answers for job ${ses.id}${includeYou ? ' (and every-job answers)' : ''}`);
+    res.json({ cleared });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.put('/api/note/groups/order', authMiddleware, async (req, res) => { // before /:gid so "order" is never read as an id
   try {
     const note = await loadNote(req.userId);
