@@ -256,7 +256,7 @@ body.expand .sheet,body.solo .sheet{max-width:1100px}
 .editor .emp{color:var(--muted);font-style:italic;border-left:3px solid var(--sel-line);padding-left:10px;margin-top:10px}
 .editor pre{background:#16181d;color:#f1f1f1;border-radius:8px;padding:10px 14px;margin:8px 0;white-space:pre-wrap;font:400 .88em/1.6 "SF Mono",Menlo,Consolas,monospace}
 .editor:empty:before{content:attr(data-empty);color:var(--dim)}
-.editor.busy{opacity:.55}
+.editor.busy{opacity:.55}.editor.busy.streaming{opacity:1}
 .ai{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
 .ai .lbl{font-size:12.5px;font-weight:700;color:var(--muted);margin-right:2px}
 .chip{height:30px;padding:0 11px;border-radius:15px;border:1px solid var(--line2);background:var(--card);font-size:13px;font-weight:500;color:var(--text)}
@@ -807,7 +807,8 @@ function renderAnswer(force) {
   $('q').textContent = it.question;
   renderWays();
   var ed = $('editor'), kp = $('key');
-  if (force || document.activeElement !== ed) { if (ed.innerHTML !== (it.answer_html || '')) ed.innerHTML = it.answer_html || ''; }
+  var shown = it._partial || it.answer_html || ''; ed.classList.toggle('streaming', !!it._partial);
+  if (force || document.activeElement !== ed) { if (ed.innerHTML !== shown) ed.innerHTML = shown; }
   if (force || document.activeElement !== kp) { if (kp.textContent !== (it.key_points || '')) kp.textContent = it.key_points || ''; }
   ed.classList.toggle('busy', !!busy[it.id]);
   ed.dataset.empty = busy[it.id] ? 'Writing this from your résumé...' : 'No answer yet. Type your own here, or press Write it.';
@@ -1025,12 +1026,39 @@ async function addItem(g) {
 }
 
 // ===== AI =====
+// A study note is sent as it is written (owner 26 Oct: "why 10 seconds for new questions"): the open card shows each
+// part the moment it arrives and only grows; any other answer comes back whole, as before.
+async function generateStream(it, body) {
+  var path = '/api/note/items/' + it.id + '/generate' + (JOB ? '?sessionId=' + encodeURIComponent(JOB) : '');
+  var r = await fetch(location.origin + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify(body) });
+  if (r.status === 401) { showGate(); throw new Error('Not signed in'); }
+  if (!/event-stream/.test(r.headers.get('Content-Type') || '') || !r.body || !r.body.getReader) { var j = {}; try { j = await r.json(); } catch (e) {} return { ok: r.ok, status: r.status, json: j }; }
+  var rd = r.body.getReader(), dec = new TextDecoder(), buf = '', out = null;
+  for (;;) {
+    var c = await rd.read(); if (c.done) break;
+    buf += dec.decode(c.value, { stream: true });
+    var k; while ((k = buf.indexOf('\n\n')) >= 0) {
+      var line = buf.slice(0, k).replace(/^data:\s*/, ''); buf = buf.slice(k + 2);
+      var m = null; try { m = JSON.parse(line); } catch (e) {}
+      if (!m) continue;
+      if (m.partial) { it._partial = m.partial; if (cur.iid === it.id) showPartial(it); }
+      else if (m.done) out = { ok: true, status: 200, json: m.done };
+      else if (m.error) out = { ok: false, status: 500, json: { error: m.error } };
+    }
+  }
+  delete it._partial;
+  return out || { ok: false, status: 500, json: { error: 'Could not write the answer' } };
+}
+function showPartial(it) {
+  var ed = $('editor'); if (document.activeElement === ed) return;
+  ed.innerHTML = it._partial; ed.classList.add('streaming');
+}
 async function aiChange(it, mode, instruction) {
   if (busy[it.id]) return;
   flushEditor();
   busy[it.id] = true; if (cur.iid === it.id) renderAnswer(); else if (cur.gid === it.group_id) renderWays(); renderList();
   try {
-    var r = await api('POST', '/api/note/items/' + it.id + '/generate', { mode: mode, instruction: instruction || '', sessionId: JOB });
+    var r = await generateStream(it, { mode: mode, instruction: instruction || '', sessionId: JOB, stream: true });
     if (!r.ok) { toast(r.json.error || 'Could not write the answer', 3500); return false; }
     var before = it.versions ? it.versions.length : 0;
     delete it._conflict; lsDel(draftKey(it.id));
@@ -1166,7 +1194,7 @@ $('btn-menu').onclick = function () {
   var dark = document.body.classList.contains('dark');
   openPop($('btn-menu'), '<button class="mi" data-a="follow">Show what the call hears<span class="r">' + (follow ? 'On' : 'Off') + '</span></button>'
     + '<button class="mi" data-a="coach" title="What they want and a line to say, under the answer during a call">Coach line<span class="r">' + (N.settings.coach === false ? 'Off' : 'On') + '</span></button>'
-    + '<button class="mi" data-a="autoswitch"' + (follow ? '' : ' disabled style="opacity:.5"') + ' title="When they ask a question in your note, open it for you">Open the question they ask<span class="r">' + (N.settings.autoSwitch ? 'On' : 'Off') + '</span></button>'
+    + '<button class="mi" data-a="autoswitch"' + (follow ? '' : ' disabled style="opacity:.5"') + ' title="When they ask a question in your note, open it for you">Open the question they ask<span class="r">' + (autoOpen() ? 'On' : 'Off') + '</span></button>'
     + '<button class="mi" data-a="theme">' + (dark ? 'Light' : 'Dark') + ' mode</button>'
     + '<div class="mi" style="cursor:default">Text size<span class="r"><button class="chip" data-a="smaller" style="height:26px">A&#8722;</button> <span id="pop-size">' + fontSize + '</span> <button class="chip" data-a="larger" style="height:26px">A+</button></span></div>'
     + '<label class="mi" style="cursor:pointer">Page colour<span class="r"><input type="color" id="pop-bg" value="' + esc((N.settings && N.settings.bg) || (dark ? '#1e1e20' : '#fffdf8')) + '" style="width:30px;height:22px;border:none;background:none;cursor:pointer"></span></label>'
@@ -1182,7 +1210,7 @@ $('btn-menu').onclick = function () {
       if (a === 'follow') { follow = !follow; lsSet('xhire_note_follow', follow ? '1' : '0'); b.querySelector('.r').textContent = follow ? 'On' : 'Off'; toast(follow ? 'Questions heard on the call are marked' : 'Questions heard on the call are not marked'); if (!follow) { heardGid = null; heardSec = null; renderList(); $('heard').classList.remove('open'); } }
       else if (a === 'clearall') { clearAllAnswers(); }
       else if (a === 'coach') { var co = N.settings.coach === false; saveSettings({ coach: co }); b.querySelector('.r').textContent = co ? 'On' : 'Off'; if (!co) hideCoach(); toast(co ? 'The coach line shows during calls' : 'No coach line during calls'); }
-      else if (a === 'autoswitch') { var on = !N.settings.autoSwitch; saveSettings({ autoSwitch: on }); b.querySelector('.r').textContent = on ? 'On' : 'Off'; toast(on ? 'The question they ask opens for you' : 'Questions they ask are only marked on the left'); }
+      else if (a === 'autoswitch') { var on = !autoOpen(); saveSettings({ autoOpen: on }); b.querySelector('.r').textContent = on ? 'On' : 'Off'; toast(on ? 'The question they ask opens for you' : 'Questions they ask are only marked on the left'); }
       else if (a === 'theme') { var d = !document.body.classList.contains('dark'); document.body.classList.toggle('dark', d); lsSet('xhire_note_theme', d ? 'dark' : 'light'); saveSettings({ theme: d ? 'dark' : 'light' }); closePop(); }
       else if (a === 'smaller' || a === 'larger') { fontSize = a === 'smaller' ? Math.max(12, fontSize - 1) : Math.min(36, fontSize + 1); applyFontSize(); $('pop-size').textContent = fontSize; }
       else if (a === 'bgreset') { setNoteBg(''); saveSettings({ bg: '' }); closePop(); toast('Page colour reset'); }
@@ -1508,6 +1536,8 @@ function coachOnSaid(text) {
 // Owner 25 Oct: "a setting for auto switch, on and off", once matching proved over 96% (measured: 98-99% of switches
 // land on the right card; a half-heard question never switches). Only the smart match switches, never while he types.
 var heardPending = false; // the question was cut off before its ask was clear: checked again when they stop talking
+// On unless he turns it off (owner 26 Oct: "SET IT TO DEFAULT"). A new name, so a choice made back when it started off does not keep it off.
+function autoOpen() { return !N || N.settings.autoOpen !== false; }
 function typingInNote() { var a = document.activeElement; return !!a && (/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) || !!(a.closest && a.closest('#editor'))); }
 function smartHeard(text, key, whole, retried) { // ~1 s later: which question it really is + the line to read. The newest question wins. key = the question it belongs to; whole = the rest of it is in
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
@@ -1526,7 +1556,7 @@ function smartHeard(text, key, whole, retried) { // ~1 s later: which question i
         writeHeard(j.groupId, j.itemId);
         hot = j.line ? { gid: j.groupId, text: j.line } : null;
         showHeard(text, j.groupId, j.itemId, j.name);
-        if (N.settings.autoSwitch && !unfinished && j.groupId !== cur.gid && !typingInNote()) select(j.groupId, j.itemId, { flash: true });
+        if (autoOpen() && !unfinished && j.groupId !== cur.gid && !typingInNote()) select(j.groupId, j.itemId, { flash: true });
         markLines();
       } else if (heardPending) {
         setHeard(null);
@@ -1585,7 +1615,7 @@ function addNewQuestion(title, question, assistAnswer) {
     r.json.added.forEach(function (g) { N.groups.push(g); });
     var ng = r.json.added[0];
     // Auto switch on: the question just asked is shown, new or not (live 26 Oct: every question was new, the note never moved)
-    if (ng && question === pendingNew && N.settings.autoSwitch && !typingInNote()) select(ng.id, (ng.items[0] || {}).id, { flash: true });
+    if (ng && question === pendingNew && autoOpen() && !typingInNote()) select(ng.id, (ng.items[0] || {}).id, { flash: true });
     if (ng && assistAnswer) { setHeard(ng.id); keepAssist(ng, assistAnswer); toast('New question kept: ' + ng.name, 2500); return; }
     // Its own answer is written at once; xHire's live answer goes on it only when nothing is being written, so one never
     // replaces the other on screen (lines he reads only grow).

@@ -3616,7 +3616,13 @@ const NOTE_CALLS_RULE = 'THE CALLS FOR THIS JOB are background: aim the answer a
 // The note adds a question heard on a call to the plain "New questions" section (from-call route), keeps what xHire
 // answered live (below), and on first open writes a study note: clean HTML with a table where one fits and a diagram
 // (Mermaid, drawn by the page) where a flow fits. The better model: this is the note he studies before the next round.
-async function generateStudyNote(session, userId, item) {
+// What is shown while a study note is still being written: the HTML so far, without the KEY line or a half-written tag.
+function studyPartial(raw) {
+  let t = String(raw || '').replace(/^\s*```(?:html)?\s*/i, '');
+  const k = t.search(/(^|\n)\s*KEY:/); if (k >= 0) t = t.slice(0, k);
+  return answerNote.sanitizeHtml(t.replace(/```(?:html)?/gi, '').replace(/<[^>]*$/, ''));
+}
+async function generateStudyNote(session, userId, item, onPartial) {
   const question = String(item.question || '').trim();
   const bankRows = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 8", [session.id])).rows;
   const material = `THE CANDIDATE AND THE JOB:\nTHIS NOTE IS FOR: ${session.role || 'this role'} at ${session.company || 'the company'}.\n\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (the candidate's real experience):\n${bankRows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n') || 'N/A'}`;
@@ -3636,10 +3642,24 @@ Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`
   const calls = await noteCallContext(session.id, userId, { screens: true });
   const user = `${calls ? `THE CALLS FOR THIS JOB:\n${calls}\n\n${NOTE_CALLS_RULE}\n\n` : ''}QUESTION: ${question}\n${said ? `\nWHAT XHIRE SAID LIVE ON THE CALL (rough, build on it):\n${said}\n` : ''}\nWrite the study note now.`;
   const t0 = Date.now();
-  const raw = await callClaude([Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }], user, 1800, MODEL_SONNET, { __tag: 'note-study', thinking: { type: 'disabled' } });
+  const sys = [Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }];
+  // Owner 26 Oct: "why 10 seconds for new questions". The whole note took ~10 s before anything showed. Streamed, the
+  // takeaway and "How to say it" (written first) show in about a second and the rest grows under them.
+  let raw = '', first = 0;
+  if (onPartial) {
+    let acc = '', last = 0;
+    try {
+      raw = await callClaudeStream(sys, user, 1800, MODEL_SONNET, t => {
+        acc += t; const now = Date.now(); if (now - last < 150) return; last = now;
+        const html = studyPartial(acc); if (!answerNote.htmlToText(html)) return;
+        if (!first) first = now - t0; onPartial(html);
+      }, { __tag: 'note-study', thinking: { type: 'disabled' } });
+    } catch (e) { console.log('[Note] study note stream failed, writing it whole:', e.message); raw = ''; }
+  }
+  if (!raw) raw = await callClaude(sys, user, 1800, MODEL_SONNET, { __tag: 'note-study', thinking: { type: 'disabled' } });
   const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/^\s*```(?:html)?\s*/i, '').replace(/```\s*$/m, ''));
   const html = answerNote.sanitizeHtml(answer.replace(/```(?:html)?/gi, '').trim());
-  console.log(`[Note] study note ${Date.now() - t0}ms calls=${calls.length} table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} code=${/<pre>/.test(html)} q="${question.slice(0, 50)}"`);
+  console.log(`[Note] study note ${Date.now() - t0}ms${onPartial ? ' first=' + first + 'ms' : ''} calls=${calls.length} table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} code=${/<pre>/.test(html)} q="${question.slice(0, 50)}"`);
   if (!answerNote.htmlToText(html)) throw new Error('The writer gave no usable study note. Try again.');
   return { answerHtml: html, keyPoints };
 }
@@ -3663,7 +3683,7 @@ app.get('/api/note', authMiddleware, async (req, res) => {
   try { const note = await loadNote(req.userId); res.json(await noteTree(note, await noteSes(req))); }
   catch (e) { console.error('[Note] load failed:', e.message); res.status(500).json({ error: e.message }); }
 });
-const NOTE_SETTING_KEYS = ['bg', 'theme', 'fontFamily', 'fontSize', 'sessionId', 'readMode', 'autoGenerate', 'railWidth', 'seeThrough', 'autoSwitch', 'coach'];
+const NOTE_SETTING_KEYS = ['bg', 'theme', 'fontFamily', 'fontSize', 'sessionId', 'readMode', 'autoGenerate', 'railWidth', 'seeThrough', 'autoSwitch', 'autoOpen', 'coach'];
 app.put('/api/note/settings', authMiddleware, async (req, res) => {
   try {
     const note = await loadNote(req.userId);
@@ -3881,8 +3901,17 @@ app.post('/api/note/items/:iid/generate', authMiddleware, async (req, res) => {
     const mode = answerNote.MODES[req.body?.mode] ? req.body.mode : 'regenerate';
     const custom = String(req.body?.instruction || '').trim();
     if (mode === 'custom' && !custom) return res.status(400).json({ error: 'Say how to change it.' });
-    const saved = await noteWriteOne(session, req.userId, item, mode, custom);
-    res.json(Object.assign(noteItemOut(saved), { job: { id: session.id, company: session.company, role: session.role } }));
+    // stream: the page shows a study note as it is written (events: {partial: html}, then {done: item} or {error})
+    let streaming = false;
+    const onPartial = req.body?.stream ? html => {
+      if (!streaming) { streaming = true; res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); if (res.flushHeaders) res.flushHeaders(); }
+      res.write('data: ' + JSON.stringify({ partial: html }) + '\n\n');
+    } : null;
+    try {
+      const saved = await noteWriteOne(session, req.userId, item, mode, custom, null, onPartial);
+      const out = Object.assign(noteItemOut(saved), { job: { id: session.id, company: session.company, role: session.role } });
+      if (streaming) { res.write('data: ' + JSON.stringify({ done: out }) + '\n\n'); res.end(); } else res.json(out);
+    } catch (e) { if (!streaming) throw e; console.error('[Note] generate failed:', e.message); res.write('data: ' + JSON.stringify({ error: e.message }) + '\n\n'); res.end(); }
   } catch (e) { console.error('[Note] generate failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 const noteFormOf = async (item, mode) => mode === 'rich' ? 'explain' : pickAnswerForm((await pool.query('SELECT name FROM answer_note_groups WHERE id = $1', [item.group_id])).rows[0]?.name, item.question);
@@ -3890,9 +3919,9 @@ async function noteSaveAi(item, out, label) {
   const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label });
   return change.changed ? await writeNoteItem(item, change) : item;
 }
-async function noteWriteOne(session, userId, item, mode, custom, knownForm) {
+async function noteWriteOne(session, userId, item, mode, custom, knownForm, onPartial) {
   const form = knownForm || await noteFormOf(item, mode);
-  const out = mode === 'rich' || (form === 'explain' && mode === 'regenerate') ? await generateStudyNote(session, userId, item)
+  const out = mode === 'rich' || (form === 'explain' && mode === 'regenerate') ? await generateStudyNote(session, userId, item, onPartial)
     : answerNote.DETAIL_ARCS[form] ? await generateDetailedAnswer(session, userId, item, form, mode, custom)
     : await generateNoteAnswer(session, userId, item, mode, custom); // a change to a study note (Shorter, his own) is written as short lines
   const label = mode === 'regenerate' ? answerNote.FORM_LABEL[form] || answerNote.changeLabel(mode, custom) : answerNote.changeLabel(mode, custom);
