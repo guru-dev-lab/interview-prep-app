@@ -4962,6 +4962,7 @@ wss.on('connection', (ws) => {
         let recentDetectedQs = []; // last 5 detected questions for fuzzy de-dup
         let aiExtractTimer = null; // debounce timer — wait for speech to settle before extracting
         const AI_EXTRACT_DELAY = 800;
+        const AI_READ_WINDOW_MS = 40000; // the AI reader looks only at interviewer lines this recent
         const GROW_WINDOW_MS = 20000; // the rest of a question updates its card only this soon after it was asked // wait after last speechFinal before AI fires (trimmed for speed)
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
         let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
@@ -5207,8 +5208,10 @@ wss.on('connection', (ws) => {
 
           // CRITICAL: Only use INTERVIEWER utterances for question detection.
           // Filter out [You] (user's own voice) and [Echo] (user voice echoing through system audio).
+          // Only what they said lately: after a long answer, the last 4 interviewer lines reach back minutes, and the old
+          // question in them was read again and jumped the overlay and the note back to it (live interview 26 Oct, twice).
           const interviewerOnly = interviewerLines();
-          const recent = interviewerOnly.slice(-4);
+          const recent = interviewerOnly.filter(t => Date.now() - (t.ts || 0) <= AI_READ_WINDOW_MS).slice(-4);
           if (recent.length < 1) return;
 
           // PRE-FILTER: Check if the most recent utterance could even be a question.
@@ -6315,7 +6318,10 @@ async function growLiveAnswer(ws, sessionId, active, fullerQuestion) {
 const TECH_TERMS_RE = /\b(sql|query|queries|code|script|function|algorithm|regex|api|join|joins|window function|cte|index|indexes|schema|python|javascript|html|css|excel|vba|dax|power query|power bi|tableau|looker|snowflake|bigquery|redshift|databricks|spark|dbt|airflow|etl|elt|pipeline|clustering key|partition|where|having|group by|primary key|foreign key|vlookup|xlookup|pivot|measure|calculated column|normaliz\w*|regression|p-value|a\/b test)\b/i;
 const SHAPE_PITCH_RE = /\b(tell (me|us) (a (little )?(bit )?)?about yourself|walk (me|us) through your (resume|background|career)|introduce yourself|why (do you want|are you interested|this (role|company|job|position|team)|us\b|should we hire)|why (are you )?(leaving|looking)|what are you looking for|where do you see yourself|what('s| is| are) your (greatest |biggest )?(strengths?|weakness(es)?)|what makes you (a good fit|unique|stand out))/i;
 const SHAPE_STORY_RE = /\b(tell (me|us) about a (time|situation|project)|describe a (time|situation)|give (me |us )?an example of a time|share (an|a) (experience|time|example)|a time (when|you)|have you ever (had|dealt|faced|handled|worked through)|what did you do when|how did you (handle|deal with|resolve))\b/i;
-const SHAPE_CODE_RE = /\b(write|code|script|formula|syntax|implement)\b|\b(in sql|sql query|a query|using sql)\b|^(how (would|do|can) you) (find|get|calculate|compute|remove|dedupe|de-dupe|rank|pivot|count|return|select|pull)\b/i;
+// Code only when they ask for the code itself. "implement", "in SQL", "a query" alone also sit in design questions (live
+// interview 26 Oct: "what would you implement from the start", "does the logic land in SQL queries", "a measure compared
+// to SQL") — those got a code answer instead of the explanation.
+const SHAPE_CODE_RE = /\b(write|type|code up|show me|give me)\b[^?.!]{0,40}\b(query|queries|sql|code|script|formula|syntax|measure|function|statement)\b|\bwhat('s| is) the (syntax|formula|query)\b|^(how (would|do|can) you) (find|get|calculate|compute|remove|dedupe|de-dupe|rank|pivot|count|return|select|pull)\b/i;
 
 function classifyQuestionShape(questionText) {
   const q = (questionText || '').trim();
