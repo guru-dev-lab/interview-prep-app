@@ -6,7 +6,7 @@ const block = src.slice(src.indexOf('// ===== LIVE ANSWER COMPOSER'), src.indexO
 const stylesBlock = src.slice(src.indexOf('const ANSWER_STYLES = {'), src.indexOf('\n};', src.indexOf('const ANSWER_STYLES = {')) + 3);
 const pre = src.slice(src.indexOf('const ANSWER_PROMPT = `'), src.indexOf('// ============ ANSWER STYLE TEMPLATES'));
 const memRules = src.slice(src.indexOf('const MEMORY_RULES = `'), src.indexOf('`;', src.indexOf('const MEMORY_RULES = `')) + 2);
-const api = new Function(pre + stylesBlock + memRules + block + '\nreturn { classifyQuestionShape, normalizeLiveAnswer, appendToLiveAnswer, composeLiveSystemPrompt, liveLineCap, ANSWER_STYLES, LIVE_TONES };')();
+const api = new Function('answerNote', pre + stylesBlock + memRules + block + '\nreturn { classifyQuestionShape, normalizeLiveAnswer, appendToLiveAnswer, composeLiveSystemPrompt, liveLineCap, ANSWER_STYLES, LIVE_TONES };')(require('../lib/answer-note'));
 let fail = 0; const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) { fail++; console.log('FAIL', name, '\n  got :', JSON.stringify(got), '\n  want:', JSON.stringify(want)); } };
 
 // 1) classifier
