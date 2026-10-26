@@ -3328,6 +3328,42 @@ async function generateNoteAnswer(session, userId, item, mode, custom) {
   if (!text || isNonAnswer(text)) throw new Error('The writer gave no usable answer. Try again.');
   return { answerHtml: answerNote.answerToHtml(text), keyPoints };
 }
+// The same short note answers, up to 5 per call (Write all answers). Questions of one shape share one layout, so they
+// are grouped by shape; one call per group of 5. Returns one result per item, in order; null = not in the reply.
+async function generateNoteAnswersBatch(session, userId, items) {
+  const vp = await pool.query('SELECT voice_profile FROM users WHERE id = $1', [userId]);
+  const voiceProfile = (process.env.VOICE_PROFILE !== '0' && vp.rows[0] && vp.rows[0].voice_profile) || '';
+  const styleKey = session.answer_style || 'conversational';
+  const calls = await noteCallContext(session.id, userId);
+  const bankRows = (await pool.query("SELECT text, answer FROM questions WHERE session_id = $1 AND answer <> '' ORDER BY id LIMIT 8", [session.id])).rows;
+  const material = `SESSION MATERIAL — the candidate and the job:\nTHIS NOTE IS FOR: ${session.role || 'this role'} at ${session.company || 'the company'}. Reference them naturally when a question asks "why this role/company"; never parrot the JD.\n\nRESUME:\n${session.resume || 'N/A'}\n\nJOB DESCRIPTION:\n${session.jd || 'N/A'}\n\nQ&A BANK (candidate's real experience — USE THIS):\n${bankRows.map(q => `Q: ${q.text}\nA: ${q.answer}`).join('\n\n') || 'N/A'}`;
+  const expFacts = experienceFacts(session.resume);
+  const out = new Array(items.length).fill(null);
+  const groups = new Map();
+  items.forEach((it, i) => { const s = classifyQuestionShape(String(it.question || '').trim()); const k = s.shape + '|' + s.technical; if (!groups.has(k)) groups.set(k, { s, idx: [] }); groups.get(k).idx.push(i); });
+  const jobs = [];
+  for (const { s, idx } of groups.values()) for (let c = 0; c < idx.length; c += 5) jobs.push({ s, idx: idx.slice(c, c + 5) });
+  await Promise.all(jobs.map(async ({ s, idx }) => {
+    const system = composeLiveSystemPrompt({ shape: s.shape, technical: s.technical, styleKey, maxLines: 0, voiceProfile, withConversation: !!calls, questionText: '', employerLine: true });
+    const systemBlocks = [Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: system }];
+    const qs = idx.map((i, n) => `Q${n + 1}: ${String(items[i].question || '').trim()}`).join('\n');
+    const user = `TODAY: ${new Date().toISOString().slice(0, 10)}\n${expFacts ? expFacts + '\n' : ''}${calls ? `\nTHE CONVERSATION:\n${calls}\n` : ''}\n${idx.length} QUESTIONS (each is one way an interviewer phrases it — this is a prepared note read from during a call, so every answer must stand on its own):\n${qs}\n\nWrite a separate, complete answer for EACH question, in the LAYOUT above. Start each with its marker on its own line: ===Q1===, ===Q2===, and so on. After each answer, as its last line, exactly: KEY: <at most 12 words — the one thing to remember to say>`;
+    const t0 = Date.now();
+    let raw = '';
+    try { raw = await callClaude(systemBlocks, user, idx.length * (s.shape === 'code' ? 1000 : 600), MODEL_HAIKU, { __tag: 'note-answer-batch' }); }
+    catch (e) { console.error('[Note] batch call failed:', e.message); return; }
+    const parts = String(raw || '').split(/===\s*Q(\d+)\s*===/);
+    const byNum = {}; for (let p = 1; p < parts.length; p += 2) byNum[parts[p]] = parts[p + 1] || '';
+    let got = 0;
+    idx.forEach((i, n) => {
+      const { answer, keyPoints } = answerNote.parseGenerated(String(byNum[n + 1] || '').trim());
+      const text = answer ? normalizeLiveAnswer(answer, s.shape, { cap: liveLineCap(styleKey, 0, s.shape), employerLineAllowed: true, cueOnly: (STYLE_LAYOUT[styleKey] || {}).unit === 'cue' && s.shape !== 'code' }) : '';
+      if (text && !isNonAnswer(text)) { out[i] = { answerHtml: answerNote.answerToHtml(text), keyPoints }; got++; }
+    });
+    console.log(`[Note] batch shape=${s.shape} ${Date.now() - t0}ms calls=${calls.length} got=${got}/${idx.length}`);
+  }));
+  return out;
+}
 
 // Detailed spoken answers (owner, 24 Oct: "some questions required good details...
 // that human and slow word for word start"). For the questions the seed marks (lib DETAIL_ARCS): paragraphs he reads
@@ -3839,15 +3875,66 @@ app.post('/api/note/items/:iid/generate', authMiddleware, async (req, res) => {
     const mode = answerNote.MODES[req.body?.mode] ? req.body.mode : 'regenerate';
     const custom = String(req.body?.instruction || '').trim();
     if (mode === 'custom' && !custom) return res.status(400).json({ error: 'Say how to change it.' });
-    const form = mode === 'rich' ? 'explain' : await pickAnswerForm((await pool.query('SELECT name FROM answer_note_groups WHERE id = $1', [item.group_id])).rows[0]?.name, item.question);
-    const out = mode === 'rich' || (form === 'explain' && mode === 'regenerate') ? await generateStudyNote(session, req.userId, item)
-      : answerNote.DETAIL_ARCS[form] ? await generateDetailedAnswer(session, req.userId, item, form, mode, custom)
-      : await generateNoteAnswer(session, req.userId, item, mode, custom); // a change to a study note (Shorter, his own) is written as short lines
-    const label = mode === 'regenerate' ? answerNote.FORM_LABEL[form] || answerNote.changeLabel(mode, custom) : answerNote.changeLabel(mode, custom);
-    const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label });
-    const saved = change.changed ? await writeNoteItem(item, change) : item;
+    const saved = await noteWriteOne(session, req.userId, item, mode, custom);
     res.json(Object.assign(noteItemOut(saved), { job: { id: session.id, company: session.company, role: session.role } }));
   } catch (e) { console.error('[Note] generate failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+const noteFormOf = async (item, mode) => mode === 'rich' ? 'explain' : pickAnswerForm((await pool.query('SELECT name FROM answer_note_groups WHERE id = $1', [item.group_id])).rows[0]?.name, item.question);
+async function noteSaveAi(item, out, label) {
+  const change = answerNote.applyChange(item, { answer_html: out.answerHtml, key_points: out.keyPoints }, { by: 'ai', label });
+  return change.changed ? await writeNoteItem(item, change) : item;
+}
+async function noteWriteOne(session, userId, item, mode, custom, knownForm) {
+  const form = knownForm || await noteFormOf(item, mode);
+  const out = mode === 'rich' || (form === 'explain' && mode === 'regenerate') ? await generateStudyNote(session, userId, item)
+    : answerNote.DETAIL_ARCS[form] ? await generateDetailedAnswer(session, userId, item, form, mode, custom)
+    : await generateNoteAnswer(session, userId, item, mode, custom); // a change to a study note (Shorter, his own) is written as short lines
+  const label = mode === 'regenerate' ? answerNote.FORM_LABEL[form] || answerNote.changeLabel(mode, custom) : answerNote.changeLabel(mode, custom);
+  return noteSaveAi(item, out, label);
+}
+// Write all answers (owner 25 Oct: "thats what we do on xhire web.. batching"): like the bank's Generate All, the short
+// answers go up to 5 per call (same writer rules, same shape), so a whole job is a few calls, not one per question.
+// Detailed and study answers stay one call each: they are long and each follows its own path.
+app.post('/api/note/generate-batch', authMiddleware, async (req, res) => {
+  try {
+    const session = await noteSes(req);
+    if (!session) return res.status(400).json({ error: 'Add your résumé to a session first. The note writes answers from it.' });
+    if (!String(session.resume || '').trim()) return res.status(400).json({ error: 'That session has no résumé. Pick one that does.' });
+    const answerCheck = await checkAnswerLimit(req.userId, req.plan);
+    if (!answerCheck.ok) return res.status(403).json({ error: `Monthly answer limit reached (${answerCheck.limit}). Upgrade for more.` });
+    const asked = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 10);
+    const work = [];
+    for (const a of asked) {
+      const item = await ownNoteItem(req.userId, String(a && a.id || ''), session);
+      if (item) work.push({ item, mode: a.mode === 'rich' ? 'rich' : 'regenerate' });
+    }
+    for (const w of work) w.form = await noteFormOf(w.item, w.mode);
+    const results = [];
+    const short = work.filter(w => w.mode === 'regenerate' && w.form !== 'explain' && !answerNote.DETAIL_ARCS[w.form]);
+    const single = work.filter(w => !short.includes(w));
+    const doShort = async () => {
+      let outs = [];
+      try { outs = short.length ? await generateNoteAnswersBatch(session, req.userId, short.map(w => w.item)) : []; }
+      catch (e) { console.error('[Note] batch call failed, writing them one by one:', e.message); }
+      for (let k = 0; k < short.length; k++) {
+        const w = short[k];
+        try {
+          const saved = outs[k] ? await noteSaveAi(w.item, outs[k], answerNote.FORM_LABEL[w.form] || answerNote.changeLabel('regenerate', ''))
+            : await noteWriteOne(session, req.userId, w.item, 'regenerate', '', w.form); // missing from the batch reply: written on its own
+          results.push(noteItemOut(saved));
+        } catch (e) { results.push({ id: w.item.id, error: e.message }); }
+      }
+    };
+    const doSingle = async () => {
+      let next = 0;
+      const worker = async () => { while (next < single.length) { const w = single[next++];
+        try { results.push(noteItemOut(await noteWriteOne(session, req.userId, w.item, w.mode, '', w.form))); } catch (e) { results.push({ id: w.item.id, error: e.message }); } } };
+      await Promise.all([worker(), worker()]);
+    };
+    await Promise.all([doShort(), doSingle()]);
+    console.log(`[Note] batch ${work.length} asked: short=${short.length} single=${single.length} ok=${results.filter(r => !r.error).length}`);
+    res.json({ items: results, job: { id: session.id, company: session.company, role: session.role } });
+  } catch (e) { console.error('[Note] batch failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 app.post('/api/note/items/:iid/restore', authMiddleware, async (req, res) => {
   try {
