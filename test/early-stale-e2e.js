@@ -206,6 +206,30 @@ async function scenario(sess, name, { lines, click, clickAt, waitMs = 9000 }) {
     check(lastQ && !ids.includes(lastQ.questionId) && /correct|numbers|accura/i.test(lastQ.questionText || ''), `the later question got its own card (got "${lastQ ? (lastQ.questionText || '').slice(0, 60) : 'none'}")`);
   }
 
+  // 14–15. Live interview 26 Oct (16:18, 16:26 UTC): minutes after a question was answered, the AI reader re-read that OLD
+  //    question from the last few interviewer lines (they span minutes when the candidate talks long) and jumped the
+  //    overlay and the note back to it. A long answer is ~60 s of candidate speech here.
+  const LONG = [
+    { you: 'Yes. At Northwind I set up row level security in our Power BI sales model. Each regional manager should only see their own region, so I built a security table in SQL that maps every manager email to the regions they own.' },
+    { you: 'Then in Power BI I made a role with a DAX filter on that table using the signed in user name, so the filter flows from the security table to the region dimension and then to the sales facts.' },
+    { you: 'I tested every role with view as role before publishing, and I added the security groups in the service so new managers get access the same day without me changing the model.' },
+    { you: 'The result was one report for all twelve regions instead of twelve copies, and audit was happy because the access list lives in one table that the business owns and reviews every quarter.' },
+  ];
+  // He pressed Say while the first question was still being asked (as on the call): that card never enters the automatic
+  // side's "recently asked" list, so only the reader's own window keeps the old question out.
+  const RLS = { ask: 'Have you ever implemented role level security in any of your Power BI datasets?', pressAt: 0.7 };
+  const later = r => { const t1 = (r.got.find(m => m.type === 'new_question') || r.got[0] || { _t: 0 })._t; return r.got.filter(m => m._t > t1 + 20000 && ['question_detected', 'match', 'new_question'].includes(m.type)); };
+  if (run(14)) { // a statement after a long answer: no card at all, and never the old question again
+    r = await scenario(await seed(), 'OLD question re-read after a long answer (26 Oct 16:18)', { lines: [RLS, ...LONG, 'Right. So if your users complain about performance, it is never because of your data source.'], waitMs: 9000 });
+    check(!later(r).some(m => /role level|security/i.test(m.text || m.questionText || '')), 'the old security question was not brought back');
+  }
+  if (run(15)) { // a NEW question after a long answer: its own card, and the old one never comes back over it
+    r = await scenario(await seed(), 'NEW question after a long answer (26 Oct 16:26)', { lines: [RLS, ...LONG, 'Okay. So what would you say is your approach on the business logic? Where does it belong?'], waitMs: 12000 });
+    const after = later(r);
+    check(after.some(m => /business logic|belong/i.test(m.text || m.questionText || '')), 'the business logic question was answered');
+    check(!after.some(m => /role level|security/i.test(m.text || m.questionText || '')), 'the old security question did not come back over it');
+  }
+
   await pool.end();
   console.log(fails.length ? `\n${fails.length} FAILED` : '\nALL PASS');
   process.exit(fails.length ? 1 : 0);
