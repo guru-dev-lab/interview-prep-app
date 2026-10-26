@@ -1415,6 +1415,12 @@ function onThem(text) {
   themText = (themText + ' ' + text).slice(-2500); lastThemAt = Date.now();
   chatText = (chatText + ' ' + text).trim().slice(-1200); clearTimeout(chatTimer); chatTimer = setTimeout(chatCoach, CHAT_QUIET);
   if (heardText && heardText.indexOf(text.trim()) < 0) themAfter += ' ' + text;
+  // A question cut off mid-sentence is matched again with the rest once they stop, even if he has started answering
+  // (live 26 Oct: "…compared to" + "a calculated column?" was never matched, so it got no answer).
+  if (heardText && heardPending && Date.now() - heardAt < 20000 && themAfter.trim()) {
+    clearTimeout(pendWait); var pk = heardText;
+    pendWait = setTimeout(function () { if (pk === heardText && heardPending) smartHeard((pk + ' ' + themAfter.trim()).slice(-600), pk, true); }, COACH_QUIET);
+  }
   // Owner: lines on screen only GROW, never swap ("you dont want to start speaking on something and it changes").
   // Once he is answering, more talk from them clears only a line he has not started saying.
   if (coachNow && saidText.length >= 20 && !coachSaid.trim() && Date.now() - coachNow.at > 1500 && text.trim().split(/\s+/).length >= 4) hideCoach();
@@ -1426,13 +1432,12 @@ function onThem(text) {
     coachWait = setTimeout(function () {
       if (key !== heardText || saidText.length >= 20) return;
       coachQ = (key + ' ' + themAfter.trim()).slice(-600);
-      if (heardPending) smartHeard(coachQ, key); // it was cut off: match the whole question now
       if (coachNow) coachFor(coachQ, false, true, key, true); // a line is up: add under it for the rest of the question
       else { coachShown = []; coachFor(coachQ, false, true, key); }
     }, COACH_QUIET);
   }
 }
-var COACH_QUIET = 700, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '';
+var COACH_QUIET = 700, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '', pendWait = null;
 // Owner 25 Oct: "The coach is going to be useful for the waiting part and would let you have good small talks,
 // sometimes interviewers like to engage to see alignment if you are outspoken" ... "down to small jokes and humor
 // sometimes but must not be important than real question hint or subs or starter". When the interviewer finishes a turn
@@ -1504,18 +1509,18 @@ function coachOnSaid(text) {
 // land on the right card; a half-heard question never switches). Only the smart match switches, never while he types.
 var heardPending = false; // the question was cut off before its ask was clear: checked again when they stop talking
 function typingInNote() { var a = document.activeElement; return !!a && (/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) || !!(a.closest && a.closest('#editor'))); }
-function smartHeard(text, key) { // ~1 s later: which question it really is + the line to read. The newest question wins. key = the question it belongs to
+function smartHeard(text, key, whole, retried) { // ~1 s later: which question it really is + the line to read. The newest question wins. key = the question it belongs to; whole = the rest of it is in
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
   var ctl = heardCtl = (window.AbortController ? new AbortController() : null); key = key || text;
   fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, currentGroupId: cur.gid, sessionId: JOB }), signal: ctl ? ctl.signal : undefined })
-    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (r) { if (r.status === 429 && !retried) { setTimeout(function () { if (key === heardText) smartHeard(text, key, whole, true); }, 750); return null; } return r.ok ? r.json() : null; }) // two checks too close together: the second was dropped (live 26 Oct)
     .then(function (j) {
       if (!j || key !== heardText) return; // a newer question came in meanwhile
       // Never switch on an unfinished sentence (measured 25 Oct: every wrong switch on a cut-off question was a guess at
       // how it ends). Unfinished: marked only, and matched again as a whole once they stop talking.
-      var unfinished = !/[?.!]["')\]]*\s*$/.test(text.trim());
+      var unfinished = !whole && !/[?.!]["')\]]*\s*$/.test(text.trim());
       heardPending = (!j.groupId && !j.question) || (!!j.groupId && unfinished);
-      if (heardPending && text === key && themAfter.trim()) setTimeout(function () { if (key === heardText && heardPending && saidText.length < 20) smartHeard((key + ' ' + themAfter.trim()).slice(-600), key); }, Math.max(0, COACH_QUIET - (Date.now() - lastThemAt))); // they already went on: check the whole question
+      if (heardPending && text === key && themAfter.trim()) setTimeout(function () { if (key === heardText && heardPending) smartHeard((key + ' ' + themAfter.trim()).slice(-600), key, true); }, Math.max(0, COACH_QUIET - (Date.now() - lastThemAt))); // they already went on: check the whole question
       if (j.groupId && findGroup(j.groupId)) {
         setHeard(j.groupId);
         writeHeard(j.groupId, j.itemId);
@@ -1547,11 +1552,11 @@ var aiSaid = {}, saidTimer = null, saidSent = 0;
 // asked (the smart match, never the instant guess) is written in the background the moment it is heard, so it is ready
 // when he opens it; the screen never switches. Same rules as writing on first open: a job picked at the top (no AI for
 // a job he has not opened), auto-writing on, written once.
-function writeHeard(gid, iid) {
-  var g = findGroup(gid); if (!g || !$('job').value || N.settings.autoGenerate === false || (genAll && genAll.running)) return;
+function writeHeard(gid, iid) { // true when it is being written
+  var g = findGroup(gid); if (!g || !$('job').value || N.settings.autoGenerate === false || (genAll && genAll.running)) return false;
   var it = g.items.find(function (i) { return i.id === iid; }) || g.items[0];
-  if (!it || it.answer_html || busy[it.id] || it._autoTried) return;
-  it._autoTried = true; aiChange(it, g.section === NEWQ ? 'rich' : 'regenerate', '');
+  if (!it || it.answer_html || busy[it.id] || it._autoTried) return false;
+  it._autoTried = true; aiChange(it, g.section === NEWQ ? 'rich' : 'regenerate', ''); return true;
 }
 // ===== New questions (owner 24 Oct): a plain section that fills itself from calls; each keeps what xHire answered live
 var NEWQ = 'New questions', pendingLive = [];
@@ -1577,9 +1582,14 @@ function addNewQuestion(title, question, assistAnswer) {
   if (hit) { var hg = findGroup(hit.groupId); setHeard(hit.groupId); writeHeard(hit.groupId, hit.itemId); showHeard(heardText, hit.groupId, hit.itemId, hg ? hg.name : ''); return; } // already in the note (e.g. made for this job): marked and written like any match, never dropped
   api('POST', '/api/note/from-call', { questions: [{ title: title, question: question, ways: [] }], section: NEWQ }).then(function (r) {
     if (!r.ok) return;
-    r.json.added.forEach(function (g) { N.groups.push(g); if (!assistAnswer) attachLive(g); });
-    if (r.json.added.length && assistAnswer) { setHeard(r.json.added[0].id); keepAssist(r.json.added[0], assistAnswer); toast('New question kept: ' + r.json.added[0].name, 2500); return; }
-    if (r.json.added.length) { setHeard(r.json.added[0].id); writeHeard(r.json.added[0].id, (r.json.added[0].items[0] || {}).id); toast('New question kept: ' + r.json.added[0].name, 2500); if (question === pendingNew) showHeard(heardText, null, null, true); } // only now is it kept // its section opens and it is marked heard; what he is reading stays
+    r.json.added.forEach(function (g) { N.groups.push(g); });
+    var ng = r.json.added[0];
+    // Auto switch on: the question just asked is shown, new or not (live 26 Oct: every question was new, the note never moved)
+    if (ng && question === pendingNew && N.settings.autoSwitch && !typingInNote()) select(ng.id, (ng.items[0] || {}).id, { flash: true });
+    if (ng && assistAnswer) { setHeard(ng.id); keepAssist(ng, assistAnswer); toast('New question kept: ' + ng.name, 2500); return; }
+    // Its own answer is written at once; xHire's live answer goes on it only when nothing is being written, so one never
+    // replaces the other on screen (lines he reads only grow).
+    if (ng) { setHeard(ng.id); if (!writeHeard(ng.id, (ng.items[0] || {}).id)) attachLive(ng); toast('New question kept: ' + r.json.added[0].name, 2500); if (question === pendingNew) showHeard(heardText, null, null, true); } // only now is it kept // its section opens and it is marked heard; what he is reading stays
   }).catch(function () {});
 }
 function onLive(question, answer) { // what xHire answered live on the call
@@ -1588,7 +1598,7 @@ function onLive(question, answer) { // what xHire answered live on the call
   N.groups.filter(function (g) { return g.section === NEWQ; }).forEach(attachLive);
 }
 function attachLive(g) {
-  var it = g.items[0]; if (!it || it.answer_html) return;
+  var it = g.items[0]; if (!it || it.answer_html || busy[it.id] || it._autoTried) return; // its own answer is being written
   var p = pendingLive.find(function (x) { return NoteMatch.dice(x.q, it.question) > 0.5 || NoteMatch.score(x.q, it.question) > 0.55; });
   if (!p) return;
   api('POST', '/api/note/items/' + it.id + '/live', { answer: p.a }).then(function (r) { if (r.ok) { Object.assign(it, r.json); if (cur.iid === it.id) renderAnswer(true); renderList(); } }).catch(function () {});
