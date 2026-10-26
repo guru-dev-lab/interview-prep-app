@@ -3580,13 +3580,18 @@ app.get('/api/note/asked', authMiddleware, async (req, res) => {
 // calls' notes, this call's notes, the newest talk word for word, what they care about); after it, the notes each call
 // saved when it ended. With screens (new questions): what the shared screen showed and what Assist answered, as xHire
 // read and wrote them. Empty when this job has had no calls.
+const notePriorInflight = new Map();
 async function noteCallContext(sessionId, userId, opts = {}) {
   try {
     const live = liveWsForSession(sessionId), parts = [];
     if (live) { const c = buildConversationContext(live); if (c) parts.push(c); }
     else {
-      const m = (await pool.query("SELECT memory, started_at FROM live_transcripts WHERE session_id = $1 AND user_id = $2 AND coalesce(memory, '') <> '' ORDER BY started_at DESC LIMIT 5", [sessionId, userId])).rows.reverse();
-      if (m.length) parts.push('FROM EARLIER CALLS IN THIS INTERVIEW PROCESS:\n' + m.map(r => `EARLIER CALL (${new Date(r.started_at).toISOString().slice(0, 10)}):\n${r.memory}`).join('\n\n'));
+      // the same loader the live answers use: a finished call with no notes yet gets them once (cached in the row), so the
+      // note sees today's call while he preps tonight. One load per job at a time (Write all answers runs writers in parallel).
+      let p = notePriorInflight.get(sessionId);
+      if (!p) { p = loadPriorCallsMemory(sessionId, userId, null).finally(() => notePriorInflight.delete(sessionId)); notePriorInflight.set(sessionId, p); }
+      const m = await p;
+      if (m) parts.push('FROM EARLIER CALLS IN THIS INTERVIEW PROCESS:\n' + m);
     }
     if (opts.screens) {
       const callId = (live && live._callId) || ((await pool.query('SELECT id FROM live_transcripts WHERE session_id = $1 AND user_id = $2 ORDER BY started_at DESC LIMIT 1', [sessionId, userId])).rows[0] || {}).id;
