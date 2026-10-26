@@ -154,6 +154,7 @@ body.compact .row{padding:6px 8px 6px 10px}
 .side-foot{padding:8px;border-top:1px solid var(--line);display:flex;gap:6px}
 .side-foot .ibtn{flex:1}
 .empty{padding:36px 18px;text-align:center;color:var(--muted);font-size:14px;line-height:1.6}
+.shortcalls{padding:10px 18px;font-size:12px;color:var(--muted);cursor:pointer}.shortcalls:hover{text-decoration:underline}
 /* Questions | Calls */
 .vtabs{display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--line2);flex-shrink:0}
 .vtabs button{flex:1;height:30px;border-radius:8px;font-weight:650;font-size:13px;color:var(--muted)}
@@ -1277,18 +1278,29 @@ function renderCallList() {
   var host = $('list'); host.innerHTML = '';
   if (!CALLS) { host.innerHTML = '<div class="empty">Loading your calls...</div>'; return; }
   if (!CALLS.session) { host.innerHTML = '<div class="empty">' + esc(CALLS.error || 'Pick the job at the top to see its calls.') + '</div>'; return; }
+  // too-short calls (a test, a dropped line) fold away under one small line; the one open stays in view
+  var isShort = function (c) { return c.lines < 8 && !hasNotes(c) && !callBusy[c.id] && c.id !== curCall; };
+  var real = CALLS.calls.filter(function (c) { return !isShort(c); }), short = CALLS.calls.filter(isShort);
   var h = document.createElement('div'); h.className = 'sec';
-  h.innerHTML = '<span class="bar"></span><span style="min-width:0">' + esc(CALLS.session.company || 'This job') + (CALLS.session.role ? ', ' + esc(CALLS.session.role) : '') + '</span><span class="cnt">' + CALLS.calls.length + '</span>';
+  h.innerHTML = '<span class="bar"></span><span style="min-width:0">' + esc(CALLS.session.company || 'This job') + (CALLS.session.role ? ', ' + esc(CALLS.session.role) : '') + '</span><span class="cnt">' + real.length + '</span>';
   host.appendChild(h);
   if (!CALLS.calls.length) { host.insertAdjacentHTML('beforeend', '<div class="empty">No calls for this job yet. After a call, its notes show up here.</div>'); return; }
-  CALLS.calls.forEach(function (c) {
+  if (!real.length && !showShortCalls) host.insertAdjacentHTML('beforeend', '<div class="empty">No full calls for this job yet. After a call, its notes show up here.</div>');
+  (showShortCalls ? real.concat(short) : real).forEach(function (c) {
     var st = callBusy[c.id] ? { cls: '', t: 'making notes' } : hasNotes(c) ? { cls: 'done', t: '\u2713 notes' } : c.lines < 8 ? { cls: '', t: 'too short' } : { cls: '', t: 'no notes' };
     var el = document.createElement('div'); el.className = 'row' + (c.id === curCall ? ' active' : '');
     el.innerHTML = '<span class="dot"></span><div class="rt"><div class="title">' + esc(callDate(c, true)) + '</div><div class="full">' + esc([callMins(c) ? callMins(c) + ' min' : '', c.interviewer, c.stage].filter(Boolean).join(' \u00b7 ') || (c.lines + ' lines')) + '</div></div><span class="st ' + st.cls + '">' + st.t + '</span>';
     el.onclick = function () { curCall = c.id; document.body.classList.remove('listview'); renderCallList(); renderCallPage(); $('page').scrollTop = 0; notesForOpenCall(); };
     host.appendChild(el);
   });
+  if (short.length) {
+    var t = document.createElement('div'); t.className = 'shortcalls'; t.id = 'short-calls';
+    t.textContent = showShortCalls ? 'Hide short calls' : 'Show ' + short.length + ' short call' + (short.length > 1 ? 's' : '');
+    t.onclick = function () { showShortCalls = !showShortCalls; renderCallList(); };
+    host.appendChild(t);
+  }
 }
+var showShortCalls = false;
 function qBlock(key, list) {
   callQs[key] = list;
   if (!list.length) return '<div class="note" style="color:var(--muted)">None in this call.</div>';
