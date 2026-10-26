@@ -1,5 +1,24 @@
 # Handoff
 
+## 25 Oct (late) — Answer Note: reading, code, Assist, history, batching (PRs #156–#162, all LIVE)
+- #156: every answer explains what they asked first, then real life; AI answers use ONE job-fit automation with the job's tools.
+- #157: clear 18px gap between answer paragraphs and after lists. #158: only the answer scrolls (not the page); the job
+  picker is gone, company and title are plain text.
+- #159: code questions (SQL, Python, DAX, Excel) show the final code first in one <pre> (lib CODE_RULE), then one
+  "How to say it"; code is never underlined as impressive words.
+- #160: an xHire Assist answer (voice or screenshot) reaches the note: question kept under New questions, Assist's answer in
+  History, the note writes its own study note. noteCallContext gives every note writer the same call history the live
+  answers use (prior calls' saved memory, this call's notes, newest talk, "what they care about"); study notes also see the
+  last shared screens + Assist answers. Overlay unchanged.
+- #161: Write all answers batches like the bank's Generate All: 5 per request, short answers in ONE writer call per shape
+  (route /api/note/generate-batch); detailed and study answers one call each. Fixed test/answer-shape.js (broken since #135).
+- #162: Calls tab folds too-short calls (< 8 lines, no notes) under "Show N short calls".
+- Proven: live-e2e 21/21 (real speech), unit tests all pass, scratchpad page tests (assist-note-check 8/8, canvas-assist-ui
+  4/4, batch-write-check 8/8, batch-five-check 4/4, short-calls-ui 7/7, code-answer-check 14/14). Rollback tags
+  known-good-pre-157 … known-good-pre-162.
+- Open: delete the test question "Standardization vs Customization" from his live note; draft his real agentic-AI Q&A bank
+  entry; check Railway logs after his next real interview.
+
 ## 25 Oct — Answer Note: per job, matching, coach, many owner asks (PRs #143–#154, all LIVE)
 - Per job (#144): answers per job except "about you" ones; job-specific questions built per job; scope button per question.
 - Sections drag as a whole; "Your questions" last above New questions (#145). People pad per job (sessions.note_people),
