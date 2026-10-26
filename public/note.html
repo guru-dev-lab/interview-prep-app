@@ -1070,7 +1070,25 @@ $('gen-all').onclick = async function () {
   if (!todo.length) { toast('Every answer is already written'); return; }
   genAll = { running: true, total: todo.length, done: 0, failed: 0, stop: false }; $('gen-all').textContent = 'Stop';
   var next = 0;
-  async function worker() { while (next < todo.length && !genAll.stop) { var it = todo[next++]; it._autoTried = true; var gg = findGroup(it.group_id); var ok = await aiChange(it, gg && gg.section === NEWQ ? 'rich' : 'regenerate', ''); /* new questions get their study note */ if (ok) genAll.done++; else genAll.failed++; $('progress').textContent = genAll.done + ' of ' + genAll.total + ' written' + (genAll.failed ? ', ' + genAll.failed + ' failed' : ''); if (genAll.failed >= 3 && !genAll.done) genAll.stop = true; } }
+  // 5 per request, like the bank's Generate All: the server writes the short ones in one call (new questions get their study note)
+  async function worker() {
+    while (next < todo.length && !genAll.stop) {
+      var chunk = todo.slice(next, next + 5); next += chunk.length;
+      chunk.forEach(function (it) { it._autoTried = true; busy[it.id] = true; }); renderList(); if (chunk.some(function (it) { return it.id === cur.iid; })) renderAnswer();
+      var r = null;
+      try { r = await api('POST', '/api/note/generate-batch', { sessionId: JOB, items: chunk.map(function (it) { var gg = findGroup(it.group_id); return { id: it.id, mode: gg && gg.section === NEWQ ? 'rich' : 'regenerate' }; }) }); } catch (e) { r = null; }
+      var back = {}; ((r && r.ok && r.json.items) || []).forEach(function (o) { back[o.id] = o; });
+      if (r && !r.ok && r.json && r.json.error) toast(r.json.error, 3500); else if (!r) toast('Could not reach the server', 3000);
+      chunk.forEach(function (it) {
+        delete busy[it.id]; var o = back[it.id];
+        if (o && !o.error) { delete it._conflict; lsDel(draftKey(it.id)); Object.assign(it, o); genAll.done++; } else genAll.failed++;
+        if (cur.iid === it.id) renderAnswer(true);
+      });
+      renderList(); if (cur.gid) renderWays();
+      $('progress').textContent = genAll.done + ' of ' + genAll.total + ' written' + (genAll.failed ? ', ' + genAll.failed + ' failed' : '');
+      if (genAll.failed >= 3 && !genAll.done) genAll.stop = true;
+    }
+  }
   await Promise.all([worker(), worker()]);
   var msg = genAll.stop ? 'Stopped at ' + genAll.done + ' of ' + genAll.total : 'Done: ' + genAll.done + ' answers written' + (genAll.failed ? ', ' + genAll.failed + ' failed' : '');
   genAll.running = false; $('gen-all').textContent = 'Write all answers'; $('progress').textContent = ''; toast(msg, 3500);
