@@ -8,3 +8,4 @@ ruvector.db
 agentdb.rvf
 agentdb.rvf.lock
 electron/dist/
+test/stress/last-run.json
