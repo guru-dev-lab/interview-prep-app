@@ -88,6 +88,9 @@ body.dark .sec .cnt.done{color:#10301e}
 .row.active{background:var(--sel);border-color:var(--sel-line)}
 .row.flash{animation:flash 1.4s ease}
 .row.heard-row{box-shadow:inset 3px 0 0 var(--accent);background:var(--key)}
+/* the last 1-2 questions asked before this one (owner 27 Oct: "incase i need to manualy jump back"), fading over 3 min */
+.row.prev-row{box-shadow:inset 3px 0 0 rgba(224,168,0,var(--pa,1));background:rgba(224,168,0,calc(var(--pa,1) * .10))}
+.row.prev-row .title:after{content:"previous";margin-left:6px;font-size:10.5px;font-weight:700;color:#5a4300;background:rgba(224,168,0,.22);border-radius:6px;padding:1px 5px;vertical-align:1px;opacity:var(--pa,1)}
 /* live marks on the answer (display only, never saved): the line to read now, and lines he has already said */
 #editor [data-hot]{background:var(--accent-bg);color:#2a1f00;border-radius:6px;box-shadow:0 0 0 4px var(--accent-bg);transition:background .2s}
 #editor [data-said]{opacity:.42}
@@ -672,7 +675,7 @@ function renderList() {
   var gs = visibleGroups();
   if (!gs.length) { host.innerHTML = '<div class="empty">' + (filter ? 'Nothing matches "' + esc(filter) + '".' : 'No questions yet. Add one below.') + '</div>'; return; }
   screenOrder(gs).forEach(function (sec) {
-    var closed = sec.name !== openSec && sec.name !== heardSec && !filter;
+    var closed = sec.name !== openSec && sec.name !== heardSec && !filter && !sec.groups.some(function (g) { return prevAlpha(g.id) > 0; });
     var ready = sec.groups.filter(function (g) { return rowStatus(g).cls === 'done'; }).length;
     var h = document.createElement('div'); h.className = 'sec' + (closed ? ' closed' : ''); h.title = (closed ? 'Open this section' : 'Fold this section') + (sec.name !== 'Pinned' && !filter ? '. Drag to move it.' : '');
     sectionDrop(h, sec.name);
@@ -683,6 +686,7 @@ function renderList() {
     sec.groups.forEach(function (sg) {
       var g = findGroup(sg.id); var st = rowStatus(g);
       var el = document.createElement('div'); el.className = 'row' + (g.id === cur.gid ? ' active' : '') + (g.id === heardGid ? ' heard-row' : ''); el.dataset.gid = g.id;
+      var pa = g.id !== heardGid && g.id !== cur.gid ? prevAlpha(g.id) : 0; if (pa > 0) { el.classList.add('prev-row'); el.style.setProperty('--pa', pa.toFixed(2)); }
       el.innerHTML = '<span class="dot" style="' + (g.color ? 'background:' + g.color : '') + '"></span>'
         + '<div class="rt"><div class="title">' + esc(g.name) + (ASKED[g.id] ? '<span class="askd" title="Asked in ' + ASKED[g.id] + ' of your calls">asked ' + ASKED[g.id] + '\u00d7</span>' : '') + '</div>' + (fullQ(g) && fullQ(g) !== g.name ? '<div class="full">' + esc(fullQ(g)) + '</div>' : '') + '</div>'
         + (g.pinned ? '<span class="pin" title="Pinned">&#9733;</span>' : '')
@@ -811,7 +815,8 @@ function renderAnswer(force) {
   $('q').textContent = it.question;
   renderWays();
   var ed = $('editor'), kp = $('key');
-  var shown = it._partial || it.answer_html || ''; ed.classList.toggle('streaming', !!it._partial);
+  // Owner 27 Oct: "ONE LINE TAKEAWAY is not needed.. i want to read from the header" (notes written before keep the label: hidden)
+  var shown = String(it._partial || it.answer_html || '').replace(/(<(?:b|strong)>)\s*One-line takeaway:\s*/i, '$1'); ed.classList.toggle('streaming', !!it._partial);
   if (force || document.activeElement !== ed) { if (ed.innerHTML !== shown) ed.innerHTML = shown; }
   if (force || document.activeElement !== kp) { if (kp.textContent !== (it.key_points || '')) kp.textContent = it.key_points || ''; }
   ed.classList.toggle('busy', !!busy[it.id]);
@@ -826,6 +831,7 @@ function renderAnswer(force) {
 
 // ===== selection =====
 function select(gid, iid, opts) {
+  if (opts && opts.fromList) dropPrev(gid); // he went back to it: the mark has done its job
   if (view !== 'questions') setView('questions', true);
   flushEditor();
   var changed = cur.iid !== (iid || null);
@@ -1055,7 +1061,7 @@ async function generateStream(it, body) {
 }
 function showPartial(it) {
   var ed = $('editor'); if (document.activeElement === ed) return;
-  ed.innerHTML = it._partial; ed.classList.add('streaming');
+  ed.innerHTML = String(it._partial).replace(/(<(?:b|strong)>)\s*One-line takeaway:\s*/i, '$1'); ed.classList.add('streaming');
 }
 async function aiChange(it, mode, instruction) {
   if (busy[it.id]) return;
@@ -1418,7 +1424,19 @@ function showHeard(text, gid, itemId, label) {
   var ob = $('heard-open'); if (ob) ob.onclick = function () { select(gid, itemId, { flash: true }); $('heard').classList.remove('open'); };
   $('heard').classList.add('open'); clearTimeout(onHeard.t); onHeard.t = setTimeout(function () { $('heard').classList.remove('open'); }, 20000);
 }
-function setHeard(gid) { heardGid = gid; heardSec = gid && findGroup(gid) ? secOf(findGroup(gid)) : null; renderList(); } // its section opens on the left so the mark shows; the answer on screen stays
+// The last 1-2 questions asked before this one stay marked on the left for a quick jump back; the mark fades over 3 minutes
+// and goes once he opens it (owner 27 Oct).
+var PREV_MS = 180000, prevAsked = [], prevTimer = null;
+function prevAlpha(gid) { for (var i = 0; i < prevAsked.length; i++) if (prevAsked[i].gid === gid) { var a = 1 - (Date.now() - prevAsked[i].at) / PREV_MS; return a > 0 ? a : 0; } return 0; }
+function dropPrev(gid) { prevAsked = prevAsked.filter(function (p) { return p.gid !== gid; }); }
+function setHeard(gid) {
+  if (heardGid && gid !== heardGid) {
+    dropPrev(heardGid); prevAsked.unshift({ gid: heardGid, at: Date.now() }); prevAsked = prevAsked.slice(0, 2);
+    clearInterval(prevTimer); prevTimer = setInterval(function () { prevAsked = prevAsked.filter(function (p) { return prevAlpha(p.gid) > 0; }); if (!prevAsked.length) clearInterval(prevTimer); renderList(); }, 15000);
+  }
+  if (gid) dropPrev(gid);
+  heardGid = gid; heardSec = gid && findGroup(gid) ? secOf(findGroup(gid)) : null; renderList();
+} // its section opens on the left so the mark shows; the answer on screen stays
 // xHire tells the note twice on purpose (BroadcastChannel + a localStorage backup). Owner 24 Oct "New questions not
 // working": the second copy aborted the first check, then the server refused it as too fast, so the answer was lost.
 // Each message now counts once.
@@ -1446,6 +1464,7 @@ function onHeard(text, verdict, card) {
 var coachCtl = null, coachNow = null, coachT = null, recentQs = [], coachShown = [], themText = '', coachSaid = '', coachAdds = 0, coachLast = 0, heardAt = 0, addTimer = null;
 function onThem(text) {
   if (SOLO || !text || !firstTime('t', text)) return;
+  themLog.push({ b: bareText(text), at: Date.now() });
   themText = (themText + ' ' + text).slice(-2500); lastThemAt = Date.now();
   chatText = (chatText + ' ' + text).trim().slice(-1200); clearTimeout(chatTimer); chatTimer = setTimeout(chatCoach, CHAT_QUIET);
   if (heardText && heardText.indexOf(text.trim()) < 0) themAfter += ' ' + text;
@@ -1753,8 +1772,21 @@ function lightFlow(view, src) {
   if (last < 0) return;
   for (var j = last + 1; j < nodes.length; j++) if (!nodes[j].classList.contains('lit')) { nodes[j].classList.add('next'); break; }
 }
+// Live 27 Oct (laptop speakers): his mic also hears the interviewer, and "I'm Brian, I run the BI team" greyed his About me.
+// A mic line waits 1.5 s; if it is something they just said (their line, or the question heard), it is not his.
+var themLog = [];
+function bareText(t) { return String(t || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+function isTheirs(text) {
+  var b = bareText(text); if (b.length < 4) return false;
+  var now = Date.now(); themLog = themLog.filter(function (x) { return now - x.at < 20000; });
+  var theirs = themLog.map(function (x) { return x.b; }).concat(heardText && now - heardAt < 20000 ? [bareText(heardText)] : []);
+  return theirs.some(function (t) { return t.indexOf(b) >= 0 || (b.length > 15 && NoteMatch.dice(b, t) >= 0.6); });
+}
 function onSaid(text) { // his own words from the mic: the lines of the answer on screen he has covered fade with a tick
   if (SOLO || !follow || !N || !text || !firstTime('s', text)) return;
+  setTimeout(function () { if (!isTheirs(text)) onSaidHis(text); }, 1500);
+}
+function onSaidHis(text) {
   saidText += ' ' + text; markLines(); lastSaidAt = Date.now(); chatText = ''; clearTimeout(chatTimer); themText = ''; // what they said is kept only for their current turn (the dog from two turns ago kept coming back)
   coachOnSaid(text);
   clearTimeout(saidTimer); saidTimer = setTimeout(checkSaidByMeaning, 2200); // when he pauses

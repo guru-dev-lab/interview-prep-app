@@ -3661,7 +3661,7 @@ async function generateStudyNote(session, userId, item, onPartial) {
 ${answerNote.CODE_RULE}
 FLOW (owner: "if explain something more like process, steps, for example Fabric architecture"): whenever the answer explains a process, steps, a pipeline, a workflow or an architecture, ALWAYS draw it: "flowchart LR", short node labels (2 to 4 words), up to 10 nodes, one "subgraph" per layer when there are layers (for example Microsoft Fabric: Sources -> Data Factory pipelines -> OneLake Lakehouse -> Warehouse -> Semantic model -> Power BI reports). Plain node ids (A, B, C), labels in square brackets, no special characters inside labels. No diagram for a pure opinion or a yes/no answer.
 Layout:
-<p><b>One-line takeaway: the point to land, written as the first sentence he SAYS to start his answer (first person, natural, under 25 words; owner 27 Oct: "the header ... can be used to start").</b></p>
+<p><b>The first sentence he SAYS to start his answer: the point to land, first person, natural, under 25 words, with NO label in front of it (owner 27 Oct: "ONE LINE TAKEAWAY is not needed.. i want to read from the header").</b></p>
 For a code question, the one <pre> with the code comes here, before "How to say it".
 <h3>How to say it</h3> 3 to 5 short bullets in the first person, one sentence each (under 20 words). ${answerNote.READ_ALOUD}
 A <table> where it makes things clearer: for any "tell me about a time" or story question ALWAYS a STAR table (Situation, Task, Action, Result); steps for a process; before/after numbers; or a comparison.
@@ -3689,7 +3689,7 @@ Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`
   }
   if (!raw) raw = await callClaude(sys, user, 1800, MODEL_SONNET, { __tag: 'note-study', thinking: { type: 'disabled' } });
   const { answer, keyPoints } = answerNote.parseGenerated(String(raw || '').replace(/^\s*```(?:html)?\s*/i, '').replace(/```\s*$/m, ''));
-  const html = answerNote.sanitizeHtml(answer.replace(/```(?:html)?/gi, '').trim());
+  const html = answerNote.sanitizeHtml(answer.replace(/```(?:html)?/gi, '').trim()).replace(/(<(?:b|strong)>)\s*One-line takeaway:\s*/i, '$1');
   console.log(`[Note] study note ${Date.now() - t0}ms${onPartial ? ' first=' + first + 'ms' : ''} calls=${calls.length} table=${/<table/.test(html)} diagram=${/class="diagram"/.test(html)} code=${/<pre>/.test(html)} q="${question.slice(0, 50)}"`);
   if (!answerNote.htmlToText(html)) throw new Error('The writer gave no usable study note. Try again.');
   return { answerHtml: html, keyPoints };
@@ -5571,7 +5571,16 @@ wss.on('connection', (ws) => {
                   // Only REAL candidate speech ends the follow-up window — not the interviewer leaking into the mic. Loudness
                   // decides (bleed is quieter on the mic than in the call audio); text similarity as a backup.
                   const uLoud = userBufStartWall ? channelLoudness(userBufStartWall, userBufStartWall + 1500) : null;
-                  const isBleed = (uLoud && uLoud.c1 > uLoud.c2 * 1.2) || transcript.some(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000 &&
+                  // Live 27 Oct (speakers): the mic finishes the interviewer's line first, so it is not in the transcript yet and
+                  // "I'm Brian, I run the BI team" greyed his About me. What the call audio is hearing RIGHT NOW counts too.
+                  const ch1Now = (interviewerBuffer + ' ' + interviewerInterim).trim().toLowerCase();
+                  // a short piece ("Hey. Good morning.", "you know,") is INSIDE what the call audio heard just now
+                  const bare = x => String(x || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+                  const mine = bare(fullUtterance), ch1Recent = bare(ch1Now + ' ' + transcript.filter(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000).map(t => t.text).join(' '));
+                  // …but his own voice is far louder on his mic than its echo in the call audio (2×+); the interviewer through
+                  // the speakers is only ~1.5× there. A clearly louder mic is HIM, whatever the call audio is hearing.
+                  const hisVoice = uLoud && uLoud.c2 > uLoud.c1 * 2;
+                  const isBleed = (uLoud && uLoud.c1 > uLoud.c2 * 1.2) || (!hisVoice && mine.length >= 6 && ch1Recent.includes(mine)) || (!hisVoice && ch1Now.length > 10 && stringSimilarity.compareTwoStrings(fullUtterance.toLowerCase(), ch1Now.slice(-Math.round(fullUtterance.length * 1.5))) > 0.5) || transcript.some(t => !t.isUser && !t.isEcho && Date.now() - (t.ts || 0) < 10000 &&
                     stringSimilarity.compareTwoStrings(fullUtterance.toLowerCase(), (t.text || '').toLowerCase()) > 0.6);
                   // Owner 25 Oct: a mock video on his speakers greyed his answer lines (the mic heard the video). Bleed is judged
                   // BEFORE it goes out, and marked, so the note and the coach never take it as his words.

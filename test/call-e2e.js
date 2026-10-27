@@ -82,7 +82,8 @@ async function play(call) {
   const sess = await seed(call.id);
   const ws = new WebSocket(BASE.replace(/^http/, 'ws'));
   const got = [];
-  ws.on('message', d => { try { const m = JSON.parse(d); if (/transcript/.test(m.type)) return; m._t = Date.now(); got.push(m); } catch (e) {} });
+  const mics = []; // his mic lines as the server judged them (bleed = the interviewer heard through his mic)
+  ws.on('message', d => { try { const m = JSON.parse(d); if (m.type === 'user_transcript') { m._t = Date.now(); mics.push(m); } if (/transcript/.test(m.type)) return; m._t = Date.now(); got.push(m); } catch (e) {} });
   await new Promise((r, j) => { ws.on('open', r); ws.on('error', j); });
   ws.send(JSON.stringify({ type: 'start', token: sess.token, sessionId: sess.sessionId, mode: 'full', platform: 'electron', dualStream: true }));
   await sleep(1500);
@@ -99,7 +100,7 @@ async function play(call) {
   const wall = ms => t0 + ms; // audio time → wall clock
   for (const t of turns) { t.startT = wall(t.start); t.endT = wall(t.end); }
   for (const p of presses) p.t.pressT = p.sent;
-  return { turns, got, total };
+  return { turns, got, total, mics };
 }
 
 function score(call, { turns, got }) {
@@ -154,11 +155,18 @@ const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.mi
   console.log(`REAL CALLS: ${pick.length} continuous interview(s), ElevenLabs ${MODEL}, server ${BASE}`);
   const out = [];
   await Promise.all(pick.map(async call => { // the calls run side by side, like several users at once
-    const r = await play(call); const res = score(call, r); out.push({ call, res, mins: (r.total / 60000).toFixed(1) });
+    const r = await play(call); const res = score(call, r);
+    // the note greys the lines HE said: a mic line taken as his while only the interviewer was talking greys the wrong lines
+    const youSpans = r.turns.filter(t => t.s === 'you').map(t => [t.startT - 500, t.endT + 2500]);
+    const wrongMine = r.mics.filter(m => !m.bleed && !youSpans.some(([a, b]) => m._t >= a && m._t <= b));
+    const lostMine = r.mics.filter(m => m.bleed && youSpans.some(([a, b]) => m._t >= a + 500 && m._t <= b - 2000)); // his own words marked as the interviewer
+    out.push({ call, res, mins: (r.total / 60000).toFixed(1), wrongMine: wrongMine.map(m => m.text.slice(0, 60)), lostMine: lostMine.map(m => m.text.slice(0, 60)), micMine: r.mics.filter(m => !m.bleed).length });
   }));
   let fails = 0; const cardMs = [], sayMs = [];
   for (const { call, res, mins } of out) {
     console.log(`\n### ${call.id} — ${call.title} (${mins} min)`);
+    const o = out.find(x => x.call === call); console.log(`  mic lines taken as HIS while only the interviewer spoke: ${o.wrongMine.length}${o.wrongMine.length ? ' — "' + o.wrongMine.join('" | "') + '"' : ''}`);
+    console.log(`  his own lines taken as the interviewer: ${o.lostMine.length}${o.lostMine.length ? ' — "' + o.lostMine.join('" | "') + '"' : ''}`);
     for (const r of res) {
       if (!r.pass) fails++; if (r.ms.card != null && r.kind !== 'none') cardMs.push(r.ms.card); if (r.ms.say != null) sayMs.push(r.ms.say);
       console.log(`  ${r.pass ? 'PASS' : 'FAIL'} #${String(r.i).padStart(2)} ${r.kind.padEnd(8)} ${Object.entries(r.ms).map(([k, v]) => k + ' ' + v + 'ms').join(' ').padEnd(24)} "${r.text.slice(0, 70)}"${r.why.length ? '\n         → ' + r.why.join(' | ') : ''}`);
