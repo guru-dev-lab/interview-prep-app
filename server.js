@@ -2815,7 +2815,15 @@ function compactCall(sessionId, callId, rows, st) {
 
 // At assist time: every stored screen of this call not yet read is read ONCE (Sonnet, thinking off, 4 at a time) and
 // becomes a `seen` row. Returns how many were read.
-async function readPendingScreens(sessionId, callId) {
+// One read at a time per call (live 26 Oct: a Say and a heard question pressed together both read the same 11 screens)
+const pendingReads = new Map();
+function readPendingScreens(sessionId, callId) {
+  if (pendingReads.has(callId)) return pendingReads.get(callId);
+  const p = readPendingScreensOnce(sessionId, callId).finally(() => pendingReads.delete(callId));
+  pendingReads.set(callId, p);
+  return p;
+}
+async function readPendingScreensOnce(sessionId, callId) {
   const pend = (await pool.query('SELECT id, key, media_type, image, meta FROM call_screens WHERE call_id = $1 AND transcript IS NULL AND image IS NOT NULL ORDER BY ts ASC', [callId])).rows;
   if (!pend.length) return 0;
   const t0 = Date.now(); let done = 0;
@@ -2887,7 +2895,16 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       return res.json({ captured: true, stored: true, key: screenKey });
     }
     // ASSIST (or typed / heard question): now is when the stored pages get read — once each
-    if (historyOn) { if (await readPendingScreens(sessionId, callId)) rows = await loadCallRows(callId); }
+    // Live 26 Oct: every press waited 7–16 s here for the new screens to be read before the card even appeared ("when i
+    // click say it does nothing"). The unread screens now go into the answer itself as pictures; their text is written
+    // in the background for the call's history.
+    let unread = [];
+    if (historyOn) {
+      const pend = (await pool.query('SELECT key, media_type, image FROM call_screens WHERE call_id = $1 AND transcript IS NULL AND image IS NOT NULL ORDER BY ts DESC LIMIT 12', [callId])).rows.reverse();
+      unread = pend.map(p => ({ type: 'image', source: { type: 'base64', media_type: p.media_type || 'image/jpeg', data: p.image.toString('base64') } }));
+      if (pend.length) readPendingScreens(sessionId, callId).catch(e => console.error('[Co-pilot] background screen read failed:', e.message));
+    }
+    const unreadIntro = unread.length ? [{ type: 'text', text: `NEW SCREENS (${unread.length}, oldest first, the last is what is on screen now) — not in the screen text above yet:` }] : [];
     const isPress = !!pressed || req.body.mode === 'check' || !ask;
     const reusing = !hasImage && screenKey && rows.some(r => r.kind === 'seen' && r.meta && r.meta.key === screenKey);
     // Q&A bank = his real answers about himself; it rides with the résumé so "tell me about yourself" on a work call is true to him
@@ -2907,11 +2924,11 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       pullIdx = meetingCopilot.parseRouterPick(pick);
       console.log(`[Co-pilot] pull router in ${Date.now() - tP}ms → ${String(pick).trim().slice(0, 80)}`);
     }
-    const parts = meetingCopilot.buildCopilotBlocks({ pullIdx, mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage, seenKey: reusing ? screenKey : '' });
+    const parts = meetingCopilot.buildCopilotBlocks({ pullIdx, mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage || unread.length > 0, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
-    console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
-    const screenState = hasImage ? 'captured' : reusing ? 'same' : rows.some(r => r.kind === 'seen') ? 'last' : 'none';
+    console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${unread.length ? ' +' + unread.length + ' unread screens as pictures' : ''}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
+    const screenState = hasImage || unread.length ? 'captured' : reusing ? 'same' : rows.some(r => r.kind === 'seen') ? 'last' : 'none';
     broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, say, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
     if (mode === 'smart') console.log('[Co-pilot] screens given:', meetingCopilot.dedupeScreens(rows.filter(r => r.kind === 'seen')).map(r => (r.meta && r.meta.key || '?') + ' "' + r.text.replace(/\s+/g, ' ').slice(0, 50) + '"').join(' | ').slice(0, 1200));
 
@@ -2925,10 +2942,10 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       if (parts.stable.length) head.push({ type: 'text', text: parts.stable.join('\n\n') });
       for (const t of parts.screens) head.push({ type: 'text', text: t });
       if (head.length) head[head.length - 1].cache_control = { type: 'ephemeral' };
-      content = head.concat(hasImage ? [imgBlock] : [], [{ type: 'text', text: parts.volatile.join('\n\n') }]);
+      content = head.concat(unreadIntro, unread, hasImage ? [imgBlock] : [], [{ type: 'text', text: parts.volatile.join('\n\n') }]);
     } else {
       const textPrompt = parts.stable.concat(parts.screens, parts.volatile).join('\n\n');
-      content = hasImage ? [imgBlock, { type: 'text', text: textPrompt }] : textPrompt;
+      content = hasImage || unread.length ? unreadIntro.concat(unread, hasImage ? [imgBlock] : [], [{ type: 'text', text: textPrompt }]) : textPrompt;
     }
     const t0 = Date.now(); let first = 0;
     const answer = String(await callClaudeStream(system, content, meetingCopilot.maxTokensFor(mode, say), model, t => {
@@ -5701,7 +5718,10 @@ wss.on('connection', (ws) => {
           let fresh = interviewerLines().filter(t => (t.ts || 0) > since && substantive(t.text)).slice(-3).map(t => t.text.trim());
           if (substantive(currentBuf) && !fresh.includes(currentBuf)) fresh.push(currentBuf);
           if (!fresh.length) fresh = recentLines.filter(t => substantive(t.text)).slice(-2).map(t => t.text.trim()); // nothing new since the last ask: they may be re-asking — take the last thing said
-          const text = fresh.join(' ').slice(0, 1200);
+          // Their LAST question + what they said after it (owner, 26 Oct: "always say using last question"); the old pick
+          // (lines since the last ask) only when no question was asked in the last few minutes
+          const lastQ = meetingCopilot.sayText(interviewerLines().concat(substantive(currentBuf) ? [{ text: currentBuf, ts: Date.now() }] : []), Date.now());
+          const text = lastQ || fresh.join(' ').slice(0, 1200);
           ws._copilotAskTs = Date.now();
           console.log('[Co-pilot] Say pressed — ' + (text ? 'they just asked: "' + text.slice(0, 80) + '"' : 'nothing caught, answering the latest thing said'));
           ws.send(JSON.stringify({ type: 'copilot_say', text }));

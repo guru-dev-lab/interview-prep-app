@@ -376,3 +376,21 @@ console.log('ALL PASS (missing page is missing)');
   ok(/every question on the CURRENT screen already has an answer, show those answers again/.test(pressed) && /current screen holds NO question/.test(pressed), 'the status line is only for a screen with no question');
   console.log('ALL PASS (a press never invents)');
 }
+
+// ---- SAY = their LAST question (owner, 26 Oct: "always say using last question when i click on SAY"). Lines from the call.
+{
+  const assert = require('assert');
+  const { sayText } = require('../lib/meeting-copilot.js');
+  const T = Date.now(), L = a => a.map((t, i) => ({ text: t, ts: T - 60000 + i * 3000 }));
+  // cut into pieces, then hints after it: the question leads, the hints ride along
+  const a1 = sayText(L(['So, what would you fix', 'in in the code that you see that would', 'show the the correct answer to the question.', 'Sales amount is defined measure in the', 'in the model itself.', 'But this usually means the brackets.']), T);
+  assert(/^So, what would you fix in in the code/.test(a1) && /brackets/.test(a1), 'the question leads and what they said after it rides along: ' + a1);
+  assert.strictEqual(sayText(L(['So it is not showing what we want. Right? It\'s showing basically', 'that one of... Out of one. So how would you fix', 'that?']), T), 'So how would you fix that?', 'the last question, not a tag like "Right?"');
+  assert.strictEqual(sayText(L(['Yes. But why did you use', 'all? And maybe are there any other', 'options that you could use?']), T), 'But why did you use all? And maybe are there any other options that you could use?', 'a question asked in two parts stays whole');
+  assert.strictEqual(sayText(L(['Which is not correct. Right?', 'Mhmm.']), T), '', 'a statement and a tag are no question');
+  assert.strictEqual(sayText([{ text: 'How do you handle late data?', ts: T - 10 * 60000 }], T), '', 'a question from 10 minutes ago is not "the last question"');
+  assert(/^Tell me about a time/.test(sayText(L(['Tell me about a time you had a conflict with a stakeholder.', 'Take your time.']), T)), 'an ask without a question mark counts');
+  const two = sayText(L(['How do you model slowly changing dimensions?', 'Okay good.', 'And how would you test that pipeline?']), T);
+  assert(/^And how would you test that pipeline\?$/.test(two), 'the NEWEST question wins over an older one: ' + two);
+  console.log('ALL PASS (Say = their last question)');
+}

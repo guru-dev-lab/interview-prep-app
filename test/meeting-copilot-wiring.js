@@ -110,7 +110,7 @@ const srv = require('fs').readFileSync(require('path').join(__dirname, '..', 'se
 const sayH = srv.slice(srv.indexOf("msg.type === 'what_should_i_say'"), srv.indexOf("msg.type === 'what_should_i_say'") + 6000);
 ok(/if \(ws\._copilotMode\)/.test(sayH) && /type: 'copilot_say'/.test(sayH), 'Say in co-pilot mode routes to the co-pilot (copilot_say), never the QA jump/bank path');
 ok(/_copilotAskTs/.test(sayH) && /_copilotAskTs/.test(srv.slice(srv.indexOf('question routed to co-pilot'), srv.indexOf('question routed to co-pilot') + 400)), 'what counts as "just asked" starts after the last co-pilot ask (heard or say)');
-const ep = srv.slice(srv.indexOf("app.post('/api/sessions/:id/copilot'"), srv.indexOf("app.post('/api/sessions/:id/copilot'") + 9000);
+const ep = srv.slice(srv.indexOf("app.post('/api/sessions/:id/copilot'"), srv.indexOf("app.post('/api/sessions/:id/copilot'") + 12000);
 ok(/const say = !!req\.body\.say/.test(ep) && /say,/.test(ep.slice(ep.indexOf('buildCopilotBlocks('), ep.indexOf('buildCopilotBlocks(') + 400)), 'endpoint passes say into the prompt');
 ok(/FROM questions WHERE session_id = \$1 AND answer != ''/.test(ep) && /bank,/.test(ep.slice(ep.indexOf('buildCopilotBlocks('), ep.indexOf('buildCopilotBlocks(') + 400)), 'endpoint loads the Q&A bank and passes it to the prompt');
 ok(/maxTokensFor\(mode, say\)/.test(ep), 'say gets the larger token room in regular mode');
