@@ -82,7 +82,7 @@ function buildCall(lines) {
     const gapAfter = l.who === 'me' ? 1200 : (l.expect && l.expect !== 'none' ? 3200 : 1400); // time for the answer to show
     if (l.who === 'me') {
       ch2.push(a, silence(gapAfter));
-      ch1.push(MODE === 'echo' ? Buffer.concat([silence(200), scaled(a, 0.5)]).slice(0, len) : silence(len / 32), silence(gapAfter));
+      ch1.push(MODE === 'echo' ? Buffer.concat([silence(500), scaled(a, 0.35)]).slice(0, len) : silence(len / 32), silence(gapAfter));
     } else {
       ch1.push(a, silence(gapAfter));
       ch2.push(MODE === 'echo' ? Buffer.concat([silence(40), scaled(a, 0.35)]).slice(0, len) : silence(len / 32), silence(gapAfter));

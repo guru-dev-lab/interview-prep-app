@@ -53,8 +53,8 @@ async function scenario(name, { lines, click, waitMs = 9000, expectText }) {
     else if (typeof l === 'string') { const a = speech(l); ch1.push(a, silence(700)); ch2.push(silence(a.length / 32), silence(700)); }
     else {
       const a = speech(l.you, 'Daniel'), echo = Buffer.alloc(a.length);
-      for (let i = 0; i < a.length; i += 2) echo.writeInt16LE(Math.round(a.readInt16LE(i) * 0.5), i);
-      ch2.push(a, silence(900)); ch1.push(silence(200), echo, silence(700));
+      for (let i = 0; i < a.length; i += 2) echo.writeInt16LE(Math.round(a.readInt16LE(i) * 0.35), i);
+      ch2.push(a, silence(900)); ch1.push(silence(500), echo, silence(400)); // far-end echo: ~0.5 s late, quiet (Zoom never plays you back)
     }
   }
   ch1 = Buffer.concat([...ch1, silence(2500)]); ch2 = Buffer.concat([...ch2, silence(2500)]);

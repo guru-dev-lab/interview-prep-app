@@ -37,20 +37,21 @@ async function resolveVoices() {
   return voices;
 }
 
-const file = (slot, text) => path.join(DIR, slot + '-' + crypto.createHash('sha1').update(text).digest('hex').slice(0, 12) + '.mp3');
+const DEFAULT_MODEL = 'eleven_flash_v2_5';
+const file = (slot, text, model) => path.join(DIR, slot + (model && model !== DEFAULT_MODEL ? '-' + model : '') + '-' + crypto.createHash('sha1').update(text).digest('hex').slice(0, 12) + '.mp3');
 const decode = src => { // any audio file → 16 kHz mono PCM
   const wav = path.join(tmp, Math.random().toString(36).slice(2) + '.wav');
   execFileSync('afconvert', ['-f', 'WAVE', '-d', 'LEI16@16000', '-c', '1', src, wav]);
   const b = fs.readFileSync(wav); fs.rmSync(wav); return b.slice(b.indexOf('data') + 8);
 };
 
-async function make(slot, text) {
-  const out = file(slot, text);
+async function make(slot, text, model = DEFAULT_MODEL) {
+  const out = file(slot, text, model);
   if (fs.existsSync(out)) return { out, made: false };
   const v = (await resolveVoices())[slot];
   const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${v.id}?output_format=mp3_22050_32`, {
     method: 'POST', headers: { 'xi-api-key': key(), 'content-type': 'application/json' },
-    body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5', voice_settings: { stability: 0.45, similarity_boost: 0.75 } }),
+    body: JSON.stringify(Object.assign({ text, model_id: model }, model === DEFAULT_MODEL ? { voice_settings: { stability: 0.45, similarity_boost: 0.75 } } : {})),
   });
   if (!r.ok) throw new Error(`ElevenLabs TTS (${slot}): HTTP ${r.status} ${(await r.text()).slice(0, 160)}`);
   fs.writeFileSync(out, Buffer.from(await r.arrayBuffer()));
@@ -58,10 +59,10 @@ async function make(slot, text) {
 }
 
 const used = { eleven: 0, mac: 0 };
-async function pcm(slot, text) {
-  const saved = file(slot, text);
+async function pcm(slot, text, model = DEFAULT_MODEL) {
+  const saved = file(slot, text, model);
   if (fs.existsSync(saved)) { used.eleven++; return decode(saved); }
-  if (key()) { await make(slot, text); used.eleven++; return decode(saved); }
+  if (key()) { await make(slot, text, model); used.eleven++; return decode(saved); }
   used.mac++; // fallback: the Mac voice for this slot
   const aiff = path.join(tmp, Math.random().toString(36).slice(2) + '.aiff');
   execFileSync('say', ['-v', SLOTS[slot].mac, '-o', aiff, text]);
