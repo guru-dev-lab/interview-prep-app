@@ -3540,7 +3540,7 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
     const src = g && withAnswers.find(x => x.g.id === g.id);
     const lines = src ? answerNote.htmlToText(src.it.answer_html).split('\n') : [];
     const line = lines[(parseInt(j.line, 10) || 0) - 1] || '';
-    console.log(`[Note] heard ${Date.now() - t0}ms → ${g ? '"' + g.name + '"' + (line ? ' line ' + j.line : '') : 'not in the note'}${ov && ov.verdict ? ' (xHire: ' + ov.verdict + ')' : ''} q="${text.slice(0, 50)}"`);
+    console.log(`[Note] heard ${Date.now() - t0}ms → ${g ? '"' + g.name + '"' + (line ? ' line ' + j.line : '') : 'not in the note'}${ov && ov.verdict ? ' (xHire: ' + ov.verdict + ')' : ''} q="${text.slice(0, 50)}" | of ${groups.length}, closest by words: ${ranked.filter(Boolean).map(x => x.name).join(' / ')}`);
     res.json(g ? { groupId: g.id, itemId: (src ? src.it.id : g.items[0].id), name: g.name, line }
       : { groupId: null, title: String(j.title || '').trim().slice(0, 60), question: String(j.question || '').trim().slice(0, 300) });
   } catch (e) { res.status(500).json({ error: e.message }); }
