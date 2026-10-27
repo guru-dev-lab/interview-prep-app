@@ -610,7 +610,7 @@ function applySettings() {
   document.body.classList.toggle('noside', lsGet('xhire_note_noside') === '1');
   document.body.classList.toggle('compact', lsGet('xhire_note_compact') === '1'); $('btn-compact').classList.toggle('on', lsGet('xhire_note_compact') === '1');
   var fmtOn = lsGet('xhire_note_fmt') === '1'; $('fmt').classList.toggle('hidden', !fmtOn); $('btn-fmt').classList.toggle('on', fmtOn);
-  $('ways-head').classList.toggle('closed', lsGet('xhire_note_ways_closed') === '1');
+  $('ways-head').classList.toggle('closed', lsGet('xhire_note_ways_closed') !== '0'); // folded unless he opened it (owner 27 Oct: "still have multiple")
 }
 function saveSettings(patch) { Object.assign(N.settings, patch); queueSave('settings', async function () { var r = await api('PUT', '/api/note/settings', patch); if (!r.ok) throw new Error('settings'); }, 300); }
 // The job answers are written for (owner 24 Oct: "picking session should be latest resume"): opened on its own, the note
