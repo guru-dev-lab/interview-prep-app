@@ -47,7 +47,9 @@ const logSince = m => fs.readFileSync(LOG, 'utf8').slice(m);
   mark = fs.readFileSync(LOG, 'utf8').length;
   r = await post({ ask: 'Priya: for Chicago to Atlanta which carrier is cheapest per month after minimums and the 8% surcharge, and the cost?', pressed: true });
   check(r.status === 200 && /redline/i.test(r.j.answer || '') && /4,?860/.test(r.j.answer || ''), 'assist answers from the captured pages (Redline $4,860)', r.j.answer);
-  check(/read 2 pending screens at assist/.test(logSince(mark)), 'pending screens read at assist time, once', logSince(mark).slice(-500));
+  // since #169 the answer gets the unread pages as pictures and their text is written in the background, once
+  for (let i = 0; i < 160 && !/read 2 pending screens at assist/.test(logSince(mark)); i++) await new Promise(res => setTimeout(res, 250));
+  check(/read 2 pending screens at assist/.test(logSince(mark)), 'pending screens read in the background, once', logSince(mark).slice(-500));
   sc = await screens();
   check(sc.length === 2 && sc.every(x => x.has_text && !x.has_image), 'transcripts stored and the frames dropped the moment they were read (live keeps no images)', JSON.stringify(sc));
 

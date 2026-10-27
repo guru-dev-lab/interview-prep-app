@@ -8,6 +8,9 @@ const cases = [
   ['What tools did you use for it? And who used it every week?', true], ['Who did you build it for, and how often did they use it?', true],
   ['How do you prioritize competing deadlines?', false], ['How do you make it to work on time when plans change?', false], ['How do you handle it when you get stuck on something?', false],
   ['In Power BI, what is the difference between a calculated column and a measure?', false], ['Why are you looking to leave your current job?', false],
+  // asking for an example of what was just asked (stress bank 27 Oct: became a second card)
+  ['Just give me an example where two directors both said theirs was the most urgent.', true], ['For example, what would you check first?', true],
+  ['Give me an example of a time you failed.', false],
 ];
 (async () => { let fail = 0; for (const [q, want] of cases) { const got = await f(q, prev); if (got !== want) { fail++; console.log('FAIL', q, '→', got); } }
   console.log(fail ? `${fail} FAILED` : `ALL PASS (follow-up rules, ${cases.length} cases)`); process.exit(fail ? 1 : 0); })();

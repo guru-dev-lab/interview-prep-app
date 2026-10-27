@@ -4135,13 +4135,15 @@ async function aiCleanQuestion(rawText) {
 // Candidate talking about themselves / mid-answer — never an interview question.
 const CANDIDATE_SPEECH_RE = /^(i |i'm |i've |i'd |i'll |i was |i did |i do |i think |i would |i could |i should |i used |i built |i have |i had |i made |i learned |i managed |i led |i created |i developed |i worked |i helped |i started |i ran |i set up |i implemented |i designed |i analyzed |i handled |i owned |i drove |we |we're |we've |we had |we did |we used |we built |we were |my |at my |in my |on my |with my |during my |if i |when i |one thing |one of the things i |another thing |the way i |the reason i |what happened was |what we did |and then |so then |after that |from there |long story short |to summarize |in the end )/;
 // Interviewer asking in first person ("I'd love to hear how you…") — would otherwise look like candidate speech.
-const INTERVIEWER_ASK_RE = /\b(i('d| would) (like|love) to (know|hear|understand|learn|see)|i want(ed)? to (ask|know|hear|understand)|i'm (curious|interested|wondering)|my (next |last |final |first )?question (is|would be)|the next question is|let me ask you|can you (tell|walk|talk|share|give|explain|describe)|could you (tell|walk|talk|share|give|explain|describe))\b/;
+const INTERVIEWER_ASK_RE = /\b(i('d| would)( really| also| just)? (like|love) to (know|hear|understand|learn|see)|i( really| also| just)? want(ed)? to (ask|know|hear|understand)|i'm (curious|interested|wondering|trying to understand|keen to (hear|know|understand))|my (next |last |final |first )?question (is|would be)|the next question is|let me ask you|can you (tell|walk|talk|share|give|explain|describe)|could you (tell|walk|talk|share|give|explain|describe))\b/;
 // Leading filler/acknowledgement the interviewer says before the real question ("Okay. So…", "Great question,").
 const LEAD_FILLER_RE = /^(okay|ok|so|now|well|great question|good question|great|alright|all right|right|yeah|yes|sure|cool|awesome|perfect|good|nice|and|but|also|then|um|uh|hmm|oh|next|moving on|thanks|thank you|got it|makes sense|interesting|fair enough|sounds good|absolutely|definitely|exactly|actually|basically|just)\b[,.!:;]?\s*/;
 function stripLeadFiller(t) { let prev; do { prev = t; t = t.replace(LEAD_FILLER_RE, ''); } while (t !== prev && t); return t; }
 // A clause cut off mid-sentence ("…when it comes to Power BI, right,", "Build reports that") — Deepgram splits lines at tiny
 // pauses; the rest is still coming. Live call 21 Oct: these got answer cards before the question was asked.
 const CUT_OFF_END_RE = /(,|\b(that|how|of|and|the|to|a|an|in|on|for|with|or|but|so|like|which|what|when|where|who|why|is|are|was|were|be|about|if|because|from|as|at|by|your|my|our|their|this|these|those|i|we|you|they|it|than|then|into|do|does|did|can|could|would|will|should|have|has|had))$/;
+// "How are you?" is small talk only as the greeting — "How are you currently using AI…?" is a question (stress bank 27 Oct)
+const HOW_ARE_YOU_RE = /^how are you(?=\s*(doing|today|keeping|feeling|holding up|this (morning|afternoon|evening)|[,.!?]|$))/;
 function isQuestionClause(s) {
   s = stripLeadFiller(s.trim());
   const words = s ? s.split(/\s+/).length : 0;
@@ -4153,7 +4155,8 @@ function isQuestionClause(s) {
   // "What I did was…", "How we solved it…" — a statement, not a question
   if (/^(what|how|why|when|where|who|which) (i|we|they|he|she|it|this|that)\b/.test(s)) return false;
   // Small talk / logistics / wrap-up
-  if (/^(how are you|how's it going|how have you been|nice to meet|good to meet|good morning|good afternoon|good evening|hey |hi |hello |what time|what's your time|where are you (based|located|calling|joining)|are you (doing well|ready)|can you hear me|is (my|the) (audio|video|screen)|one (moment|second|sec)|bear with me|sorry about|apologies for|do you have any questions|any questions (for|from) (me|us)|that's (all|it|everything)|we('re| are) (running|almost)|let's (wrap|move|end)|before we (end|wrap|go))/.test(s)) return false;
+  if (HOW_ARE_YOU_RE.test(s)) return false;
+  if (/^(how's it going|how have you been|nice to meet|good to meet|good morning|good afternoon|good evening|hey |hi |hello |what time|what's your time|where are you (based|located|calling|joining)|are you (doing well|ready)|can you hear me|is (my|the) (audio|video|screen)|one (moment|second|sec)|bear with me|sorry about|apologies for|do you have any questions|any questions (for|from) (me|us)|that's (all|it|everything)|we('re| are) (running|almost)|let's (wrap|move|end)|before we (end|wrap|go))/.test(s)) return false;
   // Audio/video check-ins however they start ("…you hear me okay?" when noise ate "Can") — mock interview 26 Sep
   if (/\b(hear|see) me (okay|ok|alright|all right|fine|well|clearly)\b|\b(hear|see) me\?$/.test(s)) return false;
   // Candidate mid-answer continuation
@@ -4163,6 +4166,9 @@ function isQuestionClause(s) {
   // "…a role at Stripe. Which is a pretty cool company." — a relative clause continuing the last sentence, not a question
   if (/^which (is|was|were|are|has|have|had|means|meant|makes|made|would|will|can|could|should|sounds|looks|seems|gives|gave|lets|helps|helped|led|leads|includes|included|brings|brought|explains)\b/.test(s) && !/\?$/.test(s)) return false;
   if (/\?$/.test(s) && words >= 4) return true;
+  // A scenario set up, the ask still to come: "So imagine you join us on Monday." (stress bank 27 Oct: answered as a question)
+  const scen = s.match(/^(please )?(imagine|suppose|say you|let's say|pretend)\b(.*)$/);
+  if (scen && !/\b(what|how|why|which|would you|will you|could you|can you|do you|walk|talk|tell|explain|describe|show|give)\b/.test(scen[3])) return false;
   // Imperative interview prompts: "Please describe…", "Talk me through…", "Share an example…"
   if (/^(please |kindly )?(explain|define|describe|compare|contrast|walk (me|us) through|talk (me|us) through|talk (to (me|us) )?about|tell (me|us)|give (me|us)|share|show (me|us)|outline|discuss|elaborate|summarize|list|name|provide|imagine|suppose|say you|let's say|what if|pretend|think of|think about|how about)\b/.test(s)) return true;
   // Task requests ("Write me a quick SQL query…", "Build a measure that…", "Calculate the…") — mock interview 26 Sep
@@ -4178,6 +4184,11 @@ function isQuestion(text) {
   if (t.split(/\s+/).length < 3 || t.length < 15) return false;
   // Announcing a question that hasn't been asked yet — "I do have one question I wanted to ask you." (21 Oct)
   if (!/\?/.test(t) && /\b(ask you|for you)[.!]?$/.test(t) && /\b(question|ask)\b/.test(t)) return false;
+  // Announcing the topic, the question still to come — "Let me ask you about stakeholders." (stress bank 27 Oct: jumped
+  // to an OLD stakeholder card before the question was asked)
+  const tParts = t.split(/(?<=[.?!])\s+/);
+  if (/^(?:(?:okay|ok|so|now|alright|right|great|good)[,.]?\s+)*(let me ask you|i('d| would) like to ask you|i want(ed)? to ask you|let's talk|i want(ed)? to talk( to you)?) about\b[^.?!]*[.!]?$/.test(tParts[0].trim())
+    && !tParts.slice(1).some(x => isQuestionClause(x))) return false;
   if (/\byou(r|'re|'ve|'d)?\b/.test(t) && INTERVIEWER_ASK_RE.test(t)) return true;
   // The utterance opens as the candidate talking about themselves → not a question.
   // …unless a later sentence is a clear question TO the candidate ("I didn't catch the company names. So what companies
@@ -4206,7 +4217,8 @@ function isLowValueQuestion(text) {
   // meta / comprehension check-ins
   if (/^(does that make sense|is that clear|did that (make sense|answer|help)|any questions (so far|on that)|are you (with me|following)|makes sense\??$|got it\??$|any concerns)/.test(t)) return true;
   // rapport / small talk
-  if (/^(how are you( doing| today)?|how('s| is) (your day|it going|everything|the weather)|how has your (day|week) been|hope you('re| are) (well|doing well))/.test(t)) return true;
+  if (HOW_ARE_YOU_RE.test(t)) return true;
+  if (/^(how('s| is) (your day|it going|everything|the weather)|how has your (day|week) been|hope you('re| are) (well|doing well))/.test(t)) return true;
   // logistics / setup
   if (/^(can you (see|hear) (me|my|the)|are you able to (see|hear)|is my (screen|audio|video)|are you ready( to (start|begin))?|shall we (start|begin|get started)|ready to (start|begin|go)|do you have (your resume|a copy|everything you need)|can you give me (a|one) (second|moment))/.test(t)) return true;
   // closing / time
@@ -4441,6 +4453,9 @@ const FOLLOW_UP_SIMILARITY = 0.55;
 async function isFollowUpOf(newQ, prevQ) {
   const t = (newQ || '').trim().toLowerCase();
   if (/^(and|also|plus|what about|how about|what if)\b/.test(t)) return true; // question clean-up strips a leading And
+  // An example of what was just asked: "Right? Just give me an example where…", "For example, what…" (stress bank 27 Oct)
+  // — not a new prompt that names its own topic ("Give me an example of a time you failed").
+  if (/^((right|so|just|and|okay|now|maybe)[?,.]?\s+)*((can|could|would) you\s+)?(just\s+)?(give|share|tell|walk)\s+(me|us)\s+(an?|one)\s+((quick|real|concrete|specific)\s+)?example\b(?!\s+of\s+(a|the)\s+time\b)|^(for example|for instance)\b/.test(t)) return true;
   if (t.split(/\s+/).length <= 14 && (/\b(this|that|those|these|each|either|both)\b/.test(t) || /\b(it|them)\s*[?.!]?$/.test(t))) return true;
   // "What tools did you use for it? And who used it every week?" (22 Oct test): "it/them" pointing back, anywhere in a short ask.
   if (t.split(/\s+/).length <= 20 && /\b(for|with|on|about|in|of|from|to|into|use|used|using|build|built|do|did|run|ran|make|made|handle|handled|share|test|tested|explain)\s+(it|them)(\s*([?.!,]|$)|\s+(and|or|every|each|daily|weekly|at|in|on|with|for)\b)/.test(t)) return true; // not "handle it when…" (points forward)
@@ -5108,6 +5123,7 @@ wss.on('connection', (ws) => {
         // ONE door for an auto-detected question (both the fast route and the AI route): quality filter, continuation →
         // grow, stay-silent, de-dup, cooldown, then match/answer. Only ever called with INTERVIEWER speech.
         async function fireDetectedQuestion(q, via) {
+          q = String(q || '').replace(/^[\s?.!,;:]+/, ''); // "Right? Just give me…" with the filler stripped left "? Just…" as the title
           const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
           const growEnabled = process.env.GROW_ANSWERS !== '0';
 
