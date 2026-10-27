@@ -65,7 +65,7 @@ const logSince = mark => fs.readFileSync(LOG, 'utf8').slice(mark);
   let ch1 = [silence(500)], ch2 = [silence(500)];
   for (const l of lines) {
     if (typeof l === 'string') { const a = speech(l); ch1.push(a, silence(700)); ch2.push(silence(a.length / 32), silence(700)); }
-    else { const a = speech(l.you, 'Daniel'), echo = Buffer.alloc(a.length); for (let i = 0; i < a.length; i += 2) echo.writeInt16LE(Math.round(a.readInt16LE(i) * 0.5), i); ch2.push(a, silence(900)); ch1.push(silence(200), echo, silence(700)); }
+    else { const a = speech(l.you, 'Daniel'), echo = Buffer.alloc(a.length); for (let i = 0; i < a.length; i += 2) echo.writeInt16LE(Math.round(a.readInt16LE(i) * 0.35), i); ch2.push(a, silence(900)); ch1.push(silence(500), echo, silence(400)); }
   }
   ch1 = Buffer.concat([...ch1, silence(2500)]); ch2 = Buffer.concat([...ch2, silence(2500)]);
   const len = Math.max(ch1.length, ch2.length), pad = b => Buffer.concat([b, Buffer.alloc(len - b.length)]);

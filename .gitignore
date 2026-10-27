@@ -9,3 +9,5 @@ agentdb.rvf
 agentdb.rvf.lock
 electron/dist/
 test/stress/last-run.json
+test/stress/last-call-run.json
+test/stress/audio/calls/

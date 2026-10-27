@@ -4190,6 +4190,7 @@ function isQuestion(text) {
   if (/^(?:(?:okay|ok|so|now|alright|right|great|good)[,.]?\s+)*(let me ask you|i('d| would) like to ask you|i want(ed)? to ask you|let's talk|i want(ed)? to talk( to you)?) about\b[^.?!]*[.!]?$/.test(tParts[0].trim())
     && !tParts.slice(1).some(x => isQuestionClause(x))) return false;
   if (/\byou(r|'re|'ve|'d)?\b/.test(t) && INTERVIEWER_ASK_RE.test(t)) return true;
+  if (/\?["')\]]?$/.test(t) && INTERVIEWER_ASK_RE.test(t)) return true; // "I suppose what I really want to understand is… what then?"
   // The utterance opens as the candidate talking about themselves → not a question.
   // …unless a later sentence is a clear question TO the candidate ("I didn't catch the company names. So what companies
   // did you work for?" — interviewers open with "I…" all the time; prod 26 Sep 23:16).
@@ -5334,6 +5335,15 @@ wss.on('connection', (ws) => {
             if (!firstLine || firstLine.length < 10) return;
             // AI extraction already returns a clean question — just basic trim, skip redundant Haiku call
             const q = cleanQuestionText(firstLine);
+            // The reader looks back a few lines: after a non-question ("So imagine you join us on Monday.") it re-read the
+            // question ANSWERED just before and jumped the screen back to it (call test on speakers, 27 Oct). A question that is
+            // not in what they just said, and is one already answered, is a re-read — skip it.
+            const cw = s => new Set(String(s || '').toLowerCase().match(/[a-z0-9']{4,}/g) || []);
+            const qW = [...cw(q)], lastW = cw(lastLine.text), share = (ws2) => qW.filter(w => ws2.has(w)).length / (qW.length || 1);
+            if (qW.length && share(lastW) < 0.34 && [...recentDetectedQs, ws._lastCard && (ws._lastCard.asked || ws._lastCard.q)].filter(Boolean).some(p => share(cw(p)) >= 0.5)) {
+              console.log('[AI Auto-Detect] Re-read of a question already answered, not what they just said — skipped:', q.substring(0, 60));
+              return;
+            }
             fireDetectedQuestion(q, 'ai');
           } catch (e) {
             // Timeout or error — silent, don't block
@@ -5349,9 +5359,11 @@ wss.on('connection', (ws) => {
         const ECHO_WINDOW_MS = 6000; // Compare against user speech from last 6 seconds
         const ECHO_SIMILARITY_THRESHOLD = 0.45; // Similarity above this = echo
 
-        // Echo vs bleed cutoff, measured through Deepgram (25 Sep): your echo → mic first by 122–245 ms; interviewer
-        // bleed into mic → call audio first by 83–163 ms. Any mic lead = you. Ties go to "you" (never answer the user).
-        const ECHO_MIN_LEAD_MS = 0;
+        // Echo vs bleed. Live 27 Oct, his real setup (laptop speakers): the interviewer comes out of the speakers into the
+        // mic, the MIC hears it first (the Mac captures its own output late: mic led by 8–379 ms) and louder (1.5×) — every
+        // question was dropped as "your echo". Zoom/Teams never play his own voice back, so his voice reaches the call audio
+        // only as a far-end echo, well behind his mic. Same words = him only when the mic was clearly first.
+        const ECHO_MIN_LEAD_MS = Number(process.env.ECHO_MIN_LEAD_MS || 300); // + mic 2× louder (below): a real far-end echo is late AND quiet
         // Average loudness of each channel over [from, to] (server clock). null if either channel has no audio there.
         function channelLoudness(from, to) {
           const avg = ch => { const xs = ((ws._rms || {})[ch] || []).filter(([t]) => t >= from && t <= to).map(([, r]) => r); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; };
@@ -5371,19 +5383,22 @@ wss.on('connection', (ws) => {
               (ch1Lower.includes(u.text.toLowerCase().substring(0, Math.min(30, u.text.length))) ||
                u.text.toLowerCase().includes(ch1Lower.substring(0, Math.min(30, ch1Lower.length))));
             if (sim > ECHO_SIMILARITY_THRESHOLD || isSubstring) {
-              // Same words on both channels. LOUDNESS first: your own voice is loud on your mic and quiet as an echo in the
-              // call audio; the interviewer is loud in the call audio and quiet as bleed into your mic. A clear (1.5×)
-              // winner decides. Word timing (±50 ms) misjudged a real question as echo in the mock interview (26 Sep).
-              if (ch1StartWall) {
-                const loud = channelLoudness(ch1StartWall, ch1StartWall + 1500);
-                if (loud && loud.c1 > loud.c2 * 1.5) { console.log(`[Echo Detect] Same words, call audio ${(loud.c1 / loud.c2).toFixed(1)}× louder — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0, 40)}"`); continue; }
-                if (loud && loud.c2 > loud.c1 * 1.5) { console.log(`[Echo Detect] Ch1 matched Ch2, mic ${(loud.c2 / loud.c1).toFixed(1)}× louder — your echo: "${ch1Text.substring(0, 40)}"`); return true; }
-              }
-              // Loudness too close to call → whoever started FIRST said it; ties go to "you" (never answer the user).
-              if (ch1StartWall && u.startWall && u.startWall > ch1StartWall - ECHO_MIN_LEAD_MS) {
-                console.log(`[Echo Detect] Same words, but call audio started first (${u.startWall - ch1StartWall}ms) — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0,40)}"`);
+              // Same words on both channels. Call audio clearly louder → the interviewer leaking into the mic. Otherwise WHO
+              // STARTED decides: his echo trails his mic by a lot; the interviewer through his speakers reaches the mic at
+              // about the same moment (often a little first). Loudness alone never makes it "you" — speakers are loud.
+              const loud = ch1StartWall ? channelLoudness(ch1StartWall, ch1StartWall + 1500) : null;
+              if (loud && loud.c1 > loud.c2 * 1.5) { console.log(`[Echo Detect] Same words, call audio ${(loud.c1 / loud.c2).toFixed(1)}× louder — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0, 40)}"`); continue; }
+              if (ch1StartWall && u.startWall && ch1StartWall - u.startWall < ECHO_MIN_LEAD_MS) {
+                console.log(`[Echo Detect] Same words, mic only ${ch1StartWall - u.startWall}ms ahead — the interviewer through the speakers, NOT echo: "${ch1Text.substring(0,40)}"`);
                 continue;
               }
+              // Start times wobble up to ~1 s between the two transcripts (live 27 Oct: an interviewer line "mic led by 1129ms").
+              // His own echo is also far quieter than his mic; the interviewer through the speakers is only ~1.5× louder there.
+              if (loud && loud.c2 < loud.c1 * 2) {
+                console.log(`[Echo Detect] Same words, mic ahead but only ${(loud.c2 / loud.c1).toFixed(1)}× louder — the interviewer through the speakers, NOT echo: "${ch1Text.substring(0,40)}"`);
+                continue;
+              }
+              if (!(ch1StartWall && u.startWall) && !(loud && loud.c2 > loud.c1 * 3)) { console.log(`[Echo Detect] Same words, no timing and no clear loudness — kept as the interviewer: "${ch1Text.substring(0, 40)}"`); continue; }
               console.log(`[Echo Detect] Ch1 matched Ch2 (mic led by ${ch1StartWall && u.startWall ? (ch1StartWall - u.startWall) + 'ms' : 'n/a'}) (sim=${sim.toFixed(2)}): "${ch1Text.substring(0,40)}" ≈ "${u.text.substring(0,40)}"`);
               return true;
             }
@@ -5393,7 +5408,7 @@ wss.on('connection', (ws) => {
           // joined the user's echoed sentence onto the interviewer's next question — mock interview 26 Sep.)
           if (ch1StartWall) {
             const loud = channelLoudness(ch1StartWall, ch1StartWall + 1500);
-            if (loud && loud.c2 > 500 && loud.c2 > loud.c1 * 1.5) {
+            if (loud && loud.c2 > 500 && loud.c2 > loud.c1 * 3) { // 3×: laptop speakers into the mic alone reach 1.5× (live 27 Oct)
               console.log(`[Echo Detect] No mic words yet, mic ${(loud.c2 / loud.c1).toFixed(1)}× louder — your echo: "${ch1Text.substring(0, 40)}"`);
               return true;
             }

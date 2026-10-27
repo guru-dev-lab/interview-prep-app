@@ -88,7 +88,7 @@ async function run(sess, sc) {
       if (l.pressAt) pressByte = askStart + Math.round(a.length * l.pressAt);
       ch1.push(silence(700)); ch2.push(silence(a.length / 32 + 700));
     } else if (l.pause) { ch1.pop(); ch2.pop(); ch1.push(silence(l.pause)); ch2.push(silence(l.pause)); }
-    else if (l.you) { const a = await voice.pcm('you', l.you); ch2.push(a, silence(900)); ch1.push(silence(200), scale(a, 0.5), silence(700)); }
+    else if (l.you) { const a = await voice.pcm('you', l.you); ch2.push(a, silence(900)); ch1.push(silence(500), scale(a, 0.35), silence(400)); /* far-end echo: ~0.5 s late, quiet */ }
   }
   let c1 = Buffer.concat([...ch1, silence(2500)]), c2 = Buffer.concat(ch2);
   const len = Math.max(c1.length, c2.length);

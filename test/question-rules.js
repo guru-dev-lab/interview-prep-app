@@ -28,6 +28,8 @@ const QUESTIONS = [
   // stress bank 27 Oct: the interviewer says what they want to know, words in between, no sentence break from Deepgram
   'So I suppose what I really want to understand is when a stakeholder tells you the numbers on your dashboard are wrong what is the very first thing you do?',
   "I'm trying to understand how you would set up the refresh schedule for this",
+  // live 27 Oct (speakers run): no "you" in it, still the interviewer asking
+  'So I suppose what I really want to understand is, when the source system itself is wrong, what then?',
   "I guess what I'd really like to know is how you handle pushback from a director",
   // "how are you…" is only small talk as the greeting (stress bank 27 Oct)
   'How are you currently using AI or agentic tools in your day to day work, if at all?',
