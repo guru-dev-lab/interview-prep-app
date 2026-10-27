@@ -504,6 +504,9 @@ function visibleGroups() { return NoteMatch.sortGroups(NoteMatch.searchNote(N.gr
 function findGroup(gid) { return N.groups.find(function (g) { return g.id === gid; }); }
 function findItem(iid) { for (var i = 0; i < N.groups.length; i++) { var it = N.groups[i].items.find(function (x) { return x.id === iid; }); if (it) return it; } return null; }
 function curItem() { return cur.iid ? findItem(cur.iid) : null; }
+// Owner 27 Oct: "we have 4 types of about me.. it is redundant… waste of call to AI". The ways they ask it are phrasings
+// for matching; a question has ONE answer: the one already written, else the first way.
+function mainItem(g) { return g && (g.items.find(function (i) { return i.answer_html; }) || g.items[0]) || null; }
 function secOf(g) { return g.pinned ? 'Pinned' : (g.section || OWN); }
 function fullQ(g) { var full = findGroup(g.id) || g; return (full.items[0] && full.items[0].question) || ''; }
 // the order on screen: sections in the order they first appear, pinned on top; a folded section's rows are skipped
@@ -666,8 +669,8 @@ function rowStatus(g) {
   g = findGroup(g.id) || g;
   var done = g.items.filter(function (i) { return i.answer_html; }).length;
   if (g.items.some(function (i) { return busy[i.id]; })) return { cls: '', text: 'writing' };
-  if (g.items.length && done === g.items.length) return { cls: 'done', text: '✓' };
-  return { cls: '', text: done + '/' + g.items.length };
+  if (done) return { cls: 'done', text: '✓' }; // one answer per question (the ways are phrasings)
+  return { cls: '', text: '' };
 }
 function renderList() {
   if (view === 'calls') { renderCallList(); return; }
@@ -690,7 +693,7 @@ function renderList() {
       el.innerHTML = '<span class="dot" style="' + (g.color ? 'background:' + g.color : '') + '"></span>'
         + '<div class="rt"><div class="title">' + esc(g.name) + (ASKED[g.id] ? '<span class="askd" title="Asked in ' + ASKED[g.id] + ' of your calls">asked ' + ASKED[g.id] + '\u00d7</span>' : '') + '</div>' + (fullQ(g) && fullQ(g) !== g.name ? '<div class="full">' + esc(fullQ(g)) + '</div>' : '') + '</div>'
         + (g.pinned ? '<span class="pin" title="Pinned">&#9733;</span>' : '')
-        + '<span class="st ' + st.cls + '" title="Answers written for the ways it gets asked">' + st.text + '</span>'
+        + '<span class="st ' + st.cls + '" title="Its answer is written">' + st.text + '</span>'
         + '<button class="more" title="Rename, pin, colour, move, delete">&middot;&middot;&middot;</button>';
       el.onclick = function (e) { if (e.target.closest('.more,input')) return; select(g.id, (g.items[0] || {}).id || null, { fromList: true }); };
       el.ondblclick = function (e) { if (!e.target.closest('.more,input')) renameGroup(g, el); };
@@ -781,10 +784,11 @@ $('people-text').onkeydown = function (e) { e.stopPropagation(); }; // typing he
 function renderWays() {
   var host = $('ways'); host.innerHTML = '';
   var g = cur.gid && findGroup(cur.gid); if (!g) return;
+  var main = mainItem(g), picked = cur.way && g.items.some(function (i) { return i.id === cur.way; }) ? cur.way : cur.iid;
   g.items.forEach(function (it, idx) {
-    var el = document.createElement('div'); el.className = 'way' + (it.id === cur.iid ? ' active' : ''); el.dataset.iid = it.id;
+    var el = document.createElement('div'); el.className = 'way' + (it.id === picked ? ' active' : ''); el.dataset.iid = it.id;
     el.title = idx === 0 ? 'The question as usually asked (1)' : 'Another way they ask it (' + (idx + 1) + ')';
-    el.innerHTML = '<span class="wn">' + (idx + 1) + '</span><span class="wq">' + esc(it.question) + '</span><span class="wst' + (busy[it.id] ? ' busy' : (it.answer_html ? ' done' : '')) + '"></span>'
+    el.innerHTML = '<span class="wn">' + (idx + 1) + '</span><span class="wq">' + esc(it.question) + '</span>' + (it === main ? '<span class="wst' + (busy[it.id] ? ' busy' : (it.answer_html ? ' done' : '')) + '"></span>' : '')
       + '<span class="wctl"><button data-act="edit" title="Change the wording">&#9998;</button>' + (idx > 0 ? '<button data-act="left" title="Move left">&larr;</button>' : '') + (idx < g.items.length - 1 ? '<button data-act="right" title="Move right">&rarr;</button>' : '') + (g.items.length > 1 ? '<button data-act="del" title="Remove this way">&times;</button>' : '') + '</span>';
     el.onclick = function (e) { if (e.target.closest('.wctl,textarea')) return; select(g.id, it.id); };
     el.ondblclick = function (e) { if (!e.target.closest('.wctl,textarea')) wayAction(g, it, 'edit', el); };
@@ -834,6 +838,8 @@ function select(gid, iid, opts) {
   if (opts && opts.fromList) dropPrev(gid); // he went back to it: the mark has done its job
   if (view !== 'questions') setView('questions', true);
   flushEditor();
+  var g0 = findGroup(gid), main0 = mainItem(g0); cur.way = iid || null; // the way picked is only highlighted
+  if (main0) iid = main0.id;
   var changed = cur.iid !== (iid || null);
   cur.gid = gid; cur.iid = iid || null;
   if (iid && !SOLO) lsSet('xhire_note_last', iid);
@@ -848,7 +854,7 @@ function select(gid, iid, opts) {
   else if (it && !it.answer_html && !busy[it.id] && !it._autoTried && N.settings.autoGenerate !== false && !(genAll && genAll.running)) { it._autoTried = true; aiChange(it, 'regenerate', ''); } // written the first time it is opened
   if (opts && opts.flash) {
     if (ge) ge.classList.add('flash');
-    var te = document.querySelector('.way[data-iid="' + iid + '"]'); if (te) te.classList.add('flash');
+    var te = document.querySelector('.way[data-iid="' + (cur.way || iid) + '"]'); if (te) te.classList.add('flash');
   }
 }
 function moveSel(dg, di) {
@@ -856,7 +862,7 @@ function moveSel(dg, di) {
   var gi = gs.findIndex(function (g) { return g.id === cur.gid; });
   if (dg) { gi = gi < 0 ? 0 : (gi + dg + gs.length) % gs.length; var g = gs[gi]; select(g.id, (g.items[0] || {}).id || null); return; }
   var g2 = findGroup(cur.gid); if (!g2 || !g2.items.length) return;
-  var ii = Math.max(0, g2.items.findIndex(function (i) { return i.id === cur.iid; }));
+  var ii = Math.max(0, g2.items.findIndex(function (i) { return i.id === (cur.way || cur.iid); }));
   ii = (ii + di + g2.items.length) % g2.items.length; select(g2.id, g2.items[ii].id);
 }
 
@@ -1105,7 +1111,7 @@ $('btn-hist').onclick = function () {
 // Write all: every empty answer, two at a time, progress in the top bar, stoppable. Never re-writes an answer.
 $('gen-all').onclick = async function () {
   if (genAll && genAll.running) { genAll.stop = true; $('gen-all').textContent = 'Stopping'; return; }
-  var todo = []; groupsSorted().forEach(function (g) { g.items.forEach(function (it) { if (!it.answer_html && !busy[it.id]) todo.push(it); }); });
+  var todo = []; groupsSorted().forEach(function (g) { var m = mainItem(g); if (m && !m.answer_html && !g.items.some(function (i) { return busy[i.id]; })) todo.push(m); }); // one per question
   if (!todo.length) { toast('Every answer is already written'); return; }
   genAll = { running: true, total: todo.length, done: 0, failed: 0, stop: false }; $('gen-all').textContent = 'Stop';
   var next = 0;
@@ -1609,7 +1615,7 @@ var aiSaid = {}, saidTimer = null, saidSent = 0;
 // a job he has not opened), auto-writing on, written once.
 function writeHeard(gid, iid) { // true when it is being written
   var g = findGroup(gid); if (!g || !$('job').value || N.settings.autoGenerate === false || (genAll && genAll.running)) return false;
-  var it = g.items.find(function (i) { return i.id === iid; }) || g.items[0];
+  var it = mainItem(g); // the question's one answer, whichever way they asked it
   if (!it || it.answer_html || busy[it.id] || it._autoTried) return false;
   it._autoTried = true; aiChange(it, g.section === NEWQ ? 'rich' : 'regenerate', ''); return true;
 }
