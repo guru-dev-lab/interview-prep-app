@@ -1569,7 +1569,11 @@ function coachOnSaid(text) {
 var heardPending = false; // the question was cut off before its ask was clear: checked again when they stop talking
 // On unless he turns it off (owner 26 Oct: "SET IT TO DEFAULT"). A new name, so a choice made back when it started off does not keep it off.
 function autoOpen() { return !N || N.settings.autoOpen !== false; }
-function typingInNote() { var a = document.activeElement; return !!a && (/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) || !!(a.closest && a.closest('#editor'))); }
+// Typing = a key pressed in the answer or a box in the last 10 s, not just the cursor sitting there (owner 27 Oct: "clicking
+// on a card, lock it in and wont let it switch automatically by itself again").
+var lastTypeAt = 0;
+['keydown', 'input'].forEach(function (ev) { document.addEventListener(ev, function (e) { var t = e.target; if (t && (/^(TEXTAREA|INPUT|SELECT)$/.test(t.tagName) || (t.closest && t.closest('#editor')))) lastTypeAt = Date.now(); }, true); });
+function typingInNote() { var a = document.activeElement; return !!a && (/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) || !!(a.closest && a.closest('#editor'))) && Date.now() - lastTypeAt < 10000; }
 function smartHeard(text, key, whole, retried) { // ~1 s later: which question it really is + the line to read. The newest question wins. key = the question it belongs to; whole = the rest of it is in
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
   var ctl = heardCtl = (window.AbortController ? new AbortController() : null); key = key || text;
