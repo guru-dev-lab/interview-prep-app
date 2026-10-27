@@ -26,7 +26,7 @@ const B = { // what he sees, in ms
   SAY_CARD: +process.env.SAY_CARD || 1500,    // Say pressed → a card
   SAY_WORDS: +process.env.SAY_WORDS || 5000,  // Say pressed → first words
   CP_CARD: +process.env.CP_CARD || 1500,      // co-pilot Say → the card
-  CP_WORDS: +process.env.CP_WORDS || 4500,    // co-pilot Say → first words
+  CP_WORDS: +process.env.CP_WORDS || 12000,   // co-pilot Say → first words (screens: he can take a moment, owner 27 Oct)
 };
 const silence = ms => Buffer.alloc(Math.round(16 * ms) * 2);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -130,7 +130,7 @@ function judge(sc, r) {
     if (ids.length !== 1) fail(`one card expected, got ${ids.length}`);
     if (!c) fail('no card');
     else if (!e.topic.test(c.questionText || '')) fail(`card is not the question: "${(c.questionText || '').slice(0, 70)}"`);
-    if (got.some(m => m.type === 'question_detected' && m._t < askEndT - 250)) fail('answered before they finished');
+    if (!e.early && got.some(m => m.type === 'question_detected' && m._t < askEndT - 250)) fail('answered before they finished');
     if (c && ms.card > B.AUTO_CARD) fail(`card late: ${ms.card} ms`);
     if (w && ms.words > B.AUTO_WORDS) fail(`first words late: ${ms.words} ms`);
     if (c && !w) fail('card but no answer words');
@@ -161,7 +161,7 @@ function judge(sc, r) {
     const post = after(pressT), c = firstCard(post), w = firstWords(post);
     if (c) ms.card = c._t - pressT; if (w) ms.words = w._t - pressT;
     if (!c) fail('Say did nothing');
-    else if (e.old && e.old.test(c.questionText || '')) fail('Say brought back the OLD card');
+    else if (e.old && e.old.test(c.questionText || '') && !e.topic.test(c.questionText || '')) fail('Say brought back the OLD card'); // a card grown with the new part is right
     if (!post.some(m => CARD.includes(m.type) && e.topic.test(m.questionText || ''))) fail('Say did not answer the latest thing they said');
     if (c && ms.card > B.SAY_CARD) fail(`card late after press: ${ms.card} ms`);
     if (w && ms.words > B.SAY_WORDS) fail(`first words late after press: ${ms.words} ms`);

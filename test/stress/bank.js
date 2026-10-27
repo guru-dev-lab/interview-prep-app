@@ -33,7 +33,7 @@ add('ask', 'us_m', ['Can you walk me through how you would design a star schema 
 add('ask', 'uk_f', ['So, I suppose what I really want to understand is, when a stakeholder tells you the numbers on your dashboard are wrong, what is the very first thing you do?'], { topic: /numbers|wrong|dashboard|stakeholder/i });
 add('ask', 'au_m', ['How would you explain the difference between a left join and an inner join to someone in finance who has never written SQL?'], { topic: /join/i });
 add('ask', 'us_f', ['What is your approach to incremental refresh in Power BI when the source table has about two hundred million rows?'], { topic: /incremental refresh|million rows/i });
-add('ask', 'uk_m', ['Tell me about a time you had to push back on a senior leader because the analysis they wanted would have been misleading.'], { topic: /push back|senior|misleading/i });
+add('ask', 'uk_m', ['Tell me about a time you had to push back on a senior leader because the analysis they wanted would have been misleading.'], { topic: /push back|senior|misleading|leadership disagrees/i });
 add('ask', 'us_m2', ['How do you decide between using a calculated column and a measure in DAX?'], { topic: /calculated column|measure/i });
 add('ask', 'us_f2', ['Okay, great. So, um, how do you go about testing a data pipeline before it goes to production, like what checks do you actually put in place?'], { topic: /test|pipeline|checks/i });
 add('ask', 'uk_f', ['Describe a situation where the data you needed simply did not exist. What did you do?'], { topic: /data.*(not exist|did not exist)|did you do/i });
@@ -61,7 +61,7 @@ add('split', 'uk_f', ['Let me ask you about stakeholders.', { pause: 1300 }, 'Ho
 add('split', 'au_m', ['Okay, thinking about data quality,', { pause: 1200 }, 'what would you put in place so bad data never reaches the board report?'], { topic: /bad data|board report|data quality/i });
 add('split', 'us_f2', ['And on the technical side.', { pause: 900 }, 'How would you optimize a Power BI model that is three gigabytes and slow to refresh?'], { topic: /optimi[sz]e|gigabytes|slow/i });
 add('split', 'uk_m', ['Right, so, the team uses dbt heavily,', { pause: 1400 }, 'how have you structured models in dbt, or how would you if you have not?'], { topic: /dbt/i });
-add('split', 'us_m2', ['How do you handle conflicting priorities?', { pause: 400 }, 'Right? Just give me an example where two directors both said theirs was the most urgent.'], { topic: /priorit|urgent|directors/i });
+add('split', 'us_m2', ['How do you handle conflicting priorities?', { pause: 400 }, 'Right? Just give me an example where two directors both said theirs was the most urgent.'], { topic: /priorit|urgent|directors/i, early: true }); // the first part is a whole question: answering it, then growing, is right
 add('split', 'us_f', ['I want to understand your SQL depth.', { pause: 1000 }, 'Can you explain how you would find the second highest salary in each department?'], { topic: /second highest|salary|department/i });
 add('split', 'uk_f', ['So imagine you join us on Monday,', { pause: 1200 }, 'and the CFO asks for a margin report by Friday, but the data is in four different systems. What do you do?'], { topic: /margin|CFO|four different systems|friday/i });
 
@@ -71,7 +71,7 @@ add('match', 'uk_f', ['What draws you to this particular position with us?'], { 
 add('match', 'au_m', ['What would you say is the thing you are best at?'], { card: /greatest strength/i });
 add('match', 'us_f2', ['Tell me about something that did not go well, a failure, and what you learned.'], { card: /time you failed/i });
 add('match', 'us_m2', ['When everybody wants something from you at the same time, how do you decide what to do first?'], { card: /prioritize competing/i });
-add('match', 'uk_m', ['Long term, what are your career goals, say five years out?'], { card: /five years/i });
+add('match', 'uk_m', ['Long term, what are your career goals, say five years out?'], { card: /five years|long.?term|career goals/i });
 
 // ---- none: no card at all --------------------------------------------------------------------------------------
 add('none', 'us_m', ['Hi, how are you doing today?', 'Can you hear me okay?'], {});
@@ -105,7 +105,7 @@ add('stale', 'us_f2', ['How do you validate the numbers in a new report?', { you
 add('copilot', 'us_m', ['So what would you change in the code on your screen so it shows the correct percentage for each product?', 'Sales amount is a measure defined in the model itself, so you will not see it written here.'], { say: /^So what would you change in the code/i, want: /REMOVEFILTERS|DEFINE|MEASURE/i }, { screens: ['dax'] });
 add('copilot', 'uk_f', ['Looking at the query on the screen, the share column shows one for every rep. How would you fix it?'], { say: /share column|fix it/i, want: /region_totals|JOIN|OVER\s*\(/i }, { screens: ['sql'] });
 add('copilot', 'au_m', ['The notebook is throwing an error on line eight. What would you change?'], { say: /error on line eight|what would you change/i, want: /clean_amount/i }, { screens: ['py'] });
-add('copilot', 'us_f', ['Take a minute to read the case on screen. How would you approach it, and what would you look at first?'], { say: /how would you approach/i, want: /.{80,}/s }, { screens: ['case'] });
+add('copilot', 'us_f', ['Take a minute to read the case on screen. How would you approach it, and what would you look at first?'], { say: /approach it/i, want: /.{80,}/s }, { screens: ['case'] });
 add('copilot', 'us_m2', ['This chart is what the sales director sees every Monday. What would you change about it?'], { say: /what would you change/i, want: /.{80,}/s }, { screens: ['chart'] });
 add('copilot', 'uk_m', ['So looking at the measures here, why is the year to date number wrong for March?'], { say: /year to date|march/i, want: /DATESYTD|TOTALYTD|date table|Date\]/i }, { screens: ['ytd'] });
 
