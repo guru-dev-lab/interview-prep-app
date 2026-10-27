@@ -3531,7 +3531,7 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
     const onScreen = cur ? `QUESTION ON SCREEN: ${groups.indexOf(cur) + 1}\n` : '';
     const ovLine = !ov || !ov.verdict ? '' : ov.verdict === 'match'
       ? `XHIRE'S LIVE SCREEN matched it to its prepared question: "${ov.card}". Pick the numbered question that asks that same thing.\n`
-      : `XHIRE'S LIVE SCREEN made a NEW card for it ("${ov.card}"): it is not the question on screen and not a related one. Pick a numbered question only if it asks exactly this; else 0.\n`;
+      : ''; // xHire had no prepared card: its list is not his note (he prepares in the note), so the note decides alone (live replay 27 Oct: the strict hint skipped his "Agentic AI at work")
     // Owner 24 Oct live: the same question went to "Prioritizing" once and to New questions the next time. A matcher must
     // give the same answer every time, so no sampling randomness here (and in the form picker).
     const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}${ovLine}INTERVIEWER: ${text}\n\nJSON:`, 120, HEARD_MODEL, Object.assign({ __tag: 'note-heard' }, HEARD_MODEL === MODEL_HAIKU ? { temperature: 0 } : { thinking: { type: 'disabled' } }));
