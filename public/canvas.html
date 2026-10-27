@@ -994,10 +994,20 @@ function tellAnswerNoteAssist(ask, answer) {
   try { new BroadcastChannel('xhire-note').postMessage(m); } catch (e) {}
   try { localStorage.setItem('xhire_note_assist', JSON.stringify(Object.assign({ ts: Date.now() }, m))); } catch (e) {}
 }
-function tellAnswerNote(text) {
+function tellAnswerNote(text, verdict, card) {
   if (!text) return;
-  try { new BroadcastChannel('xhire-note').postMessage({ type: 'question', text: text }); } catch (e) {}
-  try { localStorage.setItem('xhire_note_q', JSON.stringify({ text: text, ts: Date.now() })); } catch (e) {}
+  var m = { type: 'question', text: text, verdict: verdict || '', card: card || '' };
+  try { new BroadcastChannel('xhire-note').postMessage(m); } catch (e) {}
+  try { localStorage.setItem('xhire_note_q', JSON.stringify(Object.assign({ ts: Date.now() }, m))); } catch (e) {}
+}
+// Owner 27 Oct: "They should use the same question.. when i click SAY, they should both see it as question to answer".
+// A heard question waits for this overlay's own card (up to 1.2 s) and goes to the note WITH it: the note opens the same
+// question (prepared match or new), not a second guess of its own. A Say press that jumps to a card tells the note too.
+var noteQ = null;
+function noteHeard(text) { if (!text) return; if (noteQ) noteVerdict(); noteQ = { text: text, t: setTimeout(function () { noteVerdict(); }, 1200) }; }
+function noteVerdict(verdict, card, pressed) {
+  if (noteQ) { clearTimeout(noteQ.t); var q = noteQ; noteQ = null; tellAnswerNote(q.text, verdict, card); }
+  else if (pressed && card) tellAnswerNote(card, verdict, card);
 }
 
 // Show Electron-only buttons (quit, go live, stealth)
@@ -1371,6 +1381,7 @@ function connect() {
 
     if (msg.type === 'match') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
+      noteVerdict('match', msg.questionText, msg.navigate);
       // Check for existing similar card to avoid duplicates
       var existMatch = null;
       for (var mi = 0; mi < cards.length; mi++) {
@@ -1395,6 +1406,7 @@ function connect() {
     }
     else if (msg.type === 'new_question') {
       var scroll = pendingManualScroll; pendingManualScroll = false;
+      noteVerdict('new', msg.questionText, msg.navigate);
       // Check for existing similar card to avoid duplicates
       var existNew = null;
       for (var ni = 0; ni < cards.length; ni++) {
@@ -1488,7 +1500,7 @@ function connect() {
       var btn = $('btn-wsay');
       btn.style.borderColor = '#34D399';
       setTimeout(function() { btn.style.borderColor = ''; }, 1000);
-      tellAnswerNote(msg.text); // the Answer Note window (if open) jumps to the closest prepared answer
+      noteHeard(msg.text); // the Answer Note window (if open) opens the same question as this overlay's card
       // Co-pilot mode: the server routed this question here (no Q&A card) — answer it with the shared screen
       if (copilotActive && msg.text) copilotSend({ ask: msg.text });
     }

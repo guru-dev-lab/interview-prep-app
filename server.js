@@ -3504,7 +3504,18 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
     const note = await loadNote(req.userId);
     const groups = (await noteTree(note, await noteSes(req))).groups.filter(g => g.items.length); // only this job's questions and answers
     if (!groups.length) return res.json({ groupId: null });
-    const ranked = NoteMatchShared.rank(groups, text, 3).map(r => groups.find(g => g.id === r.groupId));
+    // Owner 27 Oct: "They should use the same question". xHire's own card for it comes along: a prepared match the note
+    // holds too opens at once; otherwise it steers the pick (a NEW card = not the related question on screen).
+    const ov = req.body?.overlay && typeof req.body.overlay === 'object' ? { verdict: String(req.body.overlay.verdict || ''), card: String(req.body.overlay.card || '').slice(0, 300) } : null;
+    if (ov && ov.verdict === 'match' && ov.card) {
+      const same = groups.find(g => g.items.some(i => NoteMatchShared.score(ov.card, i.question || '') >= NoteMatchShared.SAME_QUESTION));
+      if (same) {
+        const it = same.items.find(i => i.answer_html) || same.items[0];
+        console.log(`[Note] heard → "${same.name}" (same as xHire's card) q="${text.slice(0, 50)}"`);
+        return res.json({ groupId: same.id, itemId: it.id, name: same.name, line: '' });
+      }
+    }
+    const ranked = NoteMatchShared.rank(groups, ov && ov.card ? ov.card + ' ' + text : text, 3).map(r => groups.find(g => g.id === r.groupId));
     const cur = groups.find(g => g.id === req.body?.currentGroupId);
     const withAnswers = [...new Set([cur, ...ranked].filter(Boolean))].map(g => ({ g, it: g.items.find(i => i.answer_html) })).filter(x => x.it).slice(0, 4);
     const list = groups.map((g, i) => `${i + 1}. ${g.items[0].question}`).join('\n');
@@ -3518,15 +3529,18 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
     ];
     const t0 = Date.now();
     const onScreen = cur ? `QUESTION ON SCREEN: ${groups.indexOf(cur) + 1}\n` : '';
+    const ovLine = !ov || !ov.verdict ? '' : ov.verdict === 'match'
+      ? `XHIRE'S LIVE SCREEN matched it to its prepared question: "${ov.card}". Pick the numbered question that asks that same thing.\n`
+      : `XHIRE'S LIVE SCREEN made a NEW card for it ("${ov.card}"): it is not the question on screen and not a related one. Pick a numbered question only if it asks exactly this; else 0.\n`;
     // Owner 24 Oct live: the same question went to "Prioritizing" once and to New questions the next time. A matcher must
     // give the same answer every time, so no sampling randomness here (and in the form picker).
-    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}INTERVIEWER: ${text}\n\nJSON:`, 120, HEARD_MODEL, Object.assign({ __tag: 'note-heard' }, HEARD_MODEL === MODEL_HAIKU ? { temperature: 0 } : { thinking: { type: 'disabled' } }));
+    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}${ovLine}INTERVIEWER: ${text}\n\nJSON:`, 120, HEARD_MODEL, Object.assign({ __tag: 'note-heard' }, HEARD_MODEL === MODEL_HAIKU ? { temperature: 0 } : { thinking: { type: 'disabled' } }));
     let j = {}; try { j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch (e) {}
     const g = groups[(parseInt(j.q, 10) || 0) - 1] || null;
     const src = g && withAnswers.find(x => x.g.id === g.id);
     const lines = src ? answerNote.htmlToText(src.it.answer_html).split('\n') : [];
     const line = lines[(parseInt(j.line, 10) || 0) - 1] || '';
-    console.log(`[Note] heard ${Date.now() - t0}ms → ${g ? '"' + g.name + '"' + (line ? ' line ' + j.line : '') : 'not in the note'} q="${text.slice(0, 50)}"`);
+    console.log(`[Note] heard ${Date.now() - t0}ms → ${g ? '"' + g.name + '"' + (line ? ' line ' + j.line : '') : 'not in the note'}${ov && ov.verdict ? ' (xHire: ' + ov.verdict + ')' : ''} q="${text.slice(0, 50)}"`);
     res.json(g ? { groupId: g.id, itemId: (src ? src.it.id : g.items[0].id), name: g.name, line }
       : { groupId: null, title: String(j.title || '').trim().slice(0, 60), question: String(j.question || '').trim().slice(0, 300) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3647,7 +3661,7 @@ async function generateStudyNote(session, userId, item, onPartial) {
 ${answerNote.CODE_RULE}
 FLOW (owner: "if explain something more like process, steps, for example Fabric architecture"): whenever the answer explains a process, steps, a pipeline, a workflow or an architecture, ALWAYS draw it: "flowchart LR", short node labels (2 to 4 words), up to 10 nodes, one "subgraph" per layer when there are layers (for example Microsoft Fabric: Sources -> Data Factory pipelines -> OneLake Lakehouse -> Warehouse -> Semantic model -> Power BI reports). Plain node ids (A, B, C), labels in square brackets, no special characters inside labels. No diagram for a pure opinion or a yes/no answer.
 Layout:
-<p><b>One-line takeaway: the point to land.</b></p>
+<p><b>One-line takeaway: the point to land, written as the first sentence he SAYS to start his answer (first person, natural, under 25 words; owner 27 Oct: "the header ... can be used to start").</b></p>
 For a code question, the one <pre> with the code comes here, before "How to say it".
 <h3>How to say it</h3> 3 to 5 short bullets in the first person, one sentence each (under 20 words). ${answerNote.READ_ALOUD}
 A <table> where it makes things clearer: for any "tell me about a time" or story question ALWAYS a STAR table (Situation, Task, Action, Result); steps for a process; before/after numbers; or a comparison.
