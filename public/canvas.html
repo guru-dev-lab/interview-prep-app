@@ -950,7 +950,7 @@ if (window.electronAPI) { var _bn = document.getElementById('btn-note'); if (_bn
 function openAnswerNote() {
   var url = location.origin + '/note?embed=1&token=' + encodeURIComponent(TOKEN) + (SESSION_ID ? '&session=' + encodeURIComponent(SESSION_ID) : '');
   if (!window.electronAPI) { window.open(url.replace('embed=1&', ''), 'xhire-note'); return; }
-  if (window.electronAPI.openNote) { window.electronAPI.openNote(url.replace('embed=1&', '') + '&win=1'); return; } // 1.1.7+: its own protected window, separate from this overlay
+  if (window.electronAPI.openNote) { try { localStorage.setItem('xhire_note_want', '1'); } catch (e) {} window.electronAPI.openNote(url.replace('embed=1&', '') + '&win=1'); return; } // 1.1.7+: its own protected window, separate from this overlay
   var p = document.getElementById('note-panel');
   if (p) { closeAnswerNote(); return; } // the toolbar button toggles it
   var tb = document.querySelector('.toolbar'); var top = tb ? Math.round(tb.getBoundingClientRect().bottom) + 4 : 44;
@@ -960,6 +960,19 @@ function openAnswerNote() {
   document.body.appendChild(p);
 }
 function closeAnswerNote() { var p = document.getElementById('note-panel'); if (p) p.remove(); }
+// Live 26 Oct: the app was restarted mid-interview (the interviewer asked) and the note window never came back, so the
+// note heard nothing for the whole coding round. Open at the end → opens again with the call. He closed it himself
+// (this overlay still running a few seconds later, no note reopened) → stays closed.
+if (window.electronAPI && window.electronAPI.openNote) {
+  window.addEventListener('storage', function (e) {
+    if (e.key !== 'xhire_note_closed_at') return;
+    var closedAt = +e.newValue || 0;
+    setTimeout(function () { var openAt = 0; try { openAt = +localStorage.getItem('xhire_note_open_at') || 0; } catch (x) {}
+      if (openAt < closedAt) try { localStorage.setItem('xhire_note_want', '0'); } catch (x) {} }, 3000);
+  });
+  var _wantNote = '0'; try { _wantNote = localStorage.getItem('xhire_note_want') || '0'; } catch (e) {}
+  if (_wantNote === '1' && TOKEN) setTimeout(function () { console.log('[Note] reopening the note: it was open when the app last closed'); openAnswerNote(); }, 1200);
+}
 // Every detected interviewer question goes to the note window too (same origin: BroadcastChannel, localStorage as the
 // fallback). Fire-and-forget; the live pipeline never waits on it.
 function tellAnswerNoteSaid(text) { // what HE said (his mic): the note ticks off the lines he has covered

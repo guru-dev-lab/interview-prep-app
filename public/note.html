@@ -425,6 +425,10 @@ var JOB = SESSION_PARAM;                           // the job whose answers are 
 var EMBED = params.get('embed') === '1';
 var WIN = params.get('win') === '1' && !!window.electronAPI; // its own protected window (desktop app 1.1.7+), apart from xHire
 var DESKTOP = !EMBED && !WIN && !!window.electronAPI;      // older desktop app: inside the xHire window
+if (WIN) { // the overlay reopens the note after an app restart unless he closed it himself (canvas.html)
+  try { localStorage.setItem('xhire_note_open_at', String(Date.now())); } catch (e) {}
+  window.addEventListener('pagehide', function () { try { localStorage.setItem('xhire_note_closed_at', String(Date.now())); } catch (e) {} });
+}
 var CAN_POP = !EMBED && !window.electronAPI;                // a new window is only fine in a browser
 // Glass: only in the note's own desktop window (1.1.10+). The window type is fixed when a window opens, so turning it
 // on or off saves everything first, then the app reopens the note as the other type in the same place.
