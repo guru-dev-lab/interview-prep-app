@@ -1424,8 +1424,10 @@ function setHeard(gid) { heardGid = gid; heardSec = gid && findGroup(gid) ? secO
 // Each message now counts once.
 var seenIn = {};
 function firstTime(kind, text) { var k = kind + '|' + text, now = Date.now(); if (seenIn[k] && now - seenIn[k] < 8000) return false; seenIn[k] = now; return true; }
-function onHeard(text) {
+var heardOverlay = null; // xHire's own card for this question: { verdict: 'match'|'new', card }
+function onHeard(text, verdict, card) {
   if (SOLO || !follow || !N || !text || !firstTime('q', text)) return;
+  heardOverlay = verdict ? { verdict: verdict, card: card || '' } : null;
   heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; heardPending = false; chatText = ''; clearTimeout(chatTimer); chatKey = null; // a question wins over chat // a new question: ticks start over
   // Owner 25 Oct (screenshots): the instant guess by wording named the wrong card ("could you tell me a little" -> Start
   // date, "an example of that?" -> Great teamwork). Nothing is named or marked until the smart match (~0.8 s) says so.
@@ -1546,7 +1548,7 @@ function typingInNote() { var a = document.activeElement; return !!a && (/^(TEXT
 function smartHeard(text, key, whole, retried) { // ~1 s later: which question it really is + the line to read. The newest question wins. key = the question it belongs to; whole = the rest of it is in
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
   var ctl = heardCtl = (window.AbortController ? new AbortController() : null); key = key || text;
-  fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, currentGroupId: cur.gid, sessionId: JOB }), signal: ctl ? ctl.signal : undefined })
+  fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, overlay: key === text ? heardOverlay : null, currentGroupId: cur.gid, sessionId: JOB }), signal: ctl ? ctl.signal : undefined })
     .then(function (r) { if (r.status === 429 && !retried) { setTimeout(function () { if (key === heardText) smartHeard(text, key, whole, true); }, 750); return null; } return r.ok ? r.json() : null; }) // two checks too close together: the second was dropped (live 26 Oct)
     .then(function (j) {
       if (!j || key !== heardText) return; // a newer question came in meanwhile
@@ -1698,6 +1700,22 @@ function flowView(src) {
   });
   return wrap;
 }
+// A plain chain of steps (A → B → C, no layers, no branches) stays as the compact row of boxes, left to right and wrapping
+// (owner 27 Oct: the tall picture "is too busy… let it be horizon since there is no details around it").
+function linearChain(src) {
+  var out = {}, inn = {}, n = 0, bad = false;
+  String(src || '').split(/\n|;/).forEach(function (raw) {
+    var l = raw.trim(); if (!l || /^(flowchart|graph)\b/i.test(l) || /^(classDef|class|style|linkStyle|%%)/.test(l)) return;
+    if (/^subgraph\b|^end$/i.test(l)) { bad = true; return; }
+    var parts = l.split(/\s*(?:-->|---|-\.->|==>)(?:\|[^|]*\|)?\s*/); if (parts.length < 2) return;
+    var ids = parts.map(function (p) { var m = p.match(/^([A-Za-z0-9_]+)/); return m && m[1]; });
+    for (var i = 1; i < ids.length; i++) { if (!ids[i - 1] || !ids[i]) { bad = true; continue; } out[ids[i - 1]] = (out[ids[i - 1]] || 0) + 1; inn[ids[i]] = (inn[ids[i]] || 0) + 1; n++; }
+  });
+  if (bad || !n) return false;
+  for (var a in out) if (out[a] > 1) return false;
+  for (var b in inn) if (inn[b] > 1) return false;
+  return true;
+}
 var svgCache = {}; // diagram text -> drawn picture, so the live marks (every few words he says) never redraw or flicker
 function drawDiagrams() {
   var pres = ed.querySelectorAll('pre.diagram'); if (!pres.length || document.activeElement === ed) return;
@@ -1705,11 +1723,12 @@ function drawDiagrams() {
   var fit = Math.round(ed.clientWidth / 100); // pictures are kept per window width: a resize may need the other direction
   pres.forEach(function (p, i) {
     var src = p.textContent, key = src + '|' + fit, view = document.createElement('div'); view.className = 'dview'; view.contentEditable = 'false';
-    if (svgCache[key]) view.innerHTML = svgCache[key];
+    var chain = linearChain(src);
+    if (svgCache[key] && !chain) view.innerHTML = svgCache[key];
     else { var quick = flowView(src); if (quick) view.appendChild(quick); else { p.classList.add('norender'); return; } }
     p.parentNode.insertBefore(view, p.nextSibling);
     lightFlow(view, src);
-    if (svgCache[key] || mermaidState !== 'ready') return; // the steps show now; the full picture comes in when markLines runs after it loads
+    if (chain || svgCache[key] || mermaidState !== 'ready') return; // a chain stays as its row; else the full picture comes in when markLines runs after it loads
     var id = 'dg' + Date.now() + i;
     // A left-to-right flow wider than the answer shrinks to unreadable text (owner's screen, 24 Oct: 8 px boxes): it is
     // drawn top to bottom instead, so the boxes stay full size. Display only; the saved text keeps its own direction.
@@ -1788,11 +1807,11 @@ function markLines() { // display only: the line to read (data-hot), lines alrea
 ed.addEventListener('focus', function () { clearMarks(ed); });
 ed.addEventListener('blur', function () { markLines(); });
 $('heard-x').onclick = function () { $('heard').classList.remove('open'); };
-try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text); else if (e.data.type === 'said') onSaid(e.data.text); else if (e.data.type === 'live') onLive(e.data.question, e.data.answer); else if (e.data.type === 'them') onThem(e.data.text); else if (e.data.type === 'assist') onAssist(e.data.ask, e.data.answer); }; } catch (e) {}
+try { var bc = new BroadcastChannel('xhire-note'); bc.onmessage = function (e) { if (!e.data) return; if (e.data.type === 'question') onHeard(e.data.text, e.data.verdict, e.data.card); else if (e.data.type === 'said') onSaid(e.data.text); else if (e.data.type === 'live') onLive(e.data.question, e.data.answer); else if (e.data.type === 'them') onThem(e.data.text); else if (e.data.type === 'assist') onAssist(e.data.ask, e.data.answer); }; } catch (e) {}
 window.addEventListener('storage', function (e) {
   if (e.key === 'xhire_note_assist' && e.newValue) { try { var a = JSON.parse(e.newValue); if (Date.now() - (a.ts || 0) < 15000) onAssist(a.ask, a.answer); } catch (_) {} }
   if (e.key === 'xhire_note_them' && e.newValue) { try { var t = JSON.parse(e.newValue); if (Date.now() - (t.ts || 0) < 15000) onThem(t.text); } catch (_) {} }
-  if ((e.key === 'xhire_note_q' || e.key === 'xhire_note_said') && e.newValue) { try { var d = JSON.parse(e.newValue); if (Date.now() - (d.ts || 0) < 15000) (e.key === 'xhire_note_q' ? onHeard : onSaid)(d.text); } catch (_) {} }
+  if ((e.key === 'xhire_note_q' || e.key === 'xhire_note_said') && e.newValue) { try { var d = JSON.parse(e.newValue); if (Date.now() - (d.ts || 0) < 15000) (e.key === 'xhire_note_q' ? onHeard : onSaid)(d.text, d.verdict, d.card); } catch (_) {} }
 });
 
 load().catch(function (e) { console.error('[Note]', e); if (TOKEN) toast('Could not load the note: ' + e.message, 4000); });
