@@ -93,6 +93,21 @@ const CALLS = [
       { s: 'rc', t: "That's right. Great.", none: true },
     ],
   },
+  {
+    // Live 28 Oct: fast-route cards were titled with the chatter before the question ("You know, they know you know, like…",
+    // "Me today. I'm just pulling your resume up…") and the note added those lines to New questions. A card's title must
+    // START with the question itself (anchored regexes below).
+    id: 'call-chatter', title: 'Recruiter who talks before every question (headphones)',
+    echo: false, voices: { rc: 'us_f' },
+    turns: [
+      { s: 'rc', t: "Hi! Thanks for joining me today. I'm just pulling your resume up. I'm so sorry. Can you tell me how to pronounce your name?", q: /^(can you tell me )?how (do|to|would) (i |you )?pronounce/i },
+      { s: 'you', t: "Sure, it's Ridwan. Rid, like get rid of, and then wan." },
+      { s: 'rc', t: "Ridwan. Got it. Okay. So you know, they know, you know, like, they know who's requesting the trips, so that would be the other types of trips. Are you okay with the travel aspect of it?", q: /^(are )?you (okay|ok) with (the )?travel/i },
+      { s: 'you', t: "Yes, travel is fine with me. Around fifteen percent works well." },
+      { s: 'rc', t: "Perfect. And speaking of the team, I'll say they are a great group to learn from, right? What's important to you in a manager?", q: /^what('s| is) important to you (in|and) a manager/i },
+      { s: 'you', t: "Clear priorities and honest feedback. I like a manager who tells me early when something isn't landing." },
+    ],
+  },
 ];
 
 module.exports = { CALLS };
