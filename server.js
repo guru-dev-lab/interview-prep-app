@@ -4837,6 +4837,9 @@ wss.on('connection', (ws) => {
         console.log('[Audio] First Ch1 packet — opening Deepgram interviewer stream');
         ws._setupInterviewerDG();
       }
+      // Earlier-call bridges wait for a real call (live 28 Oct: the overlay sat in live mode for 2 h, reconnecting every
+      // 10 min on the idle timeout, and every reconnect paid a ~7 s Sonnet bridges run nobody used).
+      if (!ws._heardAudio) { ws._heardAudio = true; if (ws._priorMemory && !ws._bridges) refreshBridgesSoon(ws); }
       if (channel === 2 && !userDG && ws._setupUserDG) {
         console.log('[Audio] First Ch2 packet — opening Deepgram user stream');
         ws._setupUserDG();
@@ -5022,7 +5025,7 @@ wss.on('connection', (ws) => {
           return loadPriorCallsMemory(sessionId, userId, _memTid).then(m => {
             ws._priorMemory = m;
             ws._bridges = '';
-            if (m) refreshBridgesSoon(ws);
+            if (m && ws._heardAudio) refreshBridgesSoon(ws); // else: on the first audio packet
             console.log(`[Memory] Earlier calls loaded: ${m ? m.length + ' chars' : 'none'} in ${Date.now() - _memT0}ms`);
           });
         }).catch(e => console.error('[Memory] load failed:', e.message));
@@ -6183,13 +6186,13 @@ async function loadPriorCallsMemory(sessionId, userId, currentTranscriptId) {
     `SELECT id, transcript, memory, interviewer_name, interviewer_title, stage, started_at FROM live_transcripts
      WHERE session_id = $1 AND user_id = $2 AND id != $3 AND transcript IS NOT NULL ORDER BY started_at ASC`,
     [sessionId, userId, currentTranscriptId || '00000000-0000-0000-0000-000000000000']);
-  const parts = [];
+  const parts = []; let short = 0;
   for (const row of r.rows.slice(-5)) { // last 5 calls is plenty; keeps the prompt small
     let notes = row.memory;
     if (!notes) {
       const lines = transcriptLines(row.transcript);
       const labeled = labelTranscript(lines).join('\n');
-      if (labeled.replace(/\s+/g, '').length < 40) continue;
+      if (labeled.replace(/\s+/g, '').length < 40) { short++; continue; }
       try {
         notes = await digestConversation(labeled.slice(-24000));
         pool.query('UPDATE live_transcripts SET memory = $1 WHERE id = $2', [notes, row.id]).catch(e => console.error('[Memory] save failed:', e.message));
@@ -6198,6 +6201,9 @@ async function loadPriorCallsMemory(sessionId, userId, currentTranscriptId) {
     const who = [row.interviewer_name, row.interviewer_title, row.stage].filter(Boolean).join(', ');
     parts.push(`EARLIER CALL (${new Date(row.started_at).toISOString().slice(0, 10)}${who ? ' — ' + who : ''}):\n${notes}`);
   }
+  // Live 28 Oct: one session's earlier-call memory went 4572 → 2567 → 716 → none chars within an hour with no call in
+  // between — these counts tell whether calls were removed or skipped.
+  console.log(`[Memory] Earlier calls: ${r.rows.length} saved, ${parts.length} used, ${short} too short`);
   return parts.join('\n\n');
 }
 
