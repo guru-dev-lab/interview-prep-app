@@ -77,6 +77,22 @@ const CALLS = [
       { s: 'mg', t: "Okay. I think that's all from me. Thanks, this was great.", none: true },
     ],
   },
+  {
+    // Live 28 Oct (WEX recruiter, laptop speakers): he was still answering when she cut in with "Oh, absolutely…" and her
+    // 20-second turn ended on a new question. The first 1.5 s of her line had his voice loud on the mic, so the whole line
+    // was thrown away as "your echo"; two Say presses showed the old salary card.
+    id: 'call-wex', title: 'WEX-style recruiter screen — salary talk, then she cuts in over his answer with a new question (laptop speakers)',
+    echo: true, micGain: 3, voices: { rc: 'us_f' },
+    turns: [
+      { s: 'rc', t: "Perfect. And speaking of money, what's the salary range you're seeking?", q: /salary/i },
+      { s: 'you', t: "I'm looking at around eighty five to ninety thousand, depending on the full package." },
+      { s: 'rc', t: "Okay. So I'll be very upfront with you, because I never want to waste anyone's time. The range listed shows seventy one to eighty four, but what this role is budgeted for is seventy one to seventy two thousand. So we are quite a ways off. I'll share about the benefits too, medical, dental, vision. But even considering that, in all honesty, will that budget work for you?", q: /budget|work for you|salary/i },
+      { s: 'you', t: "Honestly, money matters, but it's not everything. I care about the team, the culture, and the kind of problems I'd be solving. So I'd like to keep the conversation going and hear more about the bonus and the benefits before I decide anything." },
+      { s: 'rc', gap: -2500, t: "Oh, absolutely. Absolutely. And like I said, I'll share some other information about bonus and things of that nature a little later in our conversation. But I'm glad you want to continue. So with that being said, tell me, in doing your research, what have you come to understand about us, who we are, and exactly what we do?", q: /understand|who we are|what we do|know about/i, press: 'after' },
+      { s: 'you', t: "From what I've read, you're a payments and fintech company with fleet, travel and health benefits businesses." },
+      { s: 'rc', t: "That's right. Great.", none: true },
+    ],
+  },
 ];
 
 module.exports = { CALLS };
