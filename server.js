@@ -4568,6 +4568,13 @@ async function fastMatchAndRespond(utterance, sessionQuestions, sessionId, userI
       console.log(`[TIMING] verifyMatch: ${Date.now() - tVerify}ms`);
     }
 
+    // Live 28 Oct (WEX): "What did you say you use for the ad hoc reporting?" matched the EMPTY bank row "Walk me through
+    // creating both scheduled and ad hoc reports", so he got a walkthrough of that instead of his tools, and the row was
+    // filled with it. Nothing prepared = nothing to reuse: answer what they asked, on its own card.
+    if (verified && !verified.question.answer) {
+      console.log(`[FastMatch] Closest bank question "${verified.question.text.slice(0, 50)}" has no answer yet — answering what they asked`);
+      verified = null;
+    }
     if (verified) {
       const elapsed = Date.now() - startMs;
       console.log(`[FastMatch+AI] VERIFIED in ${elapsed}ms: "${q.substring(0,40)}..." → "${verified.question.text.substring(0,40)}..." (${Math.round(verified.similarity*100)}%)`);
