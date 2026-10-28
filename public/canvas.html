@@ -1004,8 +1004,17 @@ function tellAnswerNote(text, verdict, card) {
 // A heard question waits for this overlay's own card (up to 1.2 s) and goes to the note WITH it: the note opens the same
 // question (prepared match or new), not a second guess of its own. A Say press that jumps to a card tells the note too.
 var noteQ = null;
-function noteHeard(text) { if (!text) return; if (noteQ) noteVerdict(); noteQ = { text: text, t: setTimeout(function () { noteVerdict(); }, 1200) }; }
+// A long spoken line is cleaned to its question first (server, 28 Oct), so the card's verdict can arrive BEFORE the heard
+// question: it is kept 3 s for the question it belongs to.
+var lastCardVerdict = null;
+function noteHeard(text) {
+  if (!text) return; if (noteQ) noteVerdict();
+  var lv = lastCardVerdict; lastCardVerdict = null;
+  noteQ = { text: text, t: setTimeout(function () { noteVerdict(); }, 1200) };
+  if (lv && Date.now() - lv.at < 3000) noteVerdict(lv.verdict, lv.card);
+}
 function noteVerdict(verdict, card, pressed) {
+  if (!noteQ && verdict && !pressed) lastCardVerdict = { verdict: verdict, card: card, at: Date.now() };
   if (noteQ) { clearTimeout(noteQ.t); var q = noteQ; noteQ = null; tellAnswerNote(q.text, verdict, card); }
   else if (pressed && card) tellAnswerNote(card, verdict, card);
 }
@@ -1419,11 +1428,11 @@ function connect() {
         }
       }
       if (existNew) {
-        if (msg.questionText.length > existNew.question.length) existNew.question = msg.questionText;
+        if (!existNew.titleClean && msg.questionText.length > existNew.question.length) existNew.question = msg.questionText;
         var nel = document.getElementById('card-' + existNew.id);
         if (nel) {
           var nqEl = nel.querySelector('.sc-q-text');
-          if (nqEl && msg.questionText.length > nqEl.textContent.length) nqEl.textContent = msg.questionText;
+          if (nqEl && !existNew.titleClean && msg.questionText.length > nqEl.textContent.length) nqEl.textContent = msg.questionText;
           var ntEl = nel.querySelector('.card-time');
           if (ntEl) ntEl.textContent = 'Updated';
           if (scroll && !userScrolledUp) setTimeout(function() { revealAnswer(nel); }, 100);
@@ -1451,13 +1460,13 @@ function connect() {
       if (existingCard) {
         // Update existing card with better answer
         existingCard.answer = msg.answer;
-        if (msg.questionText.length > existingCard.question.length) existingCard.question = msg.questionText;
+        if (!existingCard.titleClean && msg.questionText.length > existingCard.question.length) existingCard.question = msg.questionText;
         var el = document.getElementById('card-' + existingCard.id);
         if (el) {
           var aEl = el.querySelector('.sc-card-a');
           if (aEl) aEl.innerHTML = formatAnswer(msg.answer);
           var qEl = el.querySelector('.sc-q-text');
-          if (qEl && msg.questionText.length > qEl.textContent.length) qEl.textContent = msg.questionText;
+          if (qEl && !existingCard.titleClean && msg.questionText.length > qEl.textContent.length) qEl.textContent = msg.questionText;
           var timeEl = el.querySelector('.card-time');
           if (timeEl) timeEl.textContent = 'Updated';
           if (!userScrolledUp) setTimeout(function() { revealAnswer(el); }, 100);
@@ -1493,6 +1502,16 @@ function connect() {
       } else {
         // No card yet (delta arrived before new_question) — create one
         addCard(msg.questionId, msg.questionText, dbuf, 'new', 0, true, false);
+      }
+    }
+    else if (msg.type === 'question_title') {
+      // The spoken line was cleaned to the question itself: that is the card's title from now on (a longer copy of the
+      // spoken line must not put the chatter back).
+      var tc = cards.find(function (x) { return x.id === msg.questionId; });
+      if (tc && msg.questionText) {
+        tc.question = msg.questionText; tc.titleClean = true;
+        var tel = document.getElementById('card-' + tc.id), tq = tel && tel.querySelector('.sc-q-text');
+        if (tq) tq.textContent = msg.questionText;
       }
     }
     else if (msg.type === 'question_detected') {

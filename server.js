@@ -4124,7 +4124,7 @@ function questionPartOf(text) {
 }
 
 // AI-powered question cleanup — Haiku extracts JUST the clean question from messy speech
-async function aiCleanQuestion(rawText) {
+async function aiCleanQuestion(rawText, timeoutMs = 1500) {
   try {
     const cleaned = await Promise.race([
       callClaude(
@@ -4132,7 +4132,7 @@ async function aiCleanQuestion(rawText) {
         'Clean this: ' + rawText,
         80, MODEL_HAIKU
       ),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
     ]);
     const result = cleaned.trim().replace(/^["']|["']$/g, '');
     // Sanity check: AI result should be shorter or similar length, and not empty
@@ -5047,6 +5047,7 @@ wss.on('connection', (ws) => {
         const USER_SPEECH_GUARD = 2000; // 2s after user stops speaking before allowing detection
         let lastCommitTs = 0; // last time an interviewer utterance was committed (paces eager detection)
         let ch1BufStartWall = null; // server time the current interviewer utterance started (shared clock)
+        const LINE_MAX_MS = Number(process.env.LINE_MAX_MS || 25000); // longest interviewer line before it is committed anyway
         let lastInterviewerCommit = null; // { text, ts } — to re-join a question split across two commits
         let pendingFastTimer = null, pendingFastQ = null, pendingSince = 0; // a cut-off question waits for its continuation
         ws._questionPending = () => !!(pendingFastQ || aiExtractTimer); // Say: a heard question not answered yet belongs to the press
@@ -5069,6 +5070,22 @@ wss.on('connection', (ws) => {
 
         // Re-answer a card for its full question: prepared bank answer when one matches, else a fresh answer — same card id.
         // The rest of the question after a mid-question Say press: grow that card (lines on screen stay; 1–2 added).
+        // The clean question replaces a fast card's spoken title (card, DB row, the answer being written, every client).
+        // The card may still be on its way (matching takes ~0.1–0.7 s): look again for up to 3 s.
+        function retitleCard(rawQ, clean, tries) {
+          const lc = ws._lastCard;
+          if (!lc || lc.asked !== rawQ) { if (tries < 12 && (!lc || Date.now() - lc.ts < 3000 || lc.asked !== clean)) setTimeout(() => retitleCard(rawQ, clean, tries + 1), 250); return; }
+          lc.asked = clean;
+          if (!lc.isBank) {
+            lc.q = clean; (ws._cleanTitles = ws._cleanTitles || {})[lc.id] = clean;
+            const sq = sessionQuestions.find(x => x.id === lc.id); if (sq) sq.text = clean;
+            if (ws._activeAnswer && ws._activeAnswer.id === lc.id) ws._activeAnswer.questionText = clean;
+            pool.query('UPDATE questions SET text = $1 WHERE id = $2', [clean, lc.id]).catch(e => console.error('[Fast] title update failed:', e.message));
+            const m = { type: 'question_title', questionId: lc.id, questionText: clean };
+            ws.send(JSON.stringify(m)); broadcastToSession(sessionId, m, ws);
+          }
+        }
+
         function growSayCard(fullQ) {
           const lc = ws._lastCard; if (!lc) return;
           const before = String(lc.asked || lc.q).toLowerCase();
@@ -5252,9 +5269,24 @@ wss.on('connection', (ws) => {
           logEvent('detect', { sessionId, q: q.substring(0, 60) });
           lastWsayMatchId = null;
           recentMatchedIds.clear();
-          var qdMsg1 = { type: 'question_detected', text: q, source: 'auto' };
-          ws.send(JSON.stringify(qdMsg1));
-          broadcastToSession(sessionId, qdMsg1, ws);
+          const tellHeard = text => { const m = { type: 'question_detected', text, source: 'auto' }; ws.send(JSON.stringify(m)); broadcastToSession(sessionId, m, ws); };
+          // Live 28 Oct: fast-route cards were titled with the talk before the question ("You know, they know you know,
+          // like…", "Me today. I'm just pulling your resume up…") and the note added those lines to New questions. The card
+          // still fires at once on the line as heard (waiting for the cleanup let a Say press slip in and change the route —
+          // call-2 test); more than one sentence or a long line → Haiku keeps only the question (~0.5 s) and that becomes the
+          // card's title and what the note hears.
+          if (via === 'fast' && (q.split(/(?<=[.?!])\s+/).length > 1 || q.split(/\s+/).length > 16)) {
+            const rawQ = q, t0 = Date.now();
+            aiCleanQuestion(rawQ, 1500).then(c => {
+              c = String(c || '').trim();
+              const ok = c && c !== rawQ && isQuestion(c);
+              tellHeard(ok ? c : rawQ);
+              if (!ok) return;
+              console.log(`[Fast] Question cleaned in ${Date.now() - t0}ms: "${rawQ.slice(0, 50)}" → "${c.slice(0, 80)}"`);
+              const i = recentDetectedQs.indexOf(rawQ); if (i >= 0) recentDetectedQs[i] = c;
+              retitleCard(rawQ, c, 0);
+            });
+          } else tellHeard(q);
           const rebuildIdx = () => { questionIndex = buildQuestionIndex(sessionQuestions); };
           // Bridges refresh ONCE per detected question — it used to re-run after every sentence (either side), resending
           // the resume + whole conversation each time; that was the biggest live cost (owner, 26 Sep: "don't burn my money").
@@ -5518,6 +5550,15 @@ wss.on('connection', (ws) => {
                   interviewerBuffer = '';
                   const st = ch1BufStartWall; ch1BufStartWall = null;
                   commitInterviewer(fu, true, st);
+                } else if (ch1BufStartWall && Date.now() - ch1BufStartWall > LINE_MAX_MS && /[.?!]["')\]]?\s*$/.test(text.trim())) {
+                  // Live 28 Oct (WEX): Deepgram sent no pause for 4 min 23 s, so one "line" held the whole stretch and the
+                  // question picker found "Provide a tidbit…" from 4 minutes earlier when she finally asked "what questions
+                  // do you have?". A line that runs past LINE_MAX_MS is committed at its next finished sentence, as a pause would.
+                  lastCommitTs = Date.now();
+                  const fu = interviewerBuffer.trim();
+                  interviewerBuffer = '';
+                  const st = ch1BufStartWall; ch1BufStartWall = null;
+                  commitInterviewer(fu, false, st);
                 }
               } else {
                 interviewerInterim = text.trim();
@@ -6911,7 +6952,8 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     }
 
     // Mark this as the active answer thread so continued interviewer detail grows THIS answer.
-    ws._activeAnswer = { id: questionId, questionText, answer, _grows: 0, _prepped: !!opts.bankAnswer, shape };
+    const shownQ = (ws._cleanTitles && ws._cleanTitles[questionId]) || questionText; // the cleaned title, if it came while writing
+    ws._activeAnswer = { id: questionId, questionText: shownQ, answer, _grows: 0, _prepped: !!opts.bankAnswer, shape };
     // A follow-up arrived while this answer was still coming in → grow it now (append-only).
     if (ws._pendingGrow && ws._pendingGrow.id === questionId) {
       const pg = ws._pendingGrow; ws._pendingGrow = null;
@@ -6923,7 +6965,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     const liveAnswerMsg = {
       type: 'live_answer',
       questionId: questionId || ('temp-' + Date.now()),
-      questionText,
+      questionText: shownQ,
       answer,
       isNew: true,
       navigate: !!forceNavigate
