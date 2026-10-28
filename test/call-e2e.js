@@ -59,7 +59,7 @@ async function build(call) {
   // late) — live log 27 Oct: mic led by 8–379 ms, mic 1.5× louder. Zoom never plays his own voice back: his turns are mic only.
   const speakers = !!opt('speakers');
   for (const t of turns) {
-    if (t.s === 'you') { mix(ch2, t.pcm, t.start); if (call.echo && !speakers) mix(ch1, t.pcm, t.start + 500, 0.35); /* far-end echo: ~0.5 s late, quiet */ }
+    if (t.s === 'you') { mix(ch2, t.pcm, t.start, call.micGain || 1); /* micGain: his mouth is close to the mic, far louder than the speakers */ if (call.echo && !speakers) mix(ch1, t.pcm, t.start + 500, 0.35); /* far-end echo: ~0.5 s late, quiet */ }
     else if (speakers) { mix(ch2, t.pcm, t.start, 1.5); mix(ch1, t.pcm, t.start + 50 + (t.i * 97) % 300); }
     else mix(ch1, t.pcm, t.start);
   }

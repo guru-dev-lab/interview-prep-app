@@ -5387,6 +5387,7 @@ wss.on('connection', (ws) => {
         function isEchoOfUser(ch1Text, ch1StartWall) {
           const now = Date.now();
           const ch1Lower = ch1Text.toLowerCase().trim();
+          let heardViaSpeakers = false; // the same words on his mic were judged the interviewer through his speakers
           // Check against recent user utterances
           for (let i = recentUserUtterances.length - 1; i >= 0; i--) {
             const u = recentUserUtterances[i];
@@ -5401,18 +5402,18 @@ wss.on('connection', (ws) => {
               // STARTED decides: his echo trails his mic by a lot; the interviewer through his speakers reaches the mic at
               // about the same moment (often a little first). Loudness alone never makes it "you" — speakers are loud.
               const loud = ch1StartWall ? channelLoudness(ch1StartWall, ch1StartWall + 1500) : null;
-              if (loud && loud.c1 > loud.c2 * 1.5) { console.log(`[Echo Detect] Same words, call audio ${(loud.c1 / loud.c2).toFixed(1)}× louder — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0, 40)}"`); continue; }
+              if (loud && loud.c1 > loud.c2 * 1.5) { console.log(`[Echo Detect] Same words, call audio ${(loud.c1 / loud.c2).toFixed(1)}× louder — interviewer bleed into mic, NOT echo: "${ch1Text.substring(0, 40)}"`); heardViaSpeakers = true; continue; }
               if (ch1StartWall && u.startWall && ch1StartWall - u.startWall < ECHO_MIN_LEAD_MS) {
                 console.log(`[Echo Detect] Same words, mic only ${ch1StartWall - u.startWall}ms ahead — the interviewer through the speakers, NOT echo: "${ch1Text.substring(0,40)}"`);
-                continue;
+                heardViaSpeakers = true; continue;
               }
               // Start times wobble up to ~1 s between the two transcripts (live 27 Oct: an interviewer line "mic led by 1129ms").
               // His own echo is also far quieter than his mic; the interviewer through the speakers is only ~1.5× louder there.
               if (loud && loud.c2 < loud.c1 * 2) {
                 console.log(`[Echo Detect] Same words, mic ahead but only ${(loud.c2 / loud.c1).toFixed(1)}× louder — the interviewer through the speakers, NOT echo: "${ch1Text.substring(0,40)}"`);
-                continue;
+                heardViaSpeakers = true; continue;
               }
-              if (!(ch1StartWall && u.startWall) && !(loud && loud.c2 > loud.c1 * 3)) { console.log(`[Echo Detect] Same words, no timing and no clear loudness — kept as the interviewer: "${ch1Text.substring(0, 40)}"`); continue; }
+              if (!(ch1StartWall && u.startWall) && !(loud && loud.c2 > loud.c1 * 3)) { console.log(`[Echo Detect] Same words, no timing and no clear loudness — kept as the interviewer: "${ch1Text.substring(0, 40)}"`); heardViaSpeakers = true; continue; }
               console.log(`[Echo Detect] Ch1 matched Ch2 (mic led by ${ch1StartWall && u.startWall ? (ch1StartWall - u.startWall) + 'ms' : 'n/a'}) (sim=${sim.toFixed(2)}): "${ch1Text.substring(0,40)}" ≈ "${u.text.substring(0,40)}"`);
               return true;
             }
@@ -5420,8 +5421,13 @@ wss.on('connection', (ws) => {
           // No matching mic words yet (the mic's transcript can arrive AFTER the echo does): loudness alone. If the mic was
           // clearly louder than the call audio during this line, the user was speaking — it's their echo. (A card once
           // joined the user's echoed sentence onto the interviewer's next question — mock interview 26 Sep.)
+          // Live 28 Oct (WEX, laptop speakers): he was still answering when she cut in, so the first 1.5 s of her 20 s line
+          // had his voice loud on the mic → her whole line, question included, was dropped as "your echo" (twice: the words
+          // had just been judged hers above, then this check overruled it). Now: words already judged hers stay hers, and
+          // loudness counts over the WHOLE line — his own echo is mic-loud from start to end, her line over his tail is not.
+          if (heardViaSpeakers) return false;
           if (ch1StartWall) {
-            const loud = channelLoudness(ch1StartWall, ch1StartWall + 1500);
+            const loud = channelLoudness(ch1StartWall, Math.max(ch1StartWall + 1500, now));
             if (loud && loud.c2 > 500 && loud.c2 > loud.c1 * 3) { // 3×: laptop speakers into the mic alone reach 1.5× (live 27 Oct)
               console.log(`[Echo Detect] No mic words yet, mic ${(loud.c2 / loud.c1).toFixed(1)}× louder — your echo: "${ch1Text.substring(0, 40)}"`);
               return true;
