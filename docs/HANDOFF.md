@@ -1,5 +1,27 @@
 # Handoff
 
+## 28 Oct — review of today's live calls + fixes (PRs #181–#184, all LIVE)
+- Reviewed from Railway logs (answer wording lives in the DB, not logs): owner HTI 13:29–13:56 UTC, owner WEX recruiter
+  15:33–15:58, second real user (Nestle/Mount Sinai résumé) 16:01–16:54. Pull: `railway logs --service web --since … --until …
+  --json --filter=DIAG-DG` (finals = isFinal=true lines; zsh: don't use `set -- $w`).
+- #181 echo: she cut in over the end of his answer (laptop speakers) → her whole 20 s line, question included, was dropped as
+  "your echo" (loudness checked only the first 1.5 s, and it overruled words already judged hers) → two Say presses showed the
+  old salary card. e2e `call-wex` (--speakers) FAIL → PASS.
+- #182 bridges wait for the first audio packet (idle overlay reconnected every 10 min for 2 h, each reconnect ran Sonnet
+  bridges). Log `[Memory] Earlier calls: N saved, N used, N too short` — one session's earlier-call memory went 4572 → none
+  chars with no call in between; cause NOT proven (user deleting calls?) — read that log next time.
+- #183 fast cards fire at once, then a multi-sentence/long line is cleaned by Haiku (~0.5 s) → card title, DB, live answer,
+  overlay `question_title`, and what the note hears (no more chatter in New questions). Overlay keeps a card verdict 3 s.
+  Interviewer line > 25 s (LINE_MAX_MS) commits at its next finished sentence (WEX: no Deepgram pause for 4 min 23 s → card
+  "Provide a tidbit…"). e2e `call-chatter` FAIL 3/3 → PASS. A blocking first version broke call-2 #3/#22 — don't await there.
+- #184 a match to an EMPTY bank row is no match: answered as asked on its own card, row stays empty. test/empty-bank-match.js.
+- Baselines on main (unchanged): call-1 #7 prepared card fresh; call-2 #15 miss; call-2 #3 flaky (reworded prepared Q).
+  Speakers e2e: "mic lines taken as HIS while only the interviewer spoke" 3–7 (note greying) — pre-existing.
+- OPEN (his call): note matcher sent "What would your manager say you need to work on" to New questions though "Weakness"
+  exists; small-talk cards ("Where are you in New York City?", "Did you meet with Carolina?") and their New-questions entries
+  for the second user; "Tell me a little bit more about that" makes a new card (follow-up). Branch fix/note-followup-context
+  still unmerged/untested.
+
 ## 27 Oct — full audit, speakers, note follows xHire, stress + continuous-call tests (PRs #170–#179, all LIVE)
 - He ALWAYS uses laptop speakers (no headphones). Standard test now (owner: "this is how we will always test"): continuous
   ElevenLabs v4 interviews played OUT LOUD on his Mac while he watches overlay + note, scored from Railway logs.
