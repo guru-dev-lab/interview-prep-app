@@ -3529,12 +3529,18 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
     ];
     const t0 = Date.now();
     const onScreen = cur ? `QUESTION ON SCREEN: ${groups.indexOf(cur) + 1}\n` : '';
+    // Live 27 Oct: "How do you make sure it doesn't, you know, make things up?" right after the AI question was added as a new
+    // question; "it" was the AI agent (his "Keeping agents in check"). A short line that points back (it/that/they…) reads
+    // with the question asked just before; a new question ignores it.
+    const prevQ = String(req.body?.prev || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const pointsBack = prevQ && text.split(/\s+/).length <= 22 && /\b(it|that|this|they|them|those|these|one)\b/i.test(text);
+    const prevLine = pointsBack ? `ASKED JUST BEFORE: "${prevQ}". If the line below follows up on that (its "it", "that" or "they" point back to it), read it in that light; if it is a new question, ignore this.\n` : '';
     const ovLine = !ov || !ov.verdict ? '' : ov.verdict === 'match'
       ? `XHIRE'S LIVE SCREEN matched it to its prepared question: "${ov.card}". Pick the numbered question that asks that same thing.\n`
       : ''; // xHire had no prepared card: its list is not his note (he prepares in the note), so the note decides alone (live replay 27 Oct: the strict hint skipped his "Agentic AI at work")
     // Owner 24 Oct live: the same question went to "Prioritizing" once and to New questions the next time. A matcher must
     // give the same answer every time, so no sampling randomness here (and in the form picker).
-    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}${ovLine}INTERVIEWER: ${text}\n\nJSON:`, 120, HEARD_MODEL, Object.assign({ __tag: 'note-heard' }, HEARD_MODEL === MODEL_HAIKU ? { temperature: 0 } : { thinking: { type: 'disabled' } }));
+    const raw = await callClaude(system, `${answers ? answers + '\n\n' : ''}${onScreen}${ovLine}${prevLine}INTERVIEWER: ${text}\n\nJSON:`, 120, HEARD_MODEL, Object.assign({ __tag: 'note-heard' }, HEARD_MODEL === MODEL_HAIKU ? { temperature: 0 } : { thinking: { type: 'disabled' } }));
     let j = {}; try { j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch (e) {}
     const g = groups[(parseInt(j.q, 10) || 0) - 1] || null;
     const src = g && withAnswers.find(x => x.g.id === g.id);

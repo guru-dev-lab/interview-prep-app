@@ -1448,9 +1448,10 @@ function setHeard(gid) {
 // Each message now counts once.
 var seenIn = {};
 function firstTime(kind, text) { var k = kind + '|' + text, now = Date.now(); if (seenIn[k] && now - seenIn[k] < 8000) return false; seenIn[k] = now; return true; }
-var heardOverlay = null; // xHire's own card for this question: { verdict: 'match'|'new', card }
+var heardOverlay = null, prevHeard = null; // xHire's own card for this question: { verdict: 'match'|'new', card }; the question before it
 function onHeard(text, verdict, card) {
   if (SOLO || !follow || !N || !text || !firstTime('q', text)) return;
+  prevHeard = heardText && Date.now() - heardAt < 60000 ? heardText : null; // a follow-up ("make sure IT doesn't make things up") reads with it
   heardOverlay = verdict ? { verdict: verdict, card: card || '' } : null;
   heardText = text; saidText = ''; hot = null; aiSaid = {}; saidSent = 0; heardPending = false; chatText = ''; clearTimeout(chatTimer); chatKey = null; // a question wins over chat // a new question: ticks start over
   // Owner 25 Oct (screenshots): the instant guess by wording named the wrong card ("could you tell me a little" -> Start
@@ -1577,7 +1578,7 @@ function typingInNote() { var a = document.activeElement; return !!a && (/^(TEXT
 function smartHeard(text, key, whole, retried) { // ~1 s later: which question it really is + the line to read. The newest question wins. key = the question it belongs to; whole = the rest of it is in
   if (heardCtl) try { heardCtl.abort(); } catch (e) {}
   var ctl = heardCtl = (window.AbortController ? new AbortController() : null); key = key || text;
-  fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, overlay: key === text ? heardOverlay : null, currentGroupId: cur.gid, sessionId: JOB }), signal: ctl ? ctl.signal : undefined })
+  fetch(location.origin + '/api/note/heard', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ text: text, prev: prevHeard || '', overlay: key === text ? heardOverlay : null, currentGroupId: cur.gid, sessionId: JOB }), signal: ctl ? ctl.signal : undefined })
     .then(function (r) { if (r.status === 429 && !retried) { setTimeout(function () { if (key === heardText) smartHeard(text, key, whole, true); }, 750); return null; } return r.ok ? r.json() : null; }) // two checks too close together: the second was dropped (live 26 Oct)
     .then(function (j) {
       if (!j || key !== heardText) return; // a newer question came in meanwhile
