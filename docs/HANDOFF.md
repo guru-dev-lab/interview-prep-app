@@ -1,5 +1,31 @@
 # Handoff
 
+## 27 Oct — full audit, speakers, note follows xHire, stress + continuous-call tests (PRs #170–#179, all LIVE)
+- He ALWAYS uses laptop speakers (no headphones). Standard test now (owner: "this is how we will always test"): continuous
+  ElevenLabs v4 interviews played OUT LOUD on his Mac while he watches overlay + note, scored from Railway logs.
+  Local first: `node test/call-e2e.js [--speakers]`; interviewer-only wavs are exported from test/stress/calls.js.
+- #170 question rules: "I suppose what I really want to understand…", "How are you using AI…" (HOW_ARE_YOU_RE, one rule incl.
+  Stay Silent), "Imagine you join us Monday." / "Let me ask you about X." wait for the real ask, "give me an example" joins
+  the card. #171 `npm run test:stress [-- --all]`: 64 spoken moments, 8 cached ElevenLabs voices, demo screens, timed.
+- #172 SPEAKERS: the interviewer through his speakers reaches the mic first (8–379 ms, once 1.1 s) and ~1.5× louder, so
+  questions were dropped as "your echo". Same words = him only if mic first ≥300 ms AND ≥2× louder. AI reader skips a
+  re-read of an already answered question. Speakers call test: 0/8 → 13/13 questions.
+- #173 the note follows xHire's card (overlay holds a heard question ≤1.2 s for its verdict; Say jumps tell the note);
+  a prepared match the note holds opens at once. Owner OK with the note staying on the related answer + lighting the line
+  (margin case) — do not force it away. #175: when xHire has no card, the note decides alone (he prepares in the note).
+- #174 study-note header = the sentence he says (no "One-line takeaway:"); speaker bleed never ticks his answer lines
+  (server ch1-now check + note drops mic lines that are their words); last 1–2 asked questions marked "previous" (3 min fade).
+- #176 ONE answer per note question (ways = phrasings; Write all one per question). #177 ways folded by default.
+  #178 a click no longer locks auto-switch (typing = a key in the last 10 s). #179 log: note heard shows closest 3.
+- Co-pilot with screens stays on Sonnet (owner: "it needs time to answer anyways"); the Haiku backup idea was dropped.
+- Rollback tags: known-good-pre-170 … known-good-pre-178.
+- OPEN: branch fix/note-followup-context (pushed, NOT merged, NOT tested): a pointing-back follow-up ("make sure IT doesn't
+  make things up") reads with the previous question in the note matcher — run scratch heard-followup.js / heard-ways.js /
+  note-follows.js, then ship. Card titles sometimes start with chatter ("Busy morning…", "G'day, sorry I'm late…").
+  Overlay and note sometimes use different examples. Reworded prepared questions get a fresh answer (MiniLM 0.25–0.49 <
+  0.50; loosening risks wrong-card jumps — his call). Far-end echo right before a question (their room echoes him) can
+  still drop it. other-voice e2e flaky on main (~1 in 4, mock-video only); structure e2e story 6 lines vs 3–5.
+
 ## 25 Oct (late) — Answer Note: reading, code, Assist, history, batching (PRs #156–#162, all LIVE)
 - #156: every answer explains what they asked first, then real life; AI answers use ONE job-fit automation with the job's tools.
 - #157: clear 18px gap between answer paragraphs and after lists. #158: only the answer scrolls (not the page); the job
