@@ -124,6 +124,19 @@ const CALLS = [
       { s: 'hm', t: "And how do you keep a report fast when the data grows?", q: /fast|data grows|performance/i },
     ],
   },
+  {
+    // Live test 28 Oct: SAY pressed on "Okay. One more from me." before the question; the reader made one up from older talk
+    // (an ad hoc reporting question) and the real question was grown onto that wrong card. The card must BE the question.
+    id: 'call-early-say', title: 'SAY pressed on the lead-in, before the question is asked (headphones)',
+    echo: false, voices: { rc: 'us_f' },
+    turns: [
+      { s: 'rc', t: "So you were talking about ad hoc reports earlier. What tools did you say you use for the ad hoc reporting?", q: /tools/i },
+      { s: 'you', t: "Mostly Power BI and Excel, and SQL underneath for the data pulls." },
+      { s: 'rc', t: "Great, thank you. Okay. One more from me.", press: 0.75 },
+      { s: 'rc', gap: 1300, t: "How would you handle a stakeholder who keeps changing the requirements?", q: /^(one more from me\.? )?how would you handle a stakeholder/i },
+      { s: 'you', t: "I'd write the agreed scope down and show the trade off of each change in time." },
+    ],
+  },
 ];
 
 module.exports = { CALLS };
