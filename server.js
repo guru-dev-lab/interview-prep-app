@@ -5122,6 +5122,15 @@ wss.on('connection', (ws) => {
 
         function growSayCard(fullQ) {
           const lc = ws._lastCard; if (!lc) return;
+          // Live test 28 Oct: the press's card was a guess on another topic (pressed on "Okay. One more from me.") and the
+          // question they then finished was grown onto it. Grow only when the finished question shares words with the card;
+          // a different question gets its own card.
+          const cw = t => new Set(String(t || '').toLowerCase().match(/[a-z0-9']{4,}/g) || []);
+          const qW = [...cw(fullQ)], cardW = cw(lc.asked || lc.q);
+          if (qW.length && qW.filter(w => cardW.has(w)).length < 0.3 * qW.length) {
+            console.log('[WhatShouldISay] The finished question is not the card on screen — its own card:', fullQ.substring(0, 60));
+            ws._sayTurn = null; fireDetectedQuestion(fullQ, 'held').catch(e => console.error('[WhatShouldISay]', e.message)); return;
+          }
           const before = String(lc.asked || lc.q).toLowerCase();
           // Only the tail may arrive ("…on their phones?" when the line was split) — keep the start of the question with it.
           if (!fullQ.toLowerCase().includes(before.split(/\s+/).slice(0, 4).join(' '))) fullQ = `${(lc.asked || lc.q).replace(/\?\s*$/, '')}, ${fullQ}`;
@@ -5211,7 +5220,11 @@ wss.on('connection', (ws) => {
           // SAY PRESSED MID-QUESTION (owner, 23 Oct: "they click early because they can already hear the question"): the
           // question the interviewer then finishes is the one that press is answering — the same card, grown with the rest.
           const st = ws._sayTurn;
-          if (st && !st.used && Date.now() - st.at < 20000 && !((ws._lastUserSpeechTs || 0) > st.at)) {
+          if (st && st.waiting && !st.used && Date.now() - st.at < 20000) {
+            // SAY was pressed before they reached the question (below, in the Say handler): this is it — its own card, now.
+            st.used = true; ws._sayTurn = null; via = 'held';
+            console.log('[WhatShouldISay] The question the press was waiting for is here — its own card:', q.substring(0, 60));
+          } else if (st && !st.used && Date.now() - st.at < 20000 && !((ws._lastUserSpeechTs || 0) > st.at)) {
             st.used = true;
             if (!st.done) { st.fullQ = q; console.log('[WhatShouldISay] The question they were asking is finished — the press answers it:', q.substring(0, 60)); return; }
             growSayCard(q); return;
@@ -5910,6 +5923,18 @@ wss.on('connection', (ws) => {
           rawTranscript += '\n\nRIGHT NOW (currently being spoken):\n' + currentBuf;
         }
 
+        // Live test 28 Oct: pressed on "Okay. One more from me." — no question yet, so the reader made one up from older talk
+        // ("How would you approach building ad hoc reporting…") and showed the wrong card. Still talking, and nothing said
+        // since the card asks anything → wait: the question they finish becomes this press's own card (fireDetectedQuestion).
+        const sinceText = (lc ? sinceCard.map(t => t.text) : []).concat(currentBuf ? [currentBuf] : []).join(' ').trim();
+        // Only a short lead-in waits; once they have said something real ("…the CFO asks for a margin report by Friday, but
+        // the data is in…") the read below answers where it is heading at once (owner: something to start talking on).
+        if (stillTalking && sinceText && sinceText.split(/\s+/).length <= 10 && !/\?/.test(sinceText) && !isQuestion(sinceText)) { // ("Thank you" is not a question)
+          ws._sayTurn = { at: Date.now(), waiting: true, used: false };
+          console.log('[WhatShouldISay] They are still getting to the question — waiting for it:', sinceText.slice(-60));
+          ws.send(JSON.stringify({ type: 'status', message: 'Listening for their question…' }));
+          return;
+        }
         if (!rawTranscript || rawTranscript.length < 10) {
           ws.send(JSON.stringify({ type: 'error', message: 'No speech detected yet' }));
           return;
@@ -5966,6 +5991,7 @@ wss.on('connection', (ws) => {
             const focusMsg = { type: 'match', questionId: lc.id, questionText: lc.isBank ? lc.q : (lc.asked || lc.q), answer: onScreen || '', similarity: 100, hasAnswer: !!onScreen, navigate: true };
             ws.send(JSON.stringify(focusMsg)); broadcastToSession(sessionId, focusMsg, ws);
             console.log('[WhatShouldISay] The question is the one already on screen — showing it; nothing rewritten');
+            if (ws._sayTurn && !ws._sayTurn.used) ws._sayTurn.waiting = true; // still talking: what they finish is answered, not lost
             return;
           }
         }
@@ -5975,7 +6001,7 @@ wss.on('connection', (ws) => {
           // never rewrite it. A DIFFERENT question gets its own answer below.
           const a = questionText.toLowerCase(), cands = [jumpedTo.asked, jumpedTo.q].filter(Boolean).map(x => x.toLowerCase());
           const same = cands.some(b => b.includes(a) || a.includes(b) || stringSimilarity.compareTwoStrings(a, b) >= 0.6) || await isFollowUpOf(questionText, jumpedTo.asked || jumpedTo.q);
-          if (same) { console.log('[WhatShouldISay] Confirmed — the answer on screen is for this question; nothing rewritten'); return; }
+          if (same) { console.log('[WhatShouldISay] Confirmed — the answer on screen is for this question; nothing rewritten'); if (ws._sayTurn && !ws._sayTurn.used) ws._sayTurn.waiting = true; return; }
           console.log('[WhatShouldISay] The question you heard differs from the one on screen — answering it:', questionText.substring(0, 60));
         }
         recentMatchedIds.clear();
