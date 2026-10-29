@@ -88,10 +88,12 @@ async function play(call) {
   ws.send(JSON.stringify({ type: 'start', token: sess.token, sessionId: sess.sessionId, mode: 'full', platform: 'electron', dualStream: true }));
   await sleep(1500);
   const presses = turns.filter(t => t.press != null).map(t => ({ t, at: t.press === 'after' ? t.end + 300 : t.start + (t.end - t.start) * t.press }));
+  // askThem: he clicks "Ask them" as he starts this (his) turn — the questions he asks them (owner 28 Oct)
+  for (const t of turns.filter(t => t.askThem)) presses.push({ t, at: t.start + 1500, type: 'followup_questions' });
   const t0 = Date.now();
   for (let o = 0; o < ch1.length; o += 3200) {
     const nowMs = o / 32;
-    for (const p of presses) if (!p.sent && nowMs >= p.at) { p.sent = Date.now(); got.push({ type: 'PRESS', _t: p.sent, turn: p.t.i }); ws.send(JSON.stringify({ type: 'what_should_i_say' })); }
+    for (const p of presses) if (!p.sent && nowMs >= p.at) { p.sent = Date.now(); got.push({ type: p.type ? 'ASK_THEM' : 'PRESS', _t: p.sent, turn: p.t.i }); ws.send(JSON.stringify({ type: p.type || 'what_should_i_say' })); }
     ws.send(Buffer.concat([Buffer.from([1]), ch1.slice(o, o + 3200)]));
     ws.send(Buffer.concat([Buffer.from([2]), ch2.slice(o, o + 3200)]));
     const due = t0 + (o + 3200) / 32; const wait = due - Date.now(); if (wait > 0) await sleep(wait); // real time, no drift
@@ -99,7 +101,7 @@ async function play(call) {
   ws.close();
   const wall = ms => t0 + ms; // audio time → wall clock
   for (const t of turns) { t.startT = wall(t.start); t.endT = wall(t.end); }
-  for (const p of presses) p.t.pressT = p.sent;
+  for (const p of presses) if (!p.type) p.t.pressT = p.sent;
   return { turns, got, total, mics };
 }
 

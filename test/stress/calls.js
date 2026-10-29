@@ -108,6 +108,22 @@ const CALLS = [
       { s: 'you', t: "Clear priorities and honest feedback. I like a manager who tells me early when something isn't landing." },
     ],
   },
+  {
+    // Owner 28 Oct: "Ask them" = he asks THEM a question; their answer (with its own "you know what I mean?" style
+    // questions) must not make cards until he presses SAY, which answers and turns catching back on.
+    id: 'call-askthem', title: 'He asks them a question; they explain at length; then a real question with SAY (headphones)',
+    echo: false, voices: { hm: 'us_m' },
+    turns: [
+      { s: 'hm', t: "So that's the role in a nutshell. What questions do you have for me?", q: /questions/i },
+      { s: 'you', askThem: true, t: "Thanks. How is the data team set up today, and what does the first ninety days look like?" },
+      { s: 'hm', t: "Great question. So we're about twelve people. Do you know how most teams split BI and engineering? We don't, honestly. Everyone builds end to end.", none: true },
+      { s: 'hm', t: "And the first ninety days? Mostly learning the finance models. Why does that matter? Because finance is our biggest customer, and they are picky.", none: true },
+      { s: 'you', t: "That makes sense, thank you." },
+      { s: 'hm', t: "Okay, one more from me. How would you handle a stakeholder who keeps changing the requirements?", q: /stakeholder|requirements/i, press: 'after' },
+      { s: 'you', t: "I'd write the agreed scope down and show the trade off of each change in time." },
+      { s: 'hm', t: "And how do you keep a report fast when the data grows?", q: /fast|data grows|performance/i },
+    ],
+  },
 ];
 
 module.exports = { CALLS };

@@ -858,6 +858,7 @@ document.body.style.background='transparent';
 
   <!-- Live coach — clean line-by-line points of the current answer; ticks off as you speak;
        auto-hides after a while. 100% client-side (reads your mic transcript), no API calls. -->
+  <div id="ask-paused" style="display:none;padding:5px 12px;border-top:1px solid rgba(252,211,77,.25);background:rgba(252,211,77,.08);font:600 10px/1.35 Inter,sans-serif;color:#FCD34D">Paused while they answer your question. Press SAY to go on.</div>
   <div id="coach-panel" style="display:none;padding:6px 12px;border-top:1px solid rgba(255,255,255,.07);transition:opacity .6s ease">
     <div id="coach-lines"></div>
   </div>
@@ -1504,6 +1505,7 @@ function connect() {
         addCard(msg.questionId, msg.questionText, dbuf, 'new', 0, true, false);
       }
     }
+    else if (msg.type === 'ask_paused') showAskPaused(!!msg.on);
     else if (msg.type === 'question_title') {
       // The spoken line was cleaned to the question itself: that is the card's title from now on (a longer copy of the
       // spoken line must not put the chatter back).
@@ -2001,6 +2003,7 @@ function whatShouldISay() {
     btn.innerHTML = wsayDefaultHTML;
   }, 3000);
 
+  showAskPaused(false);
   if (ws && ws.readyState === WebSocket.OPEN) {
     pendingManualScroll = true; // Manual action — scroll to result
     ws.send(JSON.stringify({ type: 'what_should_i_say' }));
@@ -3716,9 +3719,13 @@ function askFollowUp(chipEl) {
 // ===== INTERVIEW RECAP =====
 var followUpIconHTML = '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
+// Owner 28 Oct: after "Ask them" he asks THEM something — their answer must not come back as questions. The server stops
+// catching questions until SAY (ask_paused); this strip says so.
+function showAskPaused(on) { var el = $('ask-paused'); if (el) el.style.display = on ? 'block' : 'none'; }
 function requestFollowUps() {
   var btn = $('btn-followup');
   if (!btn || btn.classList.contains('loading')) return;
+  showAskPaused(true);
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>';
   setTimeout(function() {

@@ -4055,6 +4055,16 @@ const wss = new WebSocket.Server({ server });
 
 // Session-level client tracking — broadcast to all clients (main app + canvas windows) for same session
 const sessionClients = new Map(); // sessionId -> Set of ws connections
+// Owner 28 Oct: "Ask them" = he asks THEM a question; their answer and explanation must not come back as questions to
+// answer. Detection waits until he presses SAY (which answers and turns it back on). Per session: any window can do either.
+const askPaused = new Map(); // sessionId -> ms when Ask them was pressed
+function setAskPaused(sessionId, on) {
+  if (!sessionId || !!askPaused.get(sessionId) === on) return;
+  if (on) askPaused.set(sessionId, Date.now()); else askPaused.delete(sessionId);
+  console.log(on ? '[Ask them] question catching paused until SAY' : '[Ask them] SAY pressed — question catching back on');
+  const m = JSON.stringify({ type: 'ask_paused', on });
+  for (const c of sessionClients.get(sessionId) || []) { try { if (c.readyState === WebSocket.OPEN) c.send(m); } catch (e) {} }
+}
 const activeLiveByUser = new Map(); // userId -> { ws, sessionId, platform } — only ONE live session per user
 
 function broadcastToSession(sessionId, data, excludeWs) {
@@ -4929,6 +4939,7 @@ wss.on('connection', (ws) => {
           userId = decoded.userId;
           sessionId = msg.sessionId;
           console.log('[WS] Authenticated user:', userId);
+          if (!isCanvasMode && Date.now() - (askPaused.get(sessionId) || Infinity) > 10 * 60 * 1000) setAskPaused(sessionId, false); // a pause from an earlier call never carries into a new one
         } catch (e) {
           console.error('[WS] Auth failed:', e.message);
           ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
@@ -5164,7 +5175,10 @@ wss.on('connection', (ws) => {
 
         // ONE door for an auto-detected question (both the fast route and the AI route): quality filter, continuation →
         // grow, stay-silent, de-dup, cooldown, then match/answer. Only ever called with INTERVIEWER speech.
+        // Paused = they said something AFTER he pressed "Ask them"; a question they finished before the click still gets its card.
+        const saidSinceAskThem = () => { const at = askPaused.get(sessionId); return !!at && ((lastInterviewerCommit || {}).ts || 0) > at; };
         async function fireDetectedQuestion(q, via) {
+          if (saidSinceAskThem()) { console.log(`[Ask them] paused — not taken as a question (${via}): ${String(q || '').substring(0, 60)}`); return; }
           q = String(q || '').replace(/^[\s?.!,;:]+/, ''); // "Right? Just give me…" with the filler stripped left "? Just…" as the title
           const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
           const growEnabled = process.env.GROW_ANSWERS !== '0';
@@ -5305,6 +5319,7 @@ wss.on('connection', (ws) => {
 
         // AI auto-extract: send recent transcript to Haiku, get the question
         async function aiAutoExtract() {
+          if (saidSinceAskThem()) return; // they are answering his question — nothing to read until SAY
           const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
           const growEnabled = process.env.GROW_ANSWERS !== '0';
           // While cooling down we still run detection, but ONLY to catch the interviewer
@@ -5778,6 +5793,7 @@ wss.on('connection', (ws) => {
       }
 
       else if (msg.type === 'what_should_i_say') {
+        setAskPaused(sessionId, false);
         // Canvas clients don't have transcript — forward to the main (full mode) client for this session
         if (isCanvasMode) {
           console.log('[Canvas] what_should_i_say — forwarding to main client');
@@ -5988,6 +6004,7 @@ wss.on('connection', (ws) => {
       }
 
       else if (msg.type === 'followup_questions') {
+        setAskPaused(sessionId, true);
         // Questions the candidate can ask the interviewers — built only from what THEY said (generateQuestionsToAsk)
         if (!hasConversation(ws) && !(ws._sessionContext || {}).jd) {
           ws.send(JSON.stringify({ type: 'error', message: 'Nothing said yet' }));
