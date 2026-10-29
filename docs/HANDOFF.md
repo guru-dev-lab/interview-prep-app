@@ -1,5 +1,21 @@
 # Handoff
 
+## 28 Oct night — Ask them pause, coach history, early SAY (PRs #186–#189, all LIVE)
+- #186 "Ask them": what the interviewer says AFTER the click is never taken as a question (fast route + AI reader, per
+  session) until SAY (answers and turns catching back on); overlay strip "Paused while they answer your question…". e2e
+  call-askthem. #187 fixed the wiring test window (I merged #186 on a red npm test via `;` — gate merges with `&&`).
+- #188 Coach history in the note: every coach line kept per topic (question / Small talk), same meaning once, said lines
+  ticked; finished topic tidied by Haiku (`/api/note/coach-tidy`) into title + want + 2–4 lines; "Coach history (N)" under
+  the page; localStorage per job per day. test/coach-history-ui.js (real page, :3999).
+- Live test kit: ~/Desktop/xHire Live Test/Start here.html (9 interviewer-only clips; he answers live). His run: steps 1–6
+  and 9 worked; step 8 → #189.
+- #189 SAY pressed on a short lead-in ("Okay. One more from me.", ≤10 words, no question) waits for the question (owner:
+  "press SAY after they started talking → use what they are currently saying"); growSayCard grows only when the finished
+  question shares words with the card; a press that shows the on-screen card while they talk keeps listening. e2e
+  call-early-say. Rollback tags known-good-pre-186 … 189.
+- OPEN: note missed "My tools" for "What tools did you say you use for ad hoc reporting?"; step 7 audio never reached the
+  logs in his run (unverified live); earlier open items in the 28 Oct block below.
+
 ## 28 Oct — review of today's live calls + fixes (PRs #181–#184, all LIVE)
 - Reviewed from Railway logs (answer wording lives in the DB, not logs): owner HTI 13:29–13:56 UTC, owner WEX recruiter
   15:33–15:58, second real user (Nestle/Mount Sinai résumé) 16:01–16:54. Pull: `railway logs --service web --since … --until …
