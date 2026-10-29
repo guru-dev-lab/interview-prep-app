@@ -197,7 +197,7 @@ console.log('ALL PASS (meeting co-pilot overlay wiring, ' + n + ' checks)');
 // ---- 13 Oct: a heard line in co-pilot mode goes through ONE door (gate → repeat check → judge) before any card
 {
   const src = srv;
-  const fdq = src.slice(src.indexOf('async function fireDetectedQuestion'), src.indexOf('async function fireDetectedQuestion') + 900);
+  const fdq = src.slice(src.indexOf('async function fireDetectedQuestion'), src.indexOf('async function fireDetectedQuestion') + 1400); // 28 Oct: the Ask-them pause line comes first
   ok(/if \(ws\._copilotMode\) return routeHeardToCopilot\(q, via\)/.test(fdq), 'co-pilot branch of fireDetectedQuestion goes through routeHeardToCopilot');
   const door = src.slice(src.indexOf('async function routeHeardToCopilot'), src.indexOf('async function fireDetectedQuestion'));
   ok(/heardAskGate/.test(door) && /findAnsweredAsk/.test(door) && /HEARD_ASK_JUDGE/.test(door), 'the door gates, checks repeats and judges');
