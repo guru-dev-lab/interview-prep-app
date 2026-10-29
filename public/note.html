@@ -200,6 +200,23 @@ body.calls .side-foot{display:none}
 .coach.done .cs{color:#86EFAC}
 .coach .cs div+div{margin-top:3px}
 .coach .cs div.ok{color:#86EFAC;opacity:.6}
+/* Coach history (owner 28 Oct): every coach line is kept per topic (a question, or a stretch of small talk) under the page,
+   so a line that went away while they kept talking can still be used; a finished topic is tidied into a short card. */
+.chist{order:3;flex-shrink:0;align-self:center;display:none;width:min(640px,calc(100% - 32px));margin:0 16px 10px}
+.chist.has{display:block}
+.chist-btn{display:block;margin:0 auto;background:#121419;color:#E5E7EB;border:1px solid rgba(252,211,77,.35);border-radius:14px;padding:4px 12px;font-size:12.5px;cursor:pointer}
+.chist-btn:hover{border-color:rgba(252,211,77,.7);color:#fff}
+.chist-list{display:none;margin-top:6px;max-height:32vh;overflow:auto;background:#121419;border:1px solid rgba(252,211,77,.25);border-radius:12px;padding:6px 14px;color:#F3F4F6}
+.chist.open .chist-list{display:block}
+.ch-t{padding:8px 0;border-top:1px solid rgba(255,255,255,.1)}
+.ch-t:first-child{border-top:none}
+.ch-h{font-size:13.5px;font-weight:700;color:#fff}
+.ch-h .now{font-weight:600;font-size:11.5px;color:#121419;background:#FCD34D;border-radius:8px;padding:1px 7px;margin-left:6px}
+.ch-w{font-size:12.5px;color:#FCD34D;margin:2px 0 4px}
+.ch-p{font-size:14.5px;line-height:1.4;padding-left:14px;position:relative}
+.ch-p:before{content:'\2022';position:absolute;left:2px;color:#FCD34D}
+.ch-p.said{color:#9CA3AF}
+.ch-p.said:before{content:'\2713';color:#86EFAC}
 .page{flex:1;overflow-y:auto;min-height:0}
 /* owner 25 Oct: "the current scroll is the page not answer thats not good": with a question open, the question, ways
    and KEY stay put, only the answer scrolls, the AI bar stays at the bottom. The page still scrolls if the window is tiny. */
@@ -350,6 +367,7 @@ body.narrow .crumb #crumb-sec,body.narrow .crumb #crumb-dot{display:none}
   <div class="resizer" id="resizer" title="Drag to resize. Double-click to hide."></div>
   <section class="pagewrap">
     <div class="coach" id="coach" title="Click to hide"><button class="cx" title="Hide" aria-label="Hide">&times;</button><div class="cw"><b id="coach-lbl">They want:</b><span id="coach-want"></span></div><div class="cs" id="coach-say"></div></div>
+    <div class="chist" id="chist"><button class="chist-btn" id="chist-btn" title="Every coach line from this call, by topic">Coach history</button><div class="chist-list" id="chist-list"></div></div>
     <div class="page" id="page"><div class="sheet">
       <div class="empty" id="empty">Pick a question on the left.</div>
       <div id="call-wrap" class="hidden"></div>
@@ -1524,7 +1542,7 @@ function coachFor(text, add, retry, key, grow, chat) {
       if (r.status === 429 && !retry) { setTimeout(function () { if (key === heardText || key === chatKey) coachFor(text, add, true, key, grow, chat); }, 800); return null; }
       return r.ok ? r.json() : null;
     })
-    .then(function (j) { if (chat && (key !== chatKey || (coachNow && !$('coach').classList.contains('done')))) return; if (j && j.coach && (key === heardText || chat)) { if (grow && coachNow) growCoach(j.coach); else if (!add || !coachNow) showCoach(j.coach, add); } })
+    .then(function (j) { if (chat && (key !== chatKey || (coachNow && !$('coach').classList.contains('done')))) return; if (j && j.coach && (key === heardText || chat)) { if (grow && coachNow) growCoach(j.coach); else if (!add || !coachNow) showCoach(j.coach, add); else return; keepCoach(j.coach, chat ? 'chat' : key, sid); } })
     .catch(function () {});
 }
 function showCoach(c, add) {
@@ -1543,6 +1561,66 @@ function growCoach(c) { // the lines on screen stay; new ones go under them (at 
 }
 function hideCoach() { coachNow = null; clearTimeout(coachT); $('coach').classList.remove('show'); }
 $('coach').onclick = hideCoach;
+// ===== Coach history (owner 28 Oct) =====
+// Every line the coach shows is kept under its topic (the question, or "Small talk"), the same meaning only once. What he
+// says ticks a line as said. When the next topic starts, the finished one is tidied by the server into a short card:
+// a title, what they wanted, 2-4 ready lines, said ones last and greyed. Kept per job for the day.
+var coachTopics = [], coachHistKey = '', coachHistOpen = lsGet('xhire_coach_hist_open') === '1';
+function coachHistLoad(sid) {
+  var k = 'xhire_coach_hist_' + sid + '_' + new Date().toISOString().slice(0, 10);
+  if (k === coachHistKey) return; coachHistKey = k;
+  try { coachTopics = JSON.parse(lsGet(k) || '[]'); } catch (e) { coachTopics = []; }
+  coachTopics.forEach(function (t) { t.tidying = false; });
+  renderCoachHist();
+}
+function coachHistSave() { if (coachHistKey) lsSet(coachHistKey, JSON.stringify(coachTopics.slice(-30))); }
+function sameMeaning(a, b) {
+  var ka = Object.keys(NoteMatch.stems(a)), kb = NoteMatch.stems(b), hit = ka.filter(function (k) { return kb[k]; }).length;
+  return ka.length > 0 && hit / Math.min(ka.length, Object.keys(kb).length || 1) >= 0.6;
+}
+function keepCoach(c, key, sid) {
+  if (!c || !sid) return; coachHistLoad(sid);
+  var tp = coachTopics[coachTopics.length - 1];
+  if (!tp || tp.key !== key) {
+    if (tp) tidyTopic(tp, sid);
+    tp = { key: key, title: key === 'chat' ? 'Small talk' : key, wants: [], lines: [], at: Date.now(), said: '' };
+    coachTopics.push(tp); coachTopics = coachTopics.slice(-30);
+  }
+  if (c.want && tp.wants.indexOf(c.want) < 0) tp.wants.push(c.want);
+  (c.lines && c.lines.length ? c.lines : [c.say]).forEach(function (l) { if (l && !tp.lines.some(function (x) { return sameMeaning(x.t, l); })) tp.lines.push({ t: l, said: false }); });
+  coachHistSave(); renderCoachHist();
+}
+function coachHistSaid(text) {
+  var tp = coachTopics[coachTopics.length - 1]; if (!tp || !text) return;
+  tp.said = (tp.said + ' ' + text).slice(-3000);
+  var said = NoteMatch.stems(tp.said), changed = false;
+  tp.lines.forEach(function (l) { if (!l.said && heardPart(l.t, said)) { l.said = true; changed = true; } });
+  if (changed) { coachHistSave(); renderCoachHist(); }
+}
+function tidyTopic(tp, sid) {
+  if (tp.tidy || tp.tidying || !tp.lines.length) return; tp.tidying = true;
+  fetch(location.origin + '/api/note/coach-tidy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }, body: JSON.stringify({ sessionId: sid, title: tp.title, wants: tp.wants, lines: tp.lines }) })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { tp.tidying = false; if (j && j.tidy) { tp.tidy = j.tidy; coachHistSave(); renderCoachHist(); } })
+    .catch(function () { tp.tidying = false; });
+}
+function renderCoachHist() {
+  var box = $('chist'); if (!box) return;
+  box.classList.toggle('has', coachTopics.length > 0 && N && N.settings.coach !== false);
+  box.classList.toggle('open', coachHistOpen);
+  $('chist-btn').textContent = (coachHistOpen ? 'Hide coach history' : 'Coach history') + ' (' + coachTopics.length + ')';
+  if (!coachHistOpen) return;
+  $('chist-list').innerHTML = coachTopics.slice().reverse().map(function (tp, i) {
+    var t = tp.tidy, live = i === 0;
+    var pts = t ? t.points.map(function (p) { return { t: p.say, said: p.said }; }) : tp.lines.slice().sort(function (a, b) { return a.said - b.said; });
+    return '<div class="ch-t"><div class="ch-h">' + esc((t && t.title) || tp.title) + (live ? '<span class="now">Now</span>' : '') + '</div>'
+      + ((t && t.want) || tp.wants[0] ? '<div class="ch-w">They want: ' + esc((t && t.want) || tp.wants[0]) + '</div>' : '')
+      + pts.map(function (p) { return '<div class="ch-p' + (p.said ? ' said' : '') + '">' + esc(p.t) + '</div>'; }).join('') + '</div>';
+  }).join('');
+}
+setTimeout(function () { if ($('job') && $('job').value) coachHistLoad($('job').value); }, 1500); // this job's history from earlier today
+if ($('job')) $('job').addEventListener('change', function () { if (this.value) coachHistLoad(this.value); });
+$('chist-btn').onclick = function () { coachHistOpen = !coachHistOpen; lsSet('xhire_coach_hist_open', coachHistOpen ? '1' : '0'); renderCoachHist(); };
 // Part of the line is enough (owner: "should fade after hearing part of it"): a third of its words, at least two, said
 // since it came up.
 function heardPart(line, said) {
@@ -1550,6 +1628,7 @@ function heardPart(line, said) {
   return ks.length > 0 && hit >= Math.min(ks.length, Math.max(2, Math.ceil(ks.length / 3)));
 }
 function coachOnSaid(text) {
+  coachHistSaid(text);
   if (coachNow && !$('coach').classList.contains('done')) {
     coachSaid += ' ' + text;
     // each line ticks green once part of it is heard; when the last one is, the strip goes green, then away

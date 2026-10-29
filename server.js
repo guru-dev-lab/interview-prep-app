@@ -3576,6 +3576,22 @@ app.post('/api/note/coach', authMiddleware, async (req, res) => {
     res.json({ coach });
   } catch (e) { console.error('[Note] coach failed:', e.message); res.status(500).json({ error: e.message }); }
 });
+// Coach history: one finished topic's coach lines → a short card (title, what they wanted, 2-4 points, said ones marked).
+app.post('/api/note/coach-tidy', authMiddleware, async (req, res) => {
+  try {
+    const sid = String(req.body?.sessionId || '');
+    const lines = (Array.isArray(req.body?.lines) ? req.body.lines : []).map(l => ({ t: String((l && l.t) || '').replace(/\s+/g, ' ').trim().slice(0, 300), said: !!(l && l.said) })).filter(l => l.t).slice(0, 12);
+    if (!isValidUUID(sid) || !lines.length) return res.json({ tidy: null });
+    const s = (await pool.query('SELECT id FROM sessions WHERE id = $1 AND user_id = $2', [sid, req.userId])).rows[0];
+    if (!s) return res.json({ tidy: null });
+    const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, 300), wants = (Array.isArray(req.body?.wants) ? req.body.wants : []).map(w => String(w || '').slice(0, 120)).filter(Boolean).slice(0, 4);
+    const t0 = Date.now();
+    const raw = await callClaude(answerNote.COACH_TIDY_PROMPT, `TOPIC: ${title || 'small talk'}\n${wants.length ? 'WHAT THE COACH SAID THEY WANTED:\n' + wants.join('\n') + '\n' : ''}\nCOACH LINES:\n${lines.map(l => (l.said ? '[SAID] ' : '') + l.t).join('\n')}\n\nJSON:`, 400, MODEL_HAIKU, { __tag: 'note-coach-tidy', temperature: 0 });
+    const tidy = answerNote.parseCoachTidy(raw, lines);
+    console.log(`[Note] coach tidy ${Date.now() - t0}ms → ${tidy ? tidy.points.length + ' points from ' + lines.length + ' lines' : 'nothing (' + String(raw || '').slice(0, 80) + ')'} topic="${title.slice(0, 50)}"`);
+    res.json({ tidy });
+  } catch (e) { console.error('[Note] coach tidy failed:', e.message); res.status(500).json({ error: e.message }); }
+});
 const noteSaidLast = new Map();
 app.post('/api/note/said', authMiddleware, async (req, res) => {
   try {
