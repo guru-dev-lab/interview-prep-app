@@ -3397,7 +3397,7 @@ async function generateDetailedAnswer(session, userId, item, arc, mode, custom) 
   const length = quick ? 'about 120 to 160 words (under a minute spoken), three short paragraphs'
     : arc === 'intro' ? 'about 330 to 400 words (about two and a half minutes read slowly)' : 'about 220 to 300 words (about a minute and a half read slowly)';
   const rules = `You write what the candidate will SAY in a live interview, word for word. They read it slowly from a note, so it must sound like a real person talking, not a written essay or a cover letter.
-VOICE: first person, contractions, short sentences (most under 20 words), one idea per sentence, plain words. Include two or three natural, memorable lines in the candidate's own words about their own work: a short plain line that sums up a strength, the way a person says it out loud. Write fresh ones every time; never reuse stock phrases. No buzzwords (passionate, leverage, synergy, results-driven, dynamic, spearheaded), no em dashes, no bullet points, no headings, no lists. Never open with "Sure", "Great question" or "So"; start straight with the first sentence of the answer. ${answerNote.READ_ALOUD}
+VOICE: first person, contractions, short sentences (most under 20 words), one idea per sentence, plain words. Include two or three natural, memorable lines in the candidate's own words about their own work: a short plain line that sums up a strength, the way a person says it out loud. Write fresh ones every time; never reuse stock phrases. No buzzwords (passionate, leverage, synergy, results-driven, dynamic, spearheaded), no em dashes, no bullet points, no headings, no lists. Never open with "Sure", "Great question" or "So"; the first sentence answers exactly what was asked. ${BEST_ANSWER_RULE} If the question says "walk me through" or asks for the steps or process, give the full best-practice process in order, every step. ${answerNote.READ_ALOUD}
 FACTS: every concrete detail (employer, team, project, tool, action, number, result, what it was like before) must come from the resume, the Q&A bank or the job description. Use the real employers, titles, tools, certifications and numbers. Never add a detail to make it richer: no invented numbers, teams, projects, stories or before-and-after. Never invent quotes, conversations or what someone said or still does. Results only as the resume or Q&A bank states them. If the material is thin for a step, say less there, keep it true and general, or skip the step. Nothing after the last step.
 FIT: aim it at THIS role at THIS company. Lean on what the job description cares about most. Name the company naturally, once or twice at most.
 SHAPE: plain paragraphs separated by one blank line, 2 to 4 sentences each, one paragraph per step of the path below. Length: ${length}.
@@ -6546,12 +6546,16 @@ const SHAPE_STORY_RE = /\b(tell (me|us) about a (time|situation|project)|describ
 // to SQL") — those got a code answer instead of the explanation.
 const SHAPE_CODE_RE = /\b(write|type|code up|show me|give me)\b[^?.!]{0,40}\b(query|queries|sql|code|script|formula|syntax|measure|function|statement)\b|\bwhat('s| is) the (syntax|formula|query)\b|^(how (would|do|can) you) (find|get|calculate|compute|remove|dedupe|de-dupe|rank|pivot|count|return|select|pull)\b/i;
 
+// "Walk me through how…" / the steps / your process: a full ordered best-practice answer (owner 4 Nov). Résumé/background
+// walk-throughs stay 'pitch' and "walk me through a time" stays 'story' (both are checked first).
+const SHAPE_STEPS_RE = /\b(walk (me|us) through|take (me|us) through|step[- ]by[- ]step|what (are|would be) (the|your) (steps|process|approach)|what('s| is) your (process|approach|workflow)|how (would|do|did) you (go about|approach|set up|build|design|tackle|plan|run|roll out|migrate|troubleshoot|debug|validate)|explain (the|your) (process|steps|approach))\b/i;
 function classifyQuestionShape(questionText) {
   const q = (questionText || '').trim();
   const technical = TECH_TERMS_RE.test(q);
   let shape = 'general';
   if (SHAPE_PITCH_RE.test(q)) shape = 'pitch';
   else if (SHAPE_STORY_RE.test(q)) shape = 'story';
+  else if (SHAPE_STEPS_RE.test(q)) shape = 'steps';
   else if (technical && SHAPE_CODE_RE.test(q)) shape = 'code';
   return { shape, technical };
 }
@@ -6619,10 +6623,14 @@ function forgetCard(ws, id) {
   if (Array.isArray(list)) for (let i = list.length - 1; i >= 0; i--) if (list[i] && list[i].id === id) list.splice(i, 1);
 }
 
+// Owner 4 Nov 2026 after a real meeting: "the start of the response is not always answering the question.. RESPONSE NEEDS TO
+// BE VERY POSITIVE AND WHEN SAID WALK ME THROUGH IT SHOULD HAVE IT FULL STEP BY STEP BEST PRACTICE". One rule, live + note.
+const BEST_ANSWER_RULE = 'VERY POSITIVE and confident from the first word to the last: say what the candidate does well and how they would do it, never a doubt, a hedge ("I think maybe", "I\'m not sure", "I haven\'t really"), a complaint or a negative word about themselves, a past employer or the company. A gap is said positively: the closest real strength and how it carries over. This is the BEST answer a top candidate would give.';
 const LIVE_CORE = `You write what a job candidate says out loud in a LIVE interview, shown on a tiny overlay they read from.
 QUALITY:
 - Plain English, contractions, sound like a person talking. No jargon or buzzwords (never: leverage, utilize, robust, synergy, facilitate, holistic, scalable, cross-functional).
-- The FIRST line answers the question directly — something they can start saying immediately. No preamble ("Great question", "So basically"), no closing summary, no headers or labels unless the layout below asks for them, no markdown bold.
+- The FIRST line answers EXACTLY what was asked, in one plain sentence they can start saying immediately: a yes/no question opens with the yes (and how), "how would you" opens with the approach, "what is" opens with the plain definition, "which/what tool" opens by naming it. Never open with background, a story or a restatement of the question. No preamble ("Great question", "So basically"), no closing summary, no headers or labels unless the layout below asks for them, no markdown bold.
+- ${BEST_ANSWER_RULE}
 - Never fabricate. Facts about the candidate come only from the resume, the Q&A bank, and what they said earlier — no new people, events, reactions, projects, numbers, tools, skills or "I taught myself…" claims.
 - Never change what an employer is or does (industry, product, customers) to fit the job — Midwest Health Clinics stays a health clinic, a retailer stays a retailer. Transferable SKILLS can be drawn out; the business can't be rewritten.
 - If they ask about experience the candidate doesn't have (nothing in the resume or earlier answers), say so briefly and bridge to the closest REAL experience — never invent some. (AI questions: the next rule instead.)
@@ -6665,6 +6673,10 @@ Use the employer from the resume where that example happened. If no example clea
       ? `the story as labelled lines, each starting with its label instead of "• ": "Situation: …", "Action: …" (one or two), "Result: …" — each ONE sentence of at most ${LIVE_LINE_WORDS} words`
       : `${n(5, 7)} lines, each ${lineUnit}, telling the story in order: the situation (what was at stake, who was involved) → what the candidate actually did, step by step → what they FOUND or what turned it around, named concretely (the specific assumption, definition, data issue or objection — never just "we found gaps") → the result (a real number if there is one). If the question is about a difficult person or a conflict, one line says how the candidate handled the PERSON (tone, one-on-one, what they cared about) and the last line says how the working relationship ended up`}.
 - No separate employer line — the heading is it. Use a real example from the resume, Q&A bank or their earlier answers; never invent one.`;
+  if (shape === 'steps') return `LAYOUT — fixed (a walk-through: give the FULL best-practice process, step by step):
+- First line: ONE sentence that answers the question with the overall approach.
+- Then ${maxLines ? `${Math.max(Math.min(maxLines, 9), STEPS_MIN_LINES)}` : `${STEPS_MIN_LINES}–9`} lines, one step each, in the order it is really done, each ${lineUnit}, starting "First,", "Then,", "Next,", "After that,", "Finally," — every step a senior expert would include (scoping/requirements, the data or setup, building it, checking and testing it, sharing it with people, and keeping it right afterwards, as fits the question), naming the exact technique, tool or check for each. No step skipped, none vague.
+- ${employer}`;
   if (shape === 'pitch') return `LAYOUT — fixed:
 - ${n(3, 5)} lines, each ${lineUnit}, in this order: who they are now (role and focus) → one real proof (a result from the resume) → why this role and team.
 - The employer can be named naturally inside these lines. No separate employer line.`;
@@ -6701,9 +6713,11 @@ function liveLengthRule(maxLines) {
 // Stories keep their middle (owner, 26 Sep: "it doesn't really say what happened … and what the gap was"):
 // a length setting or a short style never cuts a story below STORY_MIN_LINES.
 const STORY_MIN_LINES = 7;
+const STEPS_MIN_LINES = 6; // walk-throughs: the full process, never trimmed by a short style
 function liveLineCap(styleKey, userMaxLines, shape) {
   const caps = [(STYLE_LAYOUT[styleKey] || {}).maxLines, userMaxLines].filter(x => x > 0);
   const cap = caps.length ? Math.min(...caps) : 0;
+  if (shape === 'steps' && cap) return Math.max(cap, STEPS_MIN_LINES + 1); // +1: the approach line
   return shape === 'story' && cap ? Math.max(cap, STORY_MIN_LINES) : cap;
 }
 
@@ -6860,6 +6874,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
       else tokenLimit = shape === 'code' ? 1500 : 900;
     }
     if (shape === 'story') tokenLimit = Math.max(tokenLimit, 540); // 5–7 story lines must never be cut mid-sentence
+    if (shape === 'steps') tokenLimit = Math.max(tokenLimit, 700); // up to 10 walk-through lines, never cut mid-step
     const withConversation = hasConversation(ws);
     const system = composeLiveSystemPrompt({
       shape, technical, styleKey: session.answer_style, maxLines: maxSentences,
@@ -6910,7 +6925,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
     // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
     // Stories and "about you" answers are the most fact-heavy — embellishments in the mock interview came from Haiku there.
-    const answerModel = (isTechnical || shape === 'story' || shape === 'pitch') ? (MODELS[process.env.LIVE_TECH_MODEL || 'sonnet'] || MODEL_SONNET) : MODEL_HAIKU;
+    const answerModel = (isTechnical || shape === 'story' || shape === 'pitch' || shape === 'steps') ? (MODELS[process.env.LIVE_TECH_MODEL || 'sonnet'] || MODEL_SONNET) : MODEL_HAIKU;
     // Sonnet 5 decides on its own to "think" first — measured 25 Sep: with a thinking block first words took 1.3–3.3 s,
     // without 0.6–0.9 s. Live answers turn it off; LIVE_THINKING=adaptive puts it back. (Haiku doesn't think by default.)
     const answerExtras = (answerModel !== MODEL_HAIKU && process.env.LIVE_THINKING !== 'adaptive') ? { thinking: { type: 'disabled' } } : undefined;
