@@ -3491,6 +3491,9 @@ app.post('/api/note/from-call', authMiddleware, async (req, res) => {
 // its instant wording guess; it never touches the live answer path. One small fast-model call: which note question
 // this IS (wording alone cannot tell, measured), which line of that answer to highlight, and for a question not in
 // the note, a short title + clean wording so it can be added after the call.
+// ONE rule for "is this the same question as the prepared one": the note's heard check and the live writer (owner 11 Nov:
+// xHire's answer close to the note) both use it, so the overlay and the note pick the same prepared answer.
+const NOTE_SAME_QUESTION_RULE = 'Match ONLY when it is the SAME question in other words: same subject AND same ask, so the prepared answer fully answers it. It is NOT the same when:\n- the subject differs, even if shaped alike ("walk me through a dashboard you built" vs "walk me through the Fabric architecture you built");\n- the ask differs on the same subject ("what experience do you have with Fabric" vs "walk me through the Fabric architecture you built": that one needs the design, step by step);\n- it names one specific tool, platform, system or project while the prepared one is general ("what is your experience with Snowflake" vs "what tools have you used").\n';
 const noteHeardLast = new Map(); // userId → time of the last check (one at a time per user, newest wins on the page)
 // Measured 25 Oct on 195 independent interviewer turns: Sonnet switched to the right card 98.4% (near-misses 100%), Haiku
 // 96.1%, for about 0.15 s more (median 0.8 s). NOTE_HEARD_MODEL=haiku goes back.
@@ -3525,7 +3528,7 @@ app.post('/api/note/heard', authMiddleware, async (req, res) => {
       // Owner 24 Oct: "Walk me through the Fabric architecture you built" landed on "Dashboard end to end"; the old rule
       // ("same intent in any wording") let same-SHAPE or same-TOPIC questions match. A question only matches when it asks
       // the same thing; anything else goes to New questions, where it gets its own study note.
-      { type: 'text', text: 'An interviewer just said the text below, live on a call. Reply with ONE line of JSON only:\n{"q": <the number of the prepared question it asks, or 0>, "line": <for that question, the number L of the answer line that best answers exactly what was asked, 0 if no answer shown>, "title": "<2 to 4 word label, only when q is 0>", "question": "<the question as one clean sentence, only when q is 0>"}\nMatch ONLY when it is the SAME question in other words: same subject AND same ask, so the prepared answer fully answers it. It is NOT the same when:\n- the subject differs, even if shaped alike ("walk me through a dashboard you built" vs "walk me through the Fabric architecture you built");\n- the ask differs on the same subject ("what experience do you have with Fabric" vs "walk me through the Fabric architecture you built": that one needs the design, step by step);\n- it names one specific tool, platform, system or project while the prepared one is general ("what is your experience with Snowflake" vs "what tools have you used").\nA follow-up that only asks for MORE of the question on screen (say more, an example, how it turned out) counts as that one: use its number. A follow-up that asks something the prepared answer does not answer (what would you do differently, what would you build from the start, why that and not another way, how it affects size or speed) is a NEW question: q 0, and write the question whole with what it points back to, so it reads on its own ("If you could rebuild the Direct Lake setup from the start, what would you implement?"). When unsure, 0.\nIf the text is small talk or not a question, use q 0 and leave title and question empty.\nIf the question is cut off before its ask is clear (it stops mid-sentence, like "so how do you usually" or "tell me about the time when"), it is not heard yet: q 0, title and question empty. Never guess the end of a question.' },
+      { type: 'text', text: 'An interviewer just said the text below, live on a call. Reply with ONE line of JSON only:\n{"q": <the number of the prepared question it asks, or 0>, "line": <for that question, the number L of the answer line that best answers exactly what was asked, 0 if no answer shown>, "title": "<2 to 4 word label, only when q is 0>", "question": "<the question as one clean sentence, only when q is 0>"}\n' + NOTE_SAME_QUESTION_RULE + 'A follow-up that only asks for MORE of the question on screen (say more, an example, how it turned out) counts as that one: use its number. A follow-up that asks something the prepared answer does not answer (what would you do differently, what would you build from the start, why that and not another way, how it affects size or speed) is a NEW question: q 0, and write the question whole with what it points back to, so it reads on its own ("If you could rebuild the Direct Lake setup from the start, what would you implement?"). When unsure, 0.\nIf the text is small talk or not a question, use q 0 and leave title and question empty.\nIf the question is cut off before its ask is clear (it stops mid-sentence, like "so how do you usually" or "tell me about the time when"), it is not heard yet: q 0, title and question empty. Never guess the end of a question.' },
     ];
     const t0 = Date.now();
     const onScreen = cur ? `QUESTION ON SCREEN: ${groups.indexOf(cur) + 1}\n` : '';
@@ -3687,7 +3690,7 @@ Rules: only facts from the resume, Q&A bank and what was said on the call; never
 Last line, outside the HTML: KEY: <at most 12 words, the one thing to remember>`;
   const said = answerNote.htmlToText(item.answer_html);
   const calls = await noteCallContext(session.id, userId, { screens: true });
-  const user = `${calls ? `THE CALLS FOR THIS JOB:\n${calls}\n\n${NOTE_CALLS_RULE}\n\n` : ''}QUESTION: ${question}\n${said ? `\nWHAT XHIRE SAID LIVE ON THE CALL (rough, build on it):\n${said}\n` : ''}\nWrite the study note now.`;
+  const user = `${calls ? `THE CALLS FOR THIS JOB:\n${calls}\n\n${NOTE_CALLS_RULE}\n\n` : ''}QUESTION: ${question}\n${said ? `\nWHAT XHIRE SAID LIVE ON THE CALL:\n${said}\nThis note is the LONGER version of that answer (owner 11 Nov: "NOTE WOULD BE EXPANSION AND BIGGER PICTURE"): keep its story, its facts and its opening point, so the screen and the note never tell two different stories; then give the bigger picture and more to say if they want to talk more.\n` : ''}\nWrite the study note now.`;
   const t0 = Date.now();
   const sys = [Object.assign({ type: 'text', text: material }, process.env.PROMPT_CACHE === '0' ? {} : { cache_control: { type: 'ephemeral' } }), { type: 'text', text: rules }];
   // Owner 26 Oct: "why 10 seconds for new questions". The whole note took ~10 s before anything showed. Streamed, the
@@ -5026,6 +5029,7 @@ wss.on('connection', (ws) => {
         ws._sessionContext = sResult.rows[0] || {};
         ws._sessionQuestions = sessionQuestions;
         ws._maxAnswerLines = 5; // Default: short answers (canvas can override via update_settings)
+        noteLiveLoad(ws, userId, sessionId); // the note leads the live answers: read it now, not on the first question
 
         // Create transcript record — attach current meeting's interviewer info
         let interviewerName = '', interviewerTitle = '', interviewStage = '';
@@ -6820,6 +6824,70 @@ function appendToLiveAnswer(answer, addition, shape) {
 
 // Generate answer for live question — questionId is the EXISTING DB row from fastMatchAndRespond
 // opts.bankAnswer: a prepared answer to ADAPT to the conversation (shown on the same card; never written back to the bank)
+// ===== THE NOTE LEADS THE LIVE ANSWER =====
+// Owner 11 Nov: "I NEED XHIRE GIVING BEST ANSWER OR MAYBE EVEN CLOSE TO NOTE, NOTE WOULD BE EXPANSION AND BIGGER PICTURE".
+// Live call 10 Nov: the live writer never saw his Answer Note (he prepares there; the bank rows it matched had no answers),
+// so the overlay and the note told different stories. Now the note's answer to the question asked goes to the live writer:
+// same story, same facts, same opening point, cut to the overlay. The note stays the long version.
+// Nothing waits on it: the note is read once per call (kept 60 s, refreshed in the background) and matched in memory.
+// Wording and meaning scores cannot tell "same question" from "same topic" (measured 11 Nov, 17 asked questions: true
+// matches 0.38-0.98 by words / 0.26-1.00 by meaning, wrong ones up to 0.54 / 0.53), so the closest two answered questions
+// go to the writer and it applies NOTE_SAME_QUESTION_RULE itself: no extra AI call.
+const NOTE_LIVE_TTL = 60000, NOTE_LIVE_WORDS = 0.40, NOTE_LIVE_MEANING = 0.45, NOTE_LIVE_MAX_CHARS = 2500;
+function noteLiveLoad(ws, userId, sessionId) {
+  const c = ws._noteLive;
+  if (c && c.sid === sessionId && (c.loading || Date.now() - c.at < NOTE_LIVE_TTL)) return c.loading || Promise.resolve(c.groups);
+  const t0 = Date.now();
+  const loading = (async () => {
+    // read only: a user with no note yet has nothing to lead with (loadNote would create and seed one)
+    const note = (await pool.query('SELECT * FROM answer_notes WHERE user_id = $1', [userId])).rows[0];
+    if (!note) return [];
+    const ses = (await pool.query('SELECT id, company, role, jd, note_people FROM sessions WHERE id = $1 AND user_id = $2', [sessionId, userId])).rows[0];
+    if (!ses) return [];
+    const tree = await noteTree(note, ses);
+    return tree.groups.map(g => {
+      const it = g.items.find(i => answerNote.htmlToText(i.answer_html));
+      return it ? { id: g.id, name: g.name, items: g.items.map(i => ({ id: i.id, question: i.question })), question: it.question,
+        answer: answerNote.htmlToText(it.answer_html).slice(0, NOTE_LIVE_MAX_CHARS) } : null;
+    }).filter(Boolean);
+  })().then(groups => {
+    ws._noteLive = { sid: sessionId, at: Date.now(), groups };
+    if (!c || c.sid !== sessionId) console.log(`[NoteLead] Note read for the call: ${groups.length} answered questions in ${Date.now() - t0}ms`);
+    groups.forEach(g => g.items.forEach(i => embedText(i.question).catch(() => {}))); // warm the meaning check
+    return groups;
+  }).catch(e => { console.error('[NoteLead] note read failed:', e.message); ws._noteLive = { sid: sessionId, at: Date.now(), groups: (c && c.groups) || [] }; return ws._noteLive.groups; });
+  ws._noteLive = Object.assign({}, c && c.sid === sessionId ? c : { groups: [] }, { sid: sessionId, loading });
+  return loading;
+}
+// The closest answered note questions to what was asked (at most 2), best first. Never throws, never waits long.
+async function noteLiveCandidates(ws, userId, sessionId, questionText) {
+  try {
+    const c = ws._noteLive;
+    const fresh = c && c.sid === sessionId && !c.loading ? c.groups : null;
+    const groups = fresh || await Promise.race([noteLiveLoad(ws, userId, sessionId), new Promise(r => setTimeout(() => r(null), 400))]);
+    if (fresh && Date.now() - c.at >= NOTE_LIVE_TTL) noteLiveLoad(ws, userId, sessionId); // refresh for the next question
+    if (!groups) { console.log('[NoteLead] note not read yet — answering without it'); return []; }
+    if (!groups.length) return [];
+    const q = String(questionText || '').trim();
+    const v = await embedText(q).catch(() => null);
+    const scored = [];
+    for (const g of groups) {
+      let words = NoteMatchShared.score(q, g.name) * 0.9, meaning = 0;
+      for (const i of g.items) {
+        words = Math.max(words, NoteMatchShared.score(q, i.question));
+        if (v) { const w = await embedText(i.question).catch(() => null); if (w) { let sim = 0; for (let k = 0; k < v.length; k++) sim += v[k] * w[k]; meaning = Math.max(meaning, sim); } }
+      }
+      if (words >= NOTE_LIVE_WORDS || meaning >= NOTE_LIVE_MEANING) scored.push({ g, words, meaning, best: Math.max(words, meaning) });
+    }
+    const out = scored.sort((a, b) => b.best - a.best).slice(0, 2);
+    console.log(`[NoteLead] ${out.length ? out.map(x => `"${x.g.name}" words ${x.words.toFixed(2)} meaning ${x.meaning.toFixed(2)}`).join(' / ') : 'nothing close'} of ${groups.length} q="${q.slice(0, 50)}"`);
+    return out.map(x => x.g);
+  } catch (e) { console.error('[NoteLead] match failed:', e.message); return []; }
+}
+function noteLeadBlock(cands) {
+  if (!cands.length) return '';
+  return `\n\nTHE CANDIDATE'S ANSWER NOTE (what they prepared to say, in their own words):\n${cands.map((g, i) => `NOTE ${i + 1} — prepared question: "${g.question}"\n${g.answer}`).join('\n\n')}\n\nIs one of these the SAME question as the one asked? ${NOTE_SAME_QUESTION_RULE}If one is: this answer is THEIR prepared answer. Use ITS story, ITS facts and numbers, ITS opening point, in its order, cut down to the LAYOUT above, so what they read on screen matches their note and the note can be the longer version if they say more. Keep the layout and every rule above (the first line answers exactly what was asked). If none is the same question, ignore the notes completely: never borrow a story or fact from a note for a different question.`;
+}
 async function generateLiveAnswer(questionText, sessionId, userId, ws, questionId, forceNavigate, opts = {}) {
   // Only the NEWEST answer for a card may write to it (a card can be re-answered when its full question arrives).
   const genTicket = Symbol('gen');
@@ -6887,8 +6955,11 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // Everything said in this interview session (earlier calls + this call) — see SESSION MEMORY
     const convo = buildConversationContext(ws);
     const conversationContext = convo ? `\n\nTHE CONVERSATION:\n${convo}` : '';
+    // The note leads (see THE NOTE LEADS THE LIVE ANSWER) — typed questions too: the block is ignored unless a note is the same question.
+    const noteCands = await noteLiveCandidates(ws, userId, sessionId, questionText);
+    const noteBlock = noteLeadBlock(noteCands);
     const preparedBlock = opts.bankAnswer
-      ? `\n\nCANDIDATE'S PREPARED ANSWER to this question (their own facts — keep them; adapt the angle to the conversation):\n${opts.bankAnswer}\n\nRewrite it in the LAYOUT above, aimed at what was said in this interview. Output exactly KEEP (and nothing else) ONLY if nothing said earlier in this interview relates to this question at all.`
+      ? `\n\nCANDIDATE'S PREPARED ANSWER to this question (their own facts — keep them; adapt the angle to the conversation):\n${opts.bankAnswer}\n\nRewrite it in the LAYOUT above, aimed at what was said in this interview.${noteCands.length ? ' If a note below is the same question, the note leads.' : ' Output exactly KEEP (and nothing else) ONLY if nothing said earlier in this interview relates to this question at all.'}`
       : '';
 
     // PROMPT CACHING: the session material (who/what/resume/JD/bank) is identical for every answer in a call, so it
@@ -6922,7 +6993,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
     // essay. That question doesn't match what we're discussing"). A typed line is done in full, never judged or redirected.
     const typedBlock = opts.typed ? '\n\nTYPED BY THE CANDIDATE (not heard on the call — their own instruction to you): do exactly what it says, in full, in the candidate\'s voice — an essay is written out, a query is written out, a message is drafted. It is never declined, never redirected to "what we are discussing", never answered with a question back.' : '';
     const qLabel = opts.typed ? 'QUESTION (typed by the candidate — do exactly this):' : 'QUESTION (detected from speech — may be just the tail end, use THE CONVERSATION above for full context):';
-    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${aimBlock}${avoidBlock}${typedBlock}\n\n${qLabel}\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
+    const userPrompt = `${todayLine}${expFacts ? expFacts + '\n' : ''}${conversationContext}${preparedBlock}${noteBlock}${aimBlock}${avoidBlock}${typedBlock}\n\n${qLabel}\n${questionText}\n\nAnswer ONLY this question. Earlier questions in the conversation already have their own answers — never answer them again here.${refuseLine}\n\nAnswer:`;
 
     // Model: technical questions use Sonnet by default — measured 25 Sep (test/accuracy-bench.js, 2 runs): Haiku 15/20,
     // Sonnet 18/20 correct, ~+0.3–1.0 s to first words. LIVE_TECH_MODEL=haiku|sonnet|opus overrides. Others: Haiku.
