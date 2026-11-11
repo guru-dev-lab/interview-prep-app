@@ -1,5 +1,28 @@
 # Handoff
 
+## 11 Nov — review of 10 Nov calls + note leads, coach opener, one card (PRs #192–#195, all LIVE)
+- 10 Nov calls (Railway logs): owner's interview 21:00–21:33 UTC (session 8150c003, Polaris-type data role, Texas team,
+  Kim), 2nd user's offer/HR call 19:01–19:16. Deepgram 1011 at 21:24/21:28 = his network (Teams showed it too), not xHire.
+- #192 story shape: "walk us through a time WHERE…" / "walk me through a project where…" were written as 6-9 steps
+  (SHAPE_STORY_RE only caught "a time when/you"). test/answer-shape.js +10 cases.
+- #193 THE NOTE LEADS THE LIVE ANSWER (owner: "XHIRE GIVING BEST ANSWER OR MAYBE EVEN CLOSE TO NOTE, NOTE WOULD BE
+  EXPANSION"). The live writer never saw the Answer Note. Now: note read per call (60 s cache, preloaded at start,
+  read-only), closest 2 answered note questions (words or MiniLM meaning) go to the writer; it uses one only if it is
+  the SAME question (NOTE_SAME_QUESTION_RULE, shared with /api/note/heard). Study notes keep xHire's story and expand
+  it. Log `[NoteLead]`. test/note-leads-live.js 4/4. Scores alone can't tell same question from same topic (measured).
+- #194 COACH = ONE STARTER LINE (owner: "best response to start to what they just finished explaining or asked.. convo
+  beginner"). One opener 0.7 s after their last words, never redone; no Add: lines; no "They want"; chat = one reaction
+  per finished turn (2.5 s quiet, 10+ words); used line clears when they talk again. COACH_PROMPT: react, then one
+  bridge; never story/numbers/steps. test/coach-opener-ui.js 9/9 (AI faked).
+- #195 ONE QUESTION = ONE CARD: sameBreath() (card < 30 s, he hasn't spoken, they haven't paused 2.5 s+, meaning
+  >= 0.30) at auto-detect grow, 2nd SAY press, and the finished question after a press. test/say-twice-e2e.js 3 cards →
+  1; early-stale-e2e ALL PASS; followup-e2e 3/3. NOTE: run e2e servers WITHOUT a short IDLE_TIMEOUT_MS (a 60 s one
+  broke the 95 s early-stale scenario).
+- Rollback tags: known-good-pre-192, -pre-note-leads, -pre-coach-opener, -pre-one-card.
+- OPEN: first real call after #193 — check `[NoteLead]` lines and that answers follow his note; small-talk/HR cards
+  (2nd user) still open; reworded prepared bank Qs still open. Production DB reads are blocked for me (auto mode) — he
+  must run read-only queries himself.
+
 ## 28 Oct night — Ask them pause, coach history, early SAY (PRs #186–#189, all LIVE)
 - #186 "Ask them": what the interviewer says AFTER the click is never taken as a question (fast route + AI reader, per
   session) until SAY (answers and turns catching back on); overlay strip "Paused while they answer your question…". e2e
