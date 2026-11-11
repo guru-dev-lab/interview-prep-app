@@ -4494,6 +4494,28 @@ async function findSemanticMatches(questionText, sessionQuestions, topN = 3) {
 // "…difference between inner and left join? How would you approach this?" — that is ONE question; the app must not
 // jump to a new card. Continuation words, a pointer back to it, or the same topic by meaning.
 const FOLLOW_UP_SIMILARITY = 0.55;
+// SAME BREATH (live call 10 Nov: one 4-part question, "…statistical analysis…" / "how did you determine which methods…" /
+// "What did your findings reveal…", became 3 cards in 20 s). While the interviewer is still on the turn that made the card
+// on screen (card under 30 s old, the candidate has not spoken since), a new piece is part of the SAME question when it is
+// on the same subject by meaning. Measured 11 Nov: parts of one question 0.36-0.55, different back-to-back questions
+// -0.00-0.19 (primary key → deadlines, stakeholder → salary, fit → data cleaning, stakeholder → Snowflake).
+// It is one breath only while THEY keep talking: words reached us with no gap over SAME_BREATH_PAUSE_MS since the card
+// (early-stale e2e 11 Nov: the candidate's answer in between was not transcribed in time, and "How do you make sure the
+// numbers are correct" grew the dashboard card; their 6 s silence while he answered is the reliable sign).
+const SAME_BREATH_MS = 30000, SAME_BREATH_SIMILARITY = 0.30, SAME_BREATH_PAUSE_MS = 2500;
+async function sameBreath(ws, q, card) {
+  if (!card || Date.now() - card.ts > SAME_BREATH_MS || (ws._lastUserSpeechTs || 0) > card.ts || (ws._ch1BreakTs || 0) > card.ts) return false;
+  try {
+    const a = await embedText(q); if (!a) return false;
+    let sim = -1;
+    for (const t of [...new Set([card.q, card.asked].filter(Boolean))]) { // its first question and the whole of it so far
+      const b = await embedText(t); if (!b) continue;
+      let x = 0; for (let i = 0; i < a.length; i++) x += a[i] * b[i]; sim = Math.max(sim, x);
+    }
+    console.log(`[SameBreath] ${sim >= SAME_BREATH_SIMILARITY ? 'same question' : 'different'} (${sim.toFixed(2)}): "${String(q).slice(0, 50)}" vs card "${String(card.asked || card.q).slice(0, 50)}"`);
+    return sim >= SAME_BREATH_SIMILARITY;
+  } catch (e) { return false; }
+}
 async function isFollowUpOf(newQ, prevQ) {
   const t = (newQ || '').trim().toLowerCase();
   if (/^(and|also|plus|what about|how about|what if)\b/.test(t)) return true; // question clean-up strips a leading And
@@ -5124,14 +5146,14 @@ wss.on('connection', (ws) => {
           }
         }
 
-        function growSayCard(fullQ) {
+        async function growSayCard(fullQ) {
           const lc = ws._lastCard; if (!lc) return;
           // Live test 28 Oct: the press's card was a guess on another topic (pressed on "Okay. One more from me.") and the
           // question they then finished was grown onto it. Grow only when the finished question shares words with the card;
           // a different question gets its own card.
           const cw = t => new Set(String(t || '').toLowerCase().match(/[a-z0-9']{4,}/g) || []);
           const qW = [...cw(fullQ)], cardW = cw(lc.asked || lc.q);
-          if (qW.length && qW.filter(w => cardW.has(w)).length < 0.3 * qW.length) {
+          if (qW.length && qW.filter(w => cardW.has(w)).length < 0.3 * qW.length && !(await sameBreath(ws, fullQ, lc))) {
             console.log('[WhatShouldISay] The finished question is not the card on screen — its own card:', fullQ.substring(0, 60));
             ws._sayTurn = null; fireDetectedQuestion(fullQ, 'held').catch(e => console.error('[WhatShouldISay]', e.message)); return;
           }
@@ -5231,7 +5253,7 @@ wss.on('connection', (ws) => {
           } else if (st && !st.used && Date.now() - st.at < 20000 && !((ws._lastUserSpeechTs || 0) > st.at)) {
             st.used = true;
             if (!st.done) { st.fullQ = q; console.log('[WhatShouldISay] The question they were asking is finished — the press answers it:', q.substring(0, 60)); return; }
-            growSayCard(q); return;
+            growSayCard(q).catch(e => console.error('[WhatShouldISay] grow failed:', e.message)); return;
           }
 
           // CONTINUATION: the interviewer is elaborating on the SAME question we're already
@@ -5246,6 +5268,12 @@ wss.on('connection', (ws) => {
           const alreadyAsked = [...recentDetectedQs, ws._activeAnswer && ws._activeAnswer.questionText, ws._lastCard && ws._lastCard.asked]
             .filter(Boolean).some(p => { const pl = String(p).toLowerCase().trim(); return pl.includes(qLowG) || stringSimilarity.compareTwoStrings(pl, qLowG) >= 0.75; });
           if (alreadyAsked && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) { console.log('[Grow] Same question found again — nothing new to add'); return; }
+          if (growEnabled && ws._activeAnswer && ws._lastCard && ws._lastCard.id === ws._activeAnswer.id && !alreadyAsked && await sameBreath(ws, q, ws._lastCard)) {
+            console.log('[Grow] Same breath — the rest of the question on screen, extending it:', q.substring(0, 80));
+            ws._lastCard.heardTs = Date.now();
+            growLiveAnswer(ws, sessionId, ws._activeAnswer, q).catch(e => console.error('[Grow]', e.message));
+            return;
+          }
           if (growEnabled && growFresh && ws._activeAnswer && isSameThread(q, ws._activeAnswer)) {
             console.log('[Grow] Continuation detected — extending active answer:', q.substring(0, 80));
             ws._lastCard.heardTs = Date.now(); // Say: this line is part of the card on screen, not a newer question
@@ -5538,6 +5566,8 @@ wss.on('connection', (ws) => {
             (text, isFinal, speechFinal, meta) => {
               console.log(`[DIAG-DG] Ch1 transcript: "${text.substring(0,60)}" isFinal=${isFinal} speechFinal=${speechFinal}`);
               if (!text.trim()) return;
+              // Same breath: a silence of 2.5 s+ on their side (the candidate answering, or a new turn) ends the breath
+              if (ws._ch1HeardTs && Date.now() - ws._ch1HeardTs > SAME_BREATH_PAUSE_MS) ws._ch1BreakTs = Date.now();
               ws._ch1HeardTs = Date.now(); // Say: words still arriving = they are mid-question
 
               // Commit an interviewer utterance: echo-check, push to transcript, schedule detection.
@@ -5990,7 +6020,7 @@ wss.on('connection', (ws) => {
         // Same as the card already on screen (jumped to or not)? Show THAT card — never rewrite it.
         if (!jumpedTo && lc) {
           const a0 = questionText.toLowerCase();
-          if ([lc.asked, lc.q].filter(Boolean).some(b => { b = b.toLowerCase(); return b.includes(a0) || a0.includes(b) || stringSimilarity.compareTwoStrings(a0, b) >= 0.6; })) {
+          if ([lc.asked, lc.q].filter(Boolean).some(b => { b = b.toLowerCase(); return b.includes(a0) || a0.includes(b) || stringSimilarity.compareTwoStrings(a0, b) >= 0.6; }) || await sameBreath(ws, (sinceText + ' ' + questionText).trim(), lc)) {
             const onScreen = (ws._activeAnswer && ws._activeAnswer.id === lc.id) ? ws._activeAnswer.answer : ((sessionQuestions.find(x => x.id === lc.id) || {}).answer || '');
             const focusMsg = { type: 'match', questionId: lc.id, questionText: lc.isBank ? lc.q : (lc.asked || lc.q), answer: onScreen || '', similarity: 100, hasAnswer: !!onScreen, navigate: true };
             ws.send(JSON.stringify(focusMsg)); broadcastToSession(sessionId, focusMsg, ws);
@@ -6024,7 +6054,7 @@ wss.on('connection', (ws) => {
         fastMatchAndRespond(questionText, sessionQuestions, sessionId, userId, ws, null, recentMatchedIds, questionIndex, rebuildIdx, false, true, true).then(newLastId => {
           if (sayTurn && ws._sayTurn === sayTurn) {
             sayTurn.done = true;
-            if (sayTurn.fullQ) { const fq = sayTurn.fullQ; sayTurn.fullQ = null; if (ws._growSayCard) ws._growSayCard(fq); } // finished while the card was being made
+            if (sayTurn.fullQ) { const fq = sayTurn.fullQ; sayTurn.fullQ = null; if (ws._growSayCard) ws._growSayCard(fq).catch(e => console.error('[WhatShouldISay] grow failed:', e.message)); } // finished while the card was being made
           }
           lastWsayMatchId = newLastId || null;
           if (newLastId) lastMatchedQId = newLastId;
