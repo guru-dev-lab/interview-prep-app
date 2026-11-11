@@ -194,7 +194,7 @@ body.calls .side-foot{display:none}
 .coach .cx:hover{color:#fff;background:rgba(255,255,255,.12)}
 @keyframes coachIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .coach.show{display:block;animation:coachIn .3s ease}
-.coach .cw{font-size:12.5px;line-height:1.35;color:#FCD34D;margin-bottom:3px}
+.coach .cw{display:none} /* owner 11 Nov: only the line to say, no "They want" */
 .coach .cw b{font-weight:700;margin-right:4px}
 .coach .cs{font-size:17px;font-weight:600;line-height:1.38}
 .coach.done .cs{color:#86EFAC}
@@ -1227,7 +1227,7 @@ $('btn-menu').onclick = function () {
   if (pop.classList.contains('open')) { closePop(); return; }
   var dark = document.body.classList.contains('dark');
   openPop($('btn-menu'), '<button class="mi" data-a="follow">Show what the call hears<span class="r">' + (follow ? 'On' : 'Off') + '</span></button>'
-    + '<button class="mi" data-a="coach" title="What they want and a line to say, under the answer during a call">Coach line<span class="r">' + (N.settings.coach === false ? 'Off' : 'On') + '</span></button>'
+    + '<button class="mi" data-a="coach" title="The best line to start your reply, under the answer during a call">Coach line<span class="r">' + (N.settings.coach === false ? 'Off' : 'On') + '</span></button>'
     + '<button class="mi" data-a="autoswitch"' + (follow ? '' : ' disabled style="opacity:.5"') + ' title="When they ask a question in your note, open it for you">Open the question they ask<span class="r">' + (autoOpen() ? 'On' : 'Off') + '</span></button>'
     + '<button class="mi" data-a="theme">' + (dark ? 'Light' : 'Dark') + ' mode</button>'
     + '<div class="mi" style="cursor:default">Text size<span class="r"><button class="chip" data-a="smaller" style="height:26px">A&#8722;</button> <span id="pop-size">' + fontSize + '</span> <button class="chip" data-a="larger" style="height:26px">A+</button></span></div>'
@@ -1477,8 +1477,21 @@ function onHeard(text, verdict, card) {
   showHeard(text, null, null, 'wait');
   markLines();
   smartHeard(text);
-  clearTimeout(coachWait); themAfter = ''; coachQ = text;
-  coachFor(text); // at once, the same moment xHire answers
+  clearTimeout(coachWait); themAfter = ''; coachQ = text; hideCoach(); heardAt = Date.now();
+  scheduleOpener(); // one line, once they stop talking (owner 11 Nov)
+}
+// Owner 11 Nov: "coaching ... should just be about best response to start to what they just finished explaining or asked..
+// more like convo beginner". Live 10 Nov the strip changed 4-6 times per question (at once, again as the question grew,
+// then up to 3 "Add:" lines while he talked). Now: ONE opener per question, COACH_QUIET after their last words, never
+// redone, nothing while he is talking.
+var openerKey = null; // the question whose opener was asked for (one per question)
+function scheduleOpener() {
+  clearTimeout(coachWait); var key = heardText;
+  coachWait = setTimeout(function () {
+    if (!key || key !== heardText || openerKey === key || saidText.length >= 20) return; // he already started: he needs no starter
+    openerKey = key; coachQ = (key + ' ' + themAfter.trim()).trim().slice(-600);
+    coachFor(coachQ, false, false, key);
+  }, COACH_QUIET);
 }
 // Live coach: the very next thing to say, as a subtitle over the answer. Before he answers: how to open (owner 24 Oct:
 // "throwing in jokes, or greeting.. or thanking them.. if they explained everything about their company i need to say
@@ -1498,21 +1511,13 @@ function onThem(text) {
     clearTimeout(pendWait); var pk = heardText;
     pendWait = setTimeout(function () { if (pk === heardText && heardPending) smartHeard((pk + ' ' + themAfter.trim()).slice(-600), pk, true); }, COACH_QUIET);
   }
-  // Owner: lines on screen only GROW, never swap ("you dont want to start speaking on something and it changes").
-  // Once he is answering, more talk from them clears only a line he has not started saying.
-  if (coachNow && saidText.length >= 20 && !coachSaid.trim() && Date.now() - coachNow.at > 1500 && text.trim().split(/\s+/).length >= 4) hideCoach();
+  // The line on screen never changes while he may be reading it. It is a starter (owner 11 Nov): once he has answered and
+  // they talk again, it has done its job and clears, so their next turn can get its own line.
+  if (coachNow && saidText.length >= 20 && Date.now() - coachNow.at > 1500 && text.trim().split(/\s+/).length >= 4) hideCoach();
   // Owner 24 Oct: "What cant it fire same time the xHire fires?" / "1.2 can be long". It does fire at once. When the
   // interviewer keeps going before he answers (xHire flagged the first half), the strip is redone from the WHOLE
   // question 0.7 s after they stop, like xHire grows its card.
-  if (heardText && saidText.length < 20 && Date.now() - heardAt < 20000 && themAfter.trim()) {
-    clearTimeout(coachWait); var key = heardText;
-    coachWait = setTimeout(function () {
-      if (key !== heardText || saidText.length >= 20) return;
-      coachQ = (key + ' ' + themAfter.trim()).slice(-600);
-      if (coachNow) coachFor(coachQ, false, true, key, true); // a line is up: add under it for the rest of the question
-      else { coachShown = []; coachFor(coachQ, false, true, key); }
-    }, COACH_QUIET);
-  }
+  if (heardText && openerKey !== heardText && saidText.length < 20 && Date.now() - heardAt < 20000) scheduleOpener(); // still talking: the opener waits for the end
 }
 var COACH_QUIET = 700, lastThemAt = 0, themAfter = '', coachWait = null, coachQ = '', pendWait = null;
 // Owner 25 Oct: "The coach is going to be useful for the waiting part and would let you have good small talks,
@@ -1520,10 +1525,10 @@ var COACH_QUIET = 700, lastThemAt = 0, themAfter = '', coachWait = null, coachQ 
 // sometimes but must not be important than real question hint or subs or starter". When the interviewer finishes a turn
 // of chat (no question) and he has not jumped in, one line back. A question always wins: its line replaces a chat line,
 // a chat line never replaces any line on screen, and a chat line still on its way when a question comes is dropped.
-var chatText = '', chatTimer = null, chatKey = null, lastSaidAt = 0, CHAT_QUIET = 1200;
+var chatText = '', chatTimer = null, chatKey = null, lastSaidAt = 0, CHAT_QUIET = 2500; // 1.2 s fired inside one long explanation (10 Nov: a line every ~30 s while they talked)
 function chatCoach() {
   var t = chatText.trim(); chatText = '';
-  if (SOLO || !follow || !N || t.split(/\s+/).length < 6) return;
+  if (SOLO || !follow || !N || t.split(/\s+/).length < 10) return;
   if (Date.now() - lastSaidAt < 1500) return;                                    // he already jumped in
   if (coachNow && !$('coach').classList.contains('done')) return;                // a line he may be reading stays
   if (heardText && Date.now() - heardAt < 20000 && saidText.length < 20) return;  // a question is waiting for his answer
@@ -1636,12 +1641,7 @@ function coachOnSaid(text) {
     rows.forEach(function (d) { if (!d.classList.contains('ok') && heardPart(d.textContent, said)) d.classList.add('ok'); });
     if (rows.length && rows[rows.length - 1].classList.contains('ok')) { $('coach').classList.add('done'); clearTimeout(coachT); coachT = setTimeout(hideCoach, 1500); }
   }
-  // Mid-answer, when he pauses with nothing on screen: the one thing to add (at most 3 per question, 6 s apart, 3 min).
-  clearTimeout(addTimer);
-  addTimer = setTimeout(function () {
-    if (coachNow || !heardText || coachAdds >= 3 || Date.now() - heardAt > 180000 || Date.now() - coachLast < 6000 || saidText.length < 40) return;
-    coachAdds++; coachFor(coachQ || heardText, true, false, heardText);
-  }, 2500);
+  // No mid-answer "Add:" lines any more (owner 11 Nov: the coach is only the starter; the answer is on xHire's card).
 }
 // Owner 25 Oct: "a setting for auto switch, on and off", once matching proved over 96% (measured: 98-99% of switches
 // land on the right card; a half-heard question never switches). Only the smart match switches, never while he types.
