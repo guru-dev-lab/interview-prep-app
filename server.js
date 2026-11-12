@@ -2927,6 +2927,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const parts = meetingCopilot.buildCopilotBlocks({ pullIdx, mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage || unread.length > 0, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
+    if (ask && !typed) { const claim = meetingCopilot.findAnsweredAsk(ask, (live._copilotHeard || []).filter(a => !a.cardId && Date.now() - a.ts < 60000)); if (claim) claim.cardId = cardId; } // a later Say press for it goes to this card
     console.log(`[Co-pilot] ${mode} on ${model} | ${hasImage ? 'image ' + (image.length / 1024).toFixed(0) + 'KB' + (screenKey ? ' key=' + screenKey : '') : reusing ? 'no image — reusing earlier screen ' + screenKey : 'no image — using the last screen summary'} | rows=${rows.length}${unread.length ? ' +' + unread.length + ' unread screens as pictures' : ''}${digest ? ' digest' : ''} | ${say ? 'SAY ' : ''}${ask ? 'ask="' + ask.slice(0, 60) + '"' : 'pressed'}`);
     const screenState = hasImage || unread.length ? 'captured' : reusing ? 'same' : rows.some(r => r.kind === 'seen') ? 'last' : 'none';
     broadcastToSession(sessionId, { type: 'copilot_start', cardId, ask, mode, say, screen: screenState, reason: captureError || (screenState === 'none' ? 'nothing captured yet on this call' : '') });
@@ -5110,6 +5111,7 @@ wss.on('connection', (ws) => {
         const LINE_MAX_MS = Number(process.env.LINE_MAX_MS || 25000); // longest interviewer line before it is committed anyway
         let lastInterviewerCommit = null; // { text, ts } — to re-join a question split across two commits
         let pendingFastTimer = null, pendingFastQ = null, pendingSince = 0; // a cut-off question waits for its continuation
+        let flushCh1OnStop = null; // co-pilot: words Deepgram finalized but never closed with a pause, committed when they stop
         ws._questionPending = () => !!(pendingFastQ || aiExtractTimer); // Say: a heard question not answered yet belongs to the press
         // (re)arm the hold. The real "they stopped" signals are Deepgram's: speech_final (500 ms of silence, endpointing) and
         // UtteranceEnd (1.5 s) — both fire it at once. This timer is only the safety net: 3 s after the last word we
@@ -5210,10 +5212,11 @@ wss.on('connection', (ws) => {
           ws._copilotHeard.push(entry); // claims it now: a second route firing the same line 0.5 s later is a duplicate
           const t0 = Date.now();
           const verdict = await Promise.race([
-            callClaude(meetingCopilot.HEARD_ASK_JUDGE, meetingCopilot.buildHeardAskJudgeInput(q, rows), 30, MODEL_HAIKU, { __tag: 'copilot-judge' }).catch(e => 'ASK (judge failed: ' + e.message + ')'),
+            callClaude(meetingCopilot.HEARD_ASK_JUDGE, meetingCopilot.buildHeardAskJudgeInput(q, rows, asked.map(a => a.text).filter(t => t !== q)), 30, MODEL_HAIKU, { __tag: 'copilot-judge' }).catch(e => 'ASK (judge failed: ' + e.message + ')'),
             new Promise(r => setTimeout(() => r('ASK (judge timed out)'), 3000)),
           ]);
-          if (!meetingCopilot.judgeSaysAsk(verdict)) {
+          if (!meetingCopilot.judgeSaysAsk(verdict) && meetingCopilot.judgeOverride(q, verdict)) console.log(`[Co-pilot] judge said ${String(verdict).trim().slice(0, 60)} — overruled: a direct ask of this person`);
+          else if (!meetingCopilot.judgeSaysAsk(verdict)) {
             ws._copilotHeard = ws._copilotHeard.filter(a => a !== entry);
             console.log(`[Co-pilot] heard, not answered (${String(verdict).trim().slice(0, 80)}) in ${Date.now() - t0}ms: ${q.substring(0, 80)}`);
             return;
@@ -5229,6 +5232,7 @@ wss.on('connection', (ws) => {
         // Paused = they said something AFTER he pressed "Ask them"; a question they finished before the click still gets its card.
         const saidSinceAskThem = () => { const at = askPaused.get(sessionId); return !!at && ((lastInterviewerCommit || {}).ts || 0) > at; };
         async function fireDetectedQuestion(q, via) {
+          ws._lastFiredQ = String(q || ''); // what was sent as a question (co-pilot: never glued to the next line)
           if (saidSinceAskThem()) { console.log(`[Ask them] paused — not taken as a question (${via}): ${String(q || '').substring(0, 60)}`); return; }
           q = String(q || '').replace(/^[\s?.!,;:]+/, ''); // "Right? Just give me…" with the filler stripped left "? Just…" as the title
           const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
@@ -5601,10 +5605,17 @@ wss.on('connection', (ws) => {
                   // finish it (21 Oct: "…how I wanna | describe the culture." 4.9 s apart became the question "Describe the
                   // culture."), up to 15 s.
                   const lowerCont = prevCut && /^[a-z]/.test(fullUtterance.trim()) && prevLine && Date.now() - prevLine.ts < 15000;
-                  const continues = lowerCont || (recent && !/\?["')\]]?$/.test(prevT) && !prevCut);
+                  // CO-PILOT (12 Nov rehearsal): a line already sent as a question is answered — never glue it to the next one
+                  // ("Have you used LOD…? Show me … with one." + "Now put the map…" made a second, merged card)
+                  const prevFired = ws._copilotMode && prevT && ws._lastFiredQ && ws._lastFiredQ.includes(prevT.slice(-60));
+                  const continues = !prevFired && (lowerCont || (recent && !/\?["')\]]?$/.test(prevT) && !prevCut));
                   const joined = continues ? prevT + ' ' + fullUtterance : fullUtterance;
                   lastInterviewerCommit = { text: fullUtterance, ts: Date.now() };
                   let fastQ = process.env.FAST_DETECT !== '0' ? questionPartOf(joined) : null;
+                  // CO-PILOT (12 Nov rehearsal): an instruction is an ask too ("Now put the map and the bar chart together on a
+                  // dashboard.") — the question rules above and the AI gate both dropped it, so no card came
+                  if (!fastQ && ws._copilotMode && meetingCopilot.looksLikeAsk(joined)) fastQ = joined.trim();
+                  else if (!fastQ && ws._copilotMode && meetingCopilot.isDirectAsk(fullUtterance)) fastQ = fullUtterance.trim(); // "Do you have any questions for me?" went to the AI read, which picked an older question
                   const heldQ = pendingFastQ; // a question held from the previous line, if any
                   const heldSince = pendingSince;
                   if (pendingFastTimer) { clearTimeout(pendingFastTimer); pendingFastTimer = null; pendingFastQ = null; }
@@ -5620,6 +5631,19 @@ wss.on('connection', (ws) => {
                   else aiExtractTimer = setTimeout(() => { aiExtractTimer = null; aiAutoExtract(); }, eager ? 300 : AI_EXTRACT_DELAY);
                   setTimeout(() => recentMatchedIds.clear(), 5000);
                 }
+              };
+
+              // 12 Nov rehearsal: "Now break that down by subcategory and sort it from highest" came final with no speech_final
+              // and nothing after it, so it sat in the buffer until the NEXT question and was answered glued to it. In co-pilot
+              // mode the UtteranceEnd (they stopped) commits what is left, as a pause would.
+              flushCh1OnStop = () => {
+                if (!ws._copilotMode || !interviewerBuffer.trim()) return;
+                lastCommitTs = Date.now();
+                const fu = interviewerBuffer.trim();
+                interviewerBuffer = '';
+                const st = ch1BufStartWall; ch1BufStartWall = null;
+                console.log('[Fast] They stopped with words never closed by a pause — committing: ' + fu.slice(0, 60));
+                commitInterviewer(fu, false, st);
               };
 
               if (isFinal) {
@@ -5672,7 +5696,7 @@ wss.on('connection', (ws) => {
               interviewerDG = null; // Allow re-open on next audio packet
               ws.send(JSON.stringify({ type: 'error', message: 'Transcription error: ' + err.message }));
             },
-            { endpointing: Number(process.env.DG_ENDPOINTING_MS || 500), onUtteranceEnd: () => firePendingNow('Interviewer stopped (UtteranceEnd)') }
+            { endpointing: Number(process.env.DG_ENDPOINTING_MS || 500), onUtteranceEnd: () => { if (flushCh1OnStop) flushCh1OnStop(); firePendingNow('Interviewer stopped (UtteranceEnd)'); } }
           );
           // Flush buffered audio as soon as Deepgram connects
           if (interviewerDG) {
@@ -5913,8 +5937,31 @@ wss.on('connection', (ws) => {
           // Their LAST question + what they said after it (owner, 26 Oct: "always say using last question"); the old pick
           // (lines since the last ask) only when no question was asked in the last few minutes
           const lastQ = meetingCopilot.sayText(interviewerLines().concat(substantive(currentBuf) ? [{ text: currentBuf, ts: Date.now() }] : []), Date.now());
-          const text = lastQ || fresh.join(' ').slice(0, 1200);
+          let text = lastQ || fresh.join(' ').slice(0, 1200);
+          // Say joins a question asked in parts — but never with questions already answered on this call (12 Nov rehearsal:
+          // "What's the difference…? What do the blue…? Who are our top ten…?" — one Say card for three, two answered already)
+          const heardAll = (ws._copilotHeard || []).filter(a => Date.now() - a.ts < 10 * 60 * 1000);
+          if (text && heardAll.length) {
+            const parts = (text.match(/[^.?!]+[.?!]*["')\]]?\s*/g) || [text]).map(p => p.trim()).filter(Boolean);
+            const open = parts.filter(p => p.split(/\s+/).length < 4 || !meetingCopilot.findAnsweredAsk(p, heardAll));
+            text = (open.some(p => p.split(/\s+/).length >= 4) ? open : parts.slice(-1)).join(' ');
+          }
           ws._copilotAskTs = Date.now();
+          // ONE card per question (12 Nov rehearsal: Say made a second card while the heard card for the same question was
+          // on its way). Already heard → go to that card (owner: "it may be answered already"); else claim it, so the heard
+          // side skips it as in flight.
+          const heard = heardAll.filter(a => a.cardId || Date.now() - a.ts < 60000); // answered, or on its way
+          const same = text ? meetingCopilot.findAnsweredAsk(text, heard) : null;
+          if (same) {
+            const t0 = Date.now();
+            const toCard = () => {
+              if (same.cardId) { console.log('[Co-pilot] Say pressed — already answering it, going to card ' + same.cardId); ws.send(JSON.stringify({ type: 'copilot_dup', cardId: same.cardId, text })); return; }
+              if (Date.now() - t0 < 6000 && (ws._copilotHeard || []).includes(same)) return void setTimeout(toCard, 250);
+              console.log('[Co-pilot] Say pressed — they just asked: "' + text.slice(0, 80) + '"'); ws.send(JSON.stringify({ type: 'copilot_say', text }));
+            };
+            return void toCard();
+          }
+          if (text) (ws._copilotHeard = ws._copilotHeard || []).push({ text, ts: Date.now(), cardId: '' });
           console.log('[Co-pilot] Say pressed — ' + (text ? 'they just asked: "' + text.slice(0, 80) + '"' : 'nothing caught, answering the latest thing said'));
           ws.send(JSON.stringify({ type: 'copilot_say', text }));
           return;
