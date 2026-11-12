@@ -497,6 +497,9 @@ body.light-mode .code-ln{color:rgba(0,0,0,.18)}body.light-mode .code-content{col
 body.light-mode .code-copy-btn{background:rgba(0,0,0,.04);color:rgba(0,0,0,.3);border-color:rgba(0,0,0,.08)}
 body.light-mode .sc-card-a pre code{color:#1e293b;background:none !important}
 body.light-mode .sc-card-a code{background:rgba(109,40,217,.08);color:#6d28d9;border-color:rgba(109,40,217,.12);padding:2px 6px;border-radius:4px;font-weight:500}
+/* Co-pilot field names are the answer (12 Nov hands-on walkthrough): readable size, bright, not a faint chip */
+.copilot-card .sc-card-a :not(pre) > code{font-size:.95em !important;font-weight:600;color:#ede9fe;background:rgba(124,58,237,.28);padding:1px 6px}
+body.light-mode .copilot-card .sc-card-a :not(pre) > code{color:#5b21b6;background:rgba(109,40,217,.12)}
 body.light-mode .sc-line{background:none}
 body.light-mode .sc-list li{color:#1e293b}
 body.light-mode .sc-list li::marker{color:#7c3aed}
@@ -1621,8 +1624,10 @@ function buildCodeBlock(lines, lang) {
   return '<pre>' + COPY_BTN_HTML + '<code>' + numbered + '</code></pre>';
 }
 
-function formatAnswer(text) {
+function formatAnswer(text, opts) {
   if (!text) return '<div class="sc-card-loading"><span class="spinner" style="width:14px;height:14px"></span> Generating answer...</div>';
+  // Co-pilot cards keep every word (12 Nov: "Here's why —" was cut from a talk track): the strips below are for interview answers
+  if (!(opts && opts.keepWords)) {
   // Strip verbose section headers and labels
   var headerWords = 'How it works|How this works|Why use it|Simple explanation|Key points|Key takeaway|What it does|What this does|In summary|Overview|Background|Here\'?s how|Here\'?s why|Here\'?s what|The short version|Quick summary|Summary|Explanation|TL;DR|Detailed explanation|Brief explanation|Quick explanation|The approach|The solution|The idea|The concept|The answer|Basic structure|Real example|Practical example|Example|Key concept|Main idea|The logic|The process|Step by step|Here\'?s an example|Let me explain|Definition|In short|What this means|The way I\'?d explain it|To put it simply|In simple terms|To answer your question|Let me walk you through|Think of it this way|The bottom line|In conclusion|To summarize|The key takeaway|Overall';
   // Headers alone on a line → remove entirely
@@ -1637,6 +1642,7 @@ function formatAnswer(text) {
   text = text.replace(/^(In summary[,:.].*|To summarize[,:.].*|The key takeaway is[,:.].*|Overall[,:].*|In conclusion[,:.].*|The bottom line is[,:.].*|So in short[,:].*)\s*$/gim, '');
   // Strip --- dividers
   text = text.replace(/^-{3,}\s*$/gm, '');
+  }
   text = text.replace(/\n{3,}/g, '\n\n');
   var html = '';
   var inCode = false;
@@ -3511,16 +3517,19 @@ function styleCopilotCard(el) {
     if (res) { res.classList.add('cp-a'); var chip = res.querySelector('.star-inline'); if (chip) chip.remove(); res.innerHTML = res.innerHTML.replace(/^\s*Result:\s*/, ''); block.insertBefore(res, q.nextSibling); }
   });
 }
+// Hands-on build labels always look the same (12 Nov): the model sometimes writes "Talk track:" bare, sometimes bold
+var CP_LABELS = /^(\s*)(?:\*\*)?(Build|Calc|Steps|Talk track|Look for|Next)(?:\*\*)?:(?:\*\*)?/gm;
+function cpLabels(t) { return String(t || '').replace(CP_LABELS, '$1**$2:**'); }
 function copilotCardDelta(cardId, text) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
   c.text += text || '';
-  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); } // re-rendered per delta: the shape is rebuilt from fresh HTML each time
+  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(cpLabels(c.text), { keepWords: true }); styleCopilotCard(c.el); } // re-rendered per delta: the shape is rebuilt from fresh HTML each time
   if (!userScrolledUp) revealAnswer(c.el); // keep following while it streams
 }
 function copilotCardDone(cardId, answer) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;
   c.text = answer || c.text;
-  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(c.text); styleCopilotCard(c.el); }
+  var a = c.el.querySelector('.sc-card-a'); if (a) { a.innerHTML = formatAnswer(cpLabels(c.text), { keepWords: true }); styleCopilotCard(c.el); }
   if (!userScrolledUp) revealAnswer(c.el);
   for (var i = 0; i < cards.length; i++) if (cards[i].id === cardId) cards[i].answer = c.text;
 }

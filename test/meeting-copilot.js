@@ -44,7 +44,7 @@ const row = (kind, text, ts, meta) => ({ kind, text, ts, meta: meta || {} });
   const smart = mc.buildCopilotPrompt(Object.assign({ mode: 'smart', rows, digest: 'DIGEST: they want the reclass explained' }, base));
   ok(/DIGEST: they want the reclass explained/.test(smart), 'smart carries the digest');
   ok(/I said 2\b/.test(smart) && /I said 30\b/.test(smart), 'smart carries a short call whole, word for word (sized by characters, not rows)');
-  ok(mc.modelFor('regular') === 'haiku' && mc.modelFor('smart') === 'sonnet', 'model by mode');
+  ok(mc.modelFor('regular') === 'sonnet' && mc.modelFor('smart') === 'sonnet', 'both modes answer on Sonnet (12 Nov: Haiku got the tool and its data wrong)');
 }
 
 // ---- press with nothing asked = panic rule, and screen-changed wording
@@ -337,7 +337,7 @@ console.log('ALL PASS (missing page is missing)');
   const empty = mc.buildCopilotPrompt(Object.assign({}, base, { ask: '', say: true, pressed: true }));
   ok(/THEY JUST ASKED/.test(empty) && /latest thing they said/i.test(empty), 'say with nothing caught: answer the latest thing they said that needs a reply');
   ok(!/PRESSED the co-pilot button with nothing typed/.test(empty), 'say never turns into the all-pages Assist sweep');
-  ok(mc.maxTokensFor('regular', true) >= 1500 && mc.maxTokensFor('regular') === 700, 'say in regular mode has room for code (1500+), plain regular stays 700');
+  ok(mc.maxTokensFor('regular', true) >= 1500 && mc.maxTokensFor('regular') >= 1500, 'regular mode has room for code and a build recipe (1500+), heard or Say');
   ok(mc.maxTokensFor('smart', true) === mc.maxTokensFor('smart'), 'smart cap unchanged by say');
 }
 
