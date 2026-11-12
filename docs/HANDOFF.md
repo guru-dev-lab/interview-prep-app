@@ -1,5 +1,29 @@
 # Handoff
 
+## 12 Nov — story hooks + co-pilot HANDS-ON skill for any tool (PRs #197–#198, LIVE) — Tableau walkthrough day
+- #197 STORY ANSWERS (owner: "positive and good amount of story ... the start and every hook must be there"): story layout
+  now = ▸ heading, a HOOK line (the win or the stakes up front, varied wording), every part of a multi-part question its
+  own line, positive (no blame; failure owned in one line), last line = the payoff; no padding. Floor 7 → 8 lines,
+  tokens 540 → 640. test/story-quality.js (before: no hook on any story; after: all 3). note-leads-live 4/4.
+- #198 CO-PILOT HANDS-ON (owner: Tableau Public + Superstore walkthrough; "it can be any tool tomorrow"; "just additional
+  skill"). Nothing tool-specific in code: MEETING_PROMPT "HANDS-ON IN A TOOL" → Build / the tool's places / Calc (fenced
+  ```dax|sql|excel|formula) / Steps / Talk track / Look for / Next; story asks = 3 beats + dashboard/story points; field
+  names copied from the screen's field list; every filter on screen named + kept/cleared; non-screen patterns said as
+  "I'd expect … let's see". Per-turn reminder line in buildCopilotBlocks.
+  - Heard instructions are asks: EXPLICIT_ASK_RE + "let's …", "go ahead and", drag/filter/sort/add… In co-pilot mode the
+    heard line goes to routeHeardToCopilot BEFORE the interview isQuestion post-filter (it dropped "Filter … West region"
+    and, on main, the old e2e's row-twelve question: meeting-copilot-e2e was 16/18 on main, 18/18 now). sameAsk: a longer
+    line holding an earlier ask + 3 new real words = a NEW ask (narrowing follow-up), lead-ins stay repeats.
+  - BOTH modes answer on Sonnet, thinking off (Haiku followed the shape but said "Technology loses money everywhere").
+    First words 0.6–1.0 s, full card 5–10 s. Regular cap 1500.
+  - Overlay: cpLabels bolds Build/Calc/Steps/Talk track/Look for/Next; field chips readable; formatAnswer(text,
+    {keepWords:true}) for co-pilot cards (the interview strips cut "Here's why —"). No desktop build needed (canvas from server).
+  - Tests: hands-on-copilot-e2e.js (6 asks: Tableau, Power BI, fixtures/screens/tableau-superstore.png), hands-on-heard-e2e.js
+    3/3 (real speech), assessment-e2e 25/25, copilot-autocapture-e2e 20/20.
+- Rollback tags: known-good-pre-story-hook, known-good-pre-hands-on.
+- OPEN: after his walkthrough read `[Co-pilot]` lines (routed / heard again / answered in, first words). The model sometimes
+  tags a Tableau calc ```sql (renders fine). Superstore field names vary by version — the screen decides.
+
 ## 11 Nov — review of 10 Nov calls + note leads, coach opener, one card (PRs #192–#195, all LIVE)
 - 10 Nov calls (Railway logs): owner's interview 21:00–21:33 UTC (session 8150c003, Polaris-type data role, Texas team,
   Kim), 2nd user's offer/HR call 19:01–19:16. Deepgram 1011 at 21:24/21:28 = his network (Teams showed it too), not xHire.
