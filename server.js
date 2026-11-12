@@ -6705,10 +6705,13 @@ Use the employer from the resume where that example happened. If no example clea
 - ${employer}`;
   if (shape === 'story') return `LAYOUT — fixed:
 - First line exactly: ▸ At <employer where the story happened, from the resume>
+- Then the HOOK: one "• " line, ONE confident sentence of at most ${LIVE_LINE_WORDS} words that makes them want the story — name the win or what was at stake up front, in this story's own words (e.g. "• The one I'm proudest of is when we cut patient no-shows by a fifth in three months." or "• We had two weeks to fix a report the whole state relied on."). Vary the wording; never open with flat background.
 - Then ${storyLabels
       ? `the story as labelled lines, each starting with its label instead of "• ": "Situation: …", "Action: …" (one or two), "Result: …" — each ONE sentence of at most ${LIVE_LINE_WORDS} words`
-      : `${n(5, 7)} lines, each ${lineUnit}, telling the story in order: the situation (what was at stake, who was involved) → what the candidate actually did, step by step → what they FOUND or what turned it around, named concretely (the specific assumption, definition, data issue or objection — never just "we found gaps") → the result (a real number if there is one). If the question is about a difficult person or a conflict, one line says how the candidate handled the PERSON (tone, one-on-one, what they cared about) and the last line says how the working relationship ended up`}.
-- No separate employer line — the heading is it. Use a real example from the resume, Q&A bank or their earlier answers; never invent one.`;
+      : `${n(5, 7)} more lines, each ${lineUnit}, telling the story in order: the situation (what was at stake, who was involved) → what the candidate actually did, step by step → what they FOUND or what turned it around, named concretely (the specific assumption, definition, data issue or objection — never just "we found gaps") → the result (a real number if there is one). If the question is about a difficult person or a conflict, one line says how the candidate handled the PERSON (tone, one-on-one, what they cared about) and the last line says how the working relationship ended up`}.
+- EVERY PART: if the question asks several things (e.g. how you chose the method, what you found, how you handled limitations), each part gets its own line, in the order they asked — none skipped or blended away.
+- POSITIVE: the candidate takes the initiative, a problem is a challenge they solved, nobody is blamed or criticised. Failure or conflict questions: own it in one line, then what they did and learned. The last line is the payoff: the result and what it meant for the team or the business.
+- No separate employer line — the heading is it. Use a real example from the resume, Q&A bank or their earlier answers; never invent one, and never pad the story with steps, checks or outcomes that aren't there.`;
   if (shape === 'steps') return `LAYOUT — fixed (a walk-through: give the FULL best-practice process, step by step):
 - First line: ONE sentence that answers the question with the overall approach.
 - Then ${maxLines ? `${Math.max(Math.min(maxLines, 9), STEPS_MIN_LINES)}` : `${STEPS_MIN_LINES}–9`} lines, one step each, in the order it is really done, each ${lineUnit}, starting "First,", "Then,", "Next,", "After that,", "Finally," — every step a senior expert would include (scoping/requirements, the data or setup, building it, checking and testing it, sharing it with people, and keeping it right afterwards, as fits the question), naming the exact technique, tool or check for each. No step skipped, none vague.
@@ -6748,7 +6751,7 @@ function liveLengthRule(maxLines) {
 // The line cap actually in force: the stricter of the style's cap and the user's length setting.
 // Stories keep their middle (owner, 26 Sep: "it doesn't really say what happened … and what the gap was"):
 // a length setting or a short style never cuts a story below STORY_MIN_LINES.
-const STORY_MIN_LINES = 7;
+const STORY_MIN_LINES = 8; // the hook + 7 story lines
 const STEPS_MIN_LINES = 6; // walk-throughs: the full process, never trimmed by a short style
 function liveLineCap(styleKey, userMaxLines, shape) {
   const caps = [(STYLE_LAYOUT[styleKey] || {}).maxLines, userMaxLines].filter(x => x > 0);
@@ -6973,7 +6976,7 @@ async function generateLiveAnswer(questionText, sessionId, userId, ws, questionI
       else if (maxSentences <= 12) tokenLimit = shape === 'code' ? 1300 : 700;
       else tokenLimit = shape === 'code' ? 1500 : 900;
     }
-    if (shape === 'story') tokenLimit = Math.max(tokenLimit, 540); // 5–7 story lines must never be cut mid-sentence
+    if (shape === 'story') tokenLimit = Math.max(tokenLimit, 640); // hook + 5–7 story lines must never be cut mid-sentence
     if (shape === 'steps') tokenLimit = Math.max(tokenLimit, 700); // up to 10 walk-through lines, never cut mid-step
     const withConversation = hasConversation(ws);
     const system = composeLiveSystemPrompt({
