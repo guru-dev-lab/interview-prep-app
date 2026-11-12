@@ -20,7 +20,14 @@
     {keepWords:true}) for co-pilot cards (the interview strips cut "Here's why —"). No desktop build needed (canvas from server).
   - Tests: hands-on-copilot-e2e.js (6 asks: Tableau, Power BI, fixtures/screens/tableau-superstore.png), hands-on-heard-e2e.js
     3/3 (real speech), assessment-e2e 25/25, copilot-autocapture-e2e 20/20.
-- Rollback tags: known-good-pre-story-hook, known-good-pre-hands-on.
+- #200 follow-up: Say on a build ask uses the recipe (steps numbered, not fenced); steps must work first try, only real
+  geographies map ("double-click Region" was wrong 1 in 2 → 3/3 State/Province + Region on Color); every filter on screen
+  named (per-turn reminder). Fixture data pane has globe icons.
+- Rollback tags: known-good-pre-story-hook, known-good-pre-hands-on, known-good-pre-say-hands-on.
+- OPEN (pre-existing, also on main): meeting-copilot-e2e is 16/18 most runs — its ch1 audio holds an echo of HIS line in
+  the same Deepgram utterance as THEIR question, and echo detection drops the whole utterance (question included). Real
+  meeting apps don't play his voice back, so low risk; fix = drop only the echoed part of a mixed utterance. Not touched
+  the night before his walkthrough.
 - OPEN: after his walkthrough read `[Co-pilot]` lines (routed / heard again / answered in, first words). The model sometimes
   tags a Tableau calc ```sql (renders fine). Superstore field names vary by version — the screen decides.
 
