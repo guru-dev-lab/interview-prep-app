@@ -136,23 +136,39 @@ body.board-closed .copilot-float,body.board-closed .copilot-capture-list{display
 .copilot-card .cp-tag{display:inline-block;font:700 9px Inter,sans-serif;letter-spacing:.4px;text-transform:uppercase;color:#A5B4FC;background:rgba(99,102,241,.18);border-radius:4px;padding:2px 6px;margin-right:8px;vertical-align:middle}
 .copilot-card .cp-a{font-weight:700;color:#34D399;font-size:1.1em;margin:0 0 6px;padding:4px 8px;background:rgba(52,211,153,.1);border-radius:6px;display:inline-block}
 .copilot-card .cp-sec{opacity:.75;font-size:.95em}
-.copilot-card .cp-calc{margin:8px 0 12px;padding:10px 12px 12px;border:1.5px solid rgba(251,191,36,.8);border-radius:10px;background:linear-gradient(180deg,rgba(251,191,36,.17),rgba(251,191,36,.06));box-shadow:0 0 0 3px rgba(251,191,36,.10),0 6px 18px rgba(0,0,0,.35)}
-.copilot-card .cp-calc-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13.5px;line-height:1.45;color:#fff7e0;font-weight:600}
-.copilot-card .cp-calc-tag{flex:none;font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;background:#fbbf24;color:#1a1300;padding:2px 7px;border-radius:5px}
-.copilot-card .cp-calc-name{flex:1 1 200px;min-width:0}
-.copilot-card .cp-calc-what{margin-top:4px;font-size:12.5px;opacity:.85}
-.copilot-card .cp-calc pre{margin:8px 0 0 !important;background:rgba(8,8,14,.8) !important;border:1px solid rgba(251,191,36,.4) !important;padding:42px 12px 10px !important;position:relative}
-.copilot-card .cp-calc pre.short{padding:11px 84px 11px 12px !important}
-.copilot-card .cp-calc pre code,.copilot-card .cp-calc pre .code-content{font-size:13.5px !important;line-height:1.55 !important;font-weight:600}
-.copilot-card .cp-calc pre.short code,.copilot-card .cp-calc pre.short .code-content{font-size:15px !important;line-height:1.6 !important}
-.copilot-card .cp-calc pre.short .code-ln{display:none}
-.copilot-card .cp-calc .code-copy-btn{opacity:1 !important;width:auto !important;height:26px !important;padding:0 10px !important;gap:5px;top:8px !important;right:8px !important;background:#fbbf24 !important;color:#1a1300 !important;border-color:#fbbf24 !important;font:700 11.5px system-ui,-apple-system,sans-serif}
-.copilot-card .cp-calc .code-copy-btn::after{content:'Copy'}
-.copilot-card .cp-calc .code-copy-btn.copied{background:#73daca !important;border-color:#73daca !important}
-.copilot-card .cp-calc .code-copy-btn.copied::after{content:'Copied'}
-.copilot-card .cp-calc .text-tag{display:none}
-body.light-mode .copilot-card .cp-calc{background:linear-gradient(180deg,rgba(251,191,36,.22),rgba(251,191,36,.10));border-color:#d99a00;box-shadow:0 0 0 3px rgba(217,154,0,.12)}
-body.light-mode .copilot-card .cp-calc-head{color:#2a1f00}
+/* CALC (owner, 12 Nov: "industry clean … just text and formatting"): a heading line, then the formula as plain clear text,
+   coloured the way the tool's own formula editor colours it (fields orange, functions blue). Solid ground, no glow. */
+.copilot-card .cp-calc{margin:8px 0 12px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#11131a;overflow:hidden}
+.copilot-card .cp-calc-head{display:flex;align-items:center;gap:8px;padding:7px 8px 7px 12px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12.5px;line-height:1.35;color:#e6edf3}
+.copilot-card .cp-calc-tag{flex:none;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fbbf24}
+.copilot-card .cp-calc-name{flex:1 1 auto;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.copilot-card .cp-calc-copy{flex:none;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:5px;border:1px solid rgba(255,255,255,.16);background:transparent;color:#e6edf3;font:600 11.5px system-ui,-apple-system,sans-serif;cursor:pointer}
+.copilot-card .cp-calc-copy:hover{background:rgba(255,255,255,.08)}
+.copilot-card .cp-calc-copy:focus-visible{outline:2px solid #fbbf24;outline-offset:1px}
+.copilot-card .cp-calc-copy.copied{color:#7ee2a8;border-color:rgba(126,226,168,.5)}
+.copilot-card .cp-calc-what{padding:7px 12px 0;font-size:12.5px;line-height:1.45;color:#9aa4b2}
+.copilot-card .cp-calc-code{margin:0;padding:10px 12px 12px;font:500 14px/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#e6edf3;white-space:pre-wrap;overflow-wrap:anywhere;background:none;border:0}
+.copilot-card .cp-calc-code.short{font-size:15px}
+.copilot-card .sc-card-a pre.cp-calc-code,.copilot-card .sc-card-a pre.cp-calc-code code{font:500 14px/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace !important;color:#e6edf3}
+.copilot-card .sc-card-a pre.cp-calc-code.short,.copilot-card .sc-card-a pre.cp-calc-code.short code{font-size:15px !important}
+body.light-mode .copilot-card .sc-card-a pre.cp-calc-code,body.light-mode .copilot-card .sc-card-a pre.cp-calc-code code{color:#1f2328}
+.copilot-card .cp-calc-code .f-field{color:#ffa657}
+.copilot-card .cp-calc-code .f-fn{color:#79c0ff}
+.copilot-card .cp-calc-code .f-kw{color:#d2a8ff;font-weight:600}
+.copilot-card .cp-calc-code .f-str{color:#a5d6a7}
+.copilot-card .cp-calc-code .f-num{color:#56d4dd}
+.copilot-card .cp-calc-code .f-com{color:#8b949e;font-style:italic}
+body.light-mode .copilot-card .cp-calc{background:#ffffff;border-color:rgba(0,0,0,.14)}
+body.light-mode .copilot-card .cp-calc-head{color:#1f2328;border-bottom-color:rgba(0,0,0,.08)}
+body.light-mode .copilot-card .cp-calc-tag{color:#9a6700}
+body.light-mode .copilot-card .cp-calc-copy{color:#1f2328;border-color:rgba(0,0,0,.18)}
+body.light-mode .copilot-card .cp-calc-what{color:#57606a}
+body.light-mode .copilot-card .cp-calc-code{color:#1f2328}
+body.light-mode .copilot-card .cp-calc-code .f-field{color:#c45a00}
+body.light-mode .copilot-card .cp-calc-code .f-fn{color:#0b62c4}
+body.light-mode .copilot-card .cp-calc-code .f-kw{color:#7a3fc1}
+body.light-mode .copilot-card .cp-calc-code .f-str{color:#1a7f37}
+body.light-mode .copilot-card .cp-calc-code .f-num{color:#0f7b8a}
 .copilot-screen-chip{margin-left:auto;font:600 9px Inter,sans-serif;color:#A5B4FC;background:rgba(99,102,241,.14);border-radius:4px;padding:2px 6px;white-space:nowrap}
 .copilot-screen-chip.bad{color:#FCA5A5;background:rgba(248,113,113,.14)}
 .copilot-transcript{font:400 9px Inter,sans-serif;color:var(--text4);margin-bottom:4px;padding:2px 8px;background:rgba(255,255,255,.02);border-radius:4px;font-style:italic}
@@ -3507,33 +3523,69 @@ var QSPLIT = /^((?:page|part|screen|memo|section)\s*\d*)\s*[—:–-]\s*((?:ques
 // CALC POPS (owner, 12 Nov: "make the calculation part popping and visible"): the Calc line + its formula become one
 // amber panel — CALCULATION tag, the name, the formula large with a Copy button always showing — moved above the Do steps
 // so the thing to type is the first thing seen. Runs on every re-render (each delta rebuilds the card from fresh HTML).
+var CALC_KW = /^(IF|THEN|ELSE|ELSEIF|END|CASE|WHEN|AND|OR|NOT|IN|IS|NULL|TRUE|FALSE|VAR|RETURN|FIXED|INCLUDE|EXCLUDE|SELECT|FROM|WHERE|GROUP|BY|ORDER|HAVING|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|WITH|DISTINCT|LIMIT|OVER|PARTITION)$/i;
+// One formula line → coloured text: [Field] / 'Table'[Col] orange, FUNCTION( blue, keywords purple, strings green, numbers cyan
+function calcHL(line) {
+  var out = '', re = /(\/\/.*$|--.*$)|("(?:[^"\\]|\\.)*")|('(?:[^']|'')*'\s*\[[^\]]*\]|\[[^\]]*\])|('(?:[^']|'')*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_.]*)(?=\s*\()|([A-Za-z_][A-Za-z0-9_]*)/g, m, last = 0;
+  while ((m = re.exec(line))) {
+    out += esc(line.slice(last, m.index)); last = re.lastIndex;
+    var t = esc(m[0]);
+    if (m[1]) out += '<span class="f-com">' + t + '</span>';
+    else if (m[2] || m[4]) out += '<span class="f-str">' + t + '</span>';
+    else if (m[3]) out += '<span class="f-field">' + t + '</span>';
+    else if (m[5]) out += '<span class="f-num">' + t + '</span>';
+    else if (m[6]) out += '<span class="' + (CALC_KW.test(m[6]) ? 'f-kw' : 'f-fn') + '">' + t + '</span>';
+    else out += CALC_KW.test(m[7]) ? '<span class="f-kw">' + t + '</span>' : t;
+  }
+  return out + esc(line.slice(last));
+}
+function copyCalc(btn) {
+  var code = btn.closest('.cp-calc').querySelector('.cp-calc-code'); if (!code) return;
+  var done = function () { btn.classList.add('copied'); btn.lastChild.textContent = 'Copied'; setTimeout(function () { btn.classList.remove('copied'); btn.lastChild.textContent = 'Copy'; }, 1500); };
+  try { navigator.clipboard.writeText(code.textContent).then(done, function () {}); } catch (e) {}
+}
+// CALC (owner, 12 Nov: "make the calculation part popping and visible" … "industry clean, very clean and visible … just text and
+// formatting"): the Calc line, what it does and its formula become one block above the Do steps — a heading line (CALCULATION ·
+// name · Copy), then the formula as clear text coloured like the tool's own editor. No line numbers. Runs on every re-render.
 function shapeCalc(a) {
   if (a.querySelector('.cp-calc')) return;
   Array.prototype.slice.call(a.querySelectorAll('.sc-line > .hl-key')).forEach(function (k) {
     if (!/^Calc:?$/i.test((k.textContent || '').trim())) return;
     var line = k.parentNode; if (line.parentNode !== a) return;
-    var box = document.createElement('div'); box.className = 'cp-calc';
     k.remove();
-    var rest = line.innerHTML.replace(/^\s+/, '');
-    box.innerHTML = '<div class="cp-calc-head"><span class="cp-calc-tag">Calculation</span><span class="cp-calc-name">' + rest + '</span></div>';
+    var head = line.textContent.replace(/^\s+/, '').trim(), name = head, what = '';
+    var sp = head.match(/^(.{1,48}?)\s*(?:,|—|–|:|\s-\s)\s*(.+)$/); if (sp) { name = sp[1]; what = sp[2]; }
     // what belongs to the calc: up to 2 plain lines saying what it does, then its formula block(s) — until the next label or list
-    var cur = line.nextElementSibling, take = [], pre = 0, desc = 0;
+    var cur = line.nextElementSibling, pres = [], descs = [];
     while (cur) {
       var nx = cur.nextElementSibling, blank = cur.classList && cur.classList.contains('sc-blank');
-      if (cur.tagName === 'PRE') { take.push(cur); pre++; }
-      else if (blank) { if (pre) break; }
-      else if (!pre && desc < 2 && cur.classList && cur.classList.contains('sc-line') && !cur.querySelector(':scope > .hl-key')) { take.push(cur); desc++; }
+      if (cur.tagName === 'PRE') pres.push(cur);
+      else if (blank) { if (pres.length) break; }
+      else if (!pres.length && descs.length < 2 && cur.classList && cur.classList.contains('sc-line') && !cur.querySelector(':scope > .hl-key')) descs.push(cur);
       else break;
       cur = nx;
     }
-    if (!pre) take = []; // no formula block after it: the line alone is the panel
-    take.forEach(function (n) { if (n.tagName === 'PRE') { if (n.querySelectorAll('.code-line').length <= 3) n.classList.add('short'); } else n.classList.add('cp-calc-what'); box.appendChild(n); });
+    if (!pres.length) descs = [];
+    var codeLines = [];
+    pres.forEach(function (pre) {
+      var rows = pre.querySelectorAll('.code-line .code-content');
+      if (rows.length) Array.prototype.forEach.call(rows, function (r) { codeLines.push(r.textContent); });
+      else { var c = pre.querySelector('code'); String(c ? c.textContent : pre.textContent).split('\n').forEach(function (l) { codeLines.push(l); }); }
+    });
+    while (codeLines.length && !codeLines[codeLines.length - 1].trim()) codeLines.pop();
+    var whatAll = [what].concat(descs.map(function (d) { return d.textContent.trim(); })).filter(Boolean).join(' ');
+    var box = document.createElement('div'); box.className = 'cp-calc';
+    box.innerHTML = '<div class="cp-calc-head"><span class="cp-calc-tag">Calculation</span><span class="cp-calc-name">' + esc(name) + '</span>'
+      + (codeLines.length ? '<button class="cp-calc-copy" onclick="copyCalc(this)" aria-label="Copy the calculation"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>Copy</span></button>' : '') + '</div>'
+      + (whatAll ? '<div class="cp-calc-what">' + esc(whatAll) + '</div>' : '')
+      + (codeLines.length ? '<pre class="cp-calc-code' + (codeLines.length <= 3 ? ' short' : '') + '"><code>' + codeLines.map(calcHL).join('\n') + '</code></pre>' : '');
+    pres.concat(descs).forEach(function (n) { n.remove(); });
     var doLine = null;
     Array.prototype.slice.call(a.querySelectorAll('.sc-line > .hl-key')).some(function (h) { if (/^Do:?$/i.test(h.textContent.trim()) && h.parentNode.parentNode === a) { doLine = h.parentNode; return true; } return false; });
     var up = doLine && doLine.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING;
     a.insertBefore(box, up ? doLine : line);
     line.remove();
-    // the panel now sits above the steps: "the formula below" in a step points the wrong way
+    // the block now sits above the steps: "the formula below" in a step points the wrong way
     if (up) Array.prototype.slice.call(a.querySelectorAll('li')).forEach(function (li) {
       li.innerHTML = li.innerHTML.replace(/\b((?:formula|calc|calculation|measure|expression|code|DAX|SQL)(?:\s*(?:\([^)]*\)|<[^>]+>[^<]*<\/[^>]+>))?)\s+below\b/gi, '$1 above');
     });
@@ -3542,6 +3594,12 @@ function shapeCalc(a) {
 function styleCopilotCard(el) {
   var a = el && el.querySelector('.sc-card-a'); if (!a) return;
   shapeCalc(a);
+  // a bare "Say:" heading right before the calc or the Do steps says nothing — the build card starts at the calc
+  Array.prototype.slice.call(a.children).forEach(function (n) {
+    if (!/^Say:$/.test((n.textContent || '').trim())) return;
+    var nx = n.nextElementSibling; while (nx && nx.classList.contains('sc-blank')) nx = nx.nextElementSibling;
+    if (nx && (nx.classList.contains('cp-calc') || /^Do:/.test((nx.textContent || '').trim()))) n.remove();
+  });
   if (a.querySelector('.cp-block')) return; // already shaped (done after the stream)
   var nodes = a.querySelectorAll('p, div, li, span.hl-key');
   nodes.forEach(function (n) {
