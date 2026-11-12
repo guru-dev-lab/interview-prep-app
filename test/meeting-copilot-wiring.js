@@ -107,7 +107,7 @@ ok(/\/\\d\/\.test\(sp\[1\]\)/.test(src.slice(src.indexOf('function styleCopilotC
 // ---- SAY button in co-pilot mode (owner, 3 Oct): one brain — the server pulls what they just asked from the call, the overlay
 // answers it through the co-pilot door with résumé + bank; a press on an already-answered ask jumps to that card
 const srv = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
-const sayH = srv.slice(srv.indexOf("msg.type === 'what_should_i_say'"), srv.indexOf("msg.type === 'what_should_i_say'") + 6000);
+const sayH = srv.slice(srv.indexOf("msg.type === 'what_should_i_say'"), srv.indexOf("msg.type === 'what_should_i_say'") + 9000);
 ok(/if \(ws\._copilotMode\)/.test(sayH) && /type: 'copilot_say'/.test(sayH), 'Say in co-pilot mode routes to the co-pilot (copilot_say), never the QA jump/bank path');
 ok(/_copilotAskTs/.test(sayH) && /_copilotAskTs/.test(srv.slice(srv.indexOf('question routed to co-pilot'), srv.indexOf('question routed to co-pilot') + 400)), 'what counts as "just asked" starts after the last co-pilot ask (heard or say)');
 const ep = srv.slice(srv.indexOf("app.post('/api/sessions/:id/copilot'"), srv.indexOf("app.post('/api/sessions/:id/copilot'") + 12000);
