@@ -2,7 +2,7 @@
 // nothing hard-coded). Real copilot route + real models: a heard build ask gets a build recipe (Build / places / Calc /
 // Steps / Talk track / Next) from the model's own knowledge of the tool and the public dataset.
 // Labels may come bare or bold: the overlay bolds them (canvas.html cpLabels).
-// Usage: node test/hands-on-copilot-e2e.js [baseUrl] [regular|smart]   (LOCAL DATABASE_URL; server with MUSTHAVE_PREBUILD=0)
+// Usage: node test/hands-on-copilot-e2e.js [baseUrl] [regular|smart] [start case]   (LOCAL DATABASE_URL; server with MUSTHAVE_PREBUILD=0)
 require('dotenv').config();
 const fs = require('fs'); const WebSocket = require('ws'); const jwt = require('jsonwebtoken'); const { Pool } = require('pg');
 const BASE = process.argv[2] || 'http://localhost:3997', MODE = process.argv[3] || 'regular';
@@ -44,7 +44,7 @@ const CASES = [
   ws.send(JSON.stringify({ type: 'update_settings', copilot: true, copilotHistory: MODE === 'smart' }));
   await sleep(500);
   const out = []; let fail = 0;
-  for (const [ask, checks, image] of CASES) {
+  for (const [ask, checks, image] of (process.argv[4] ? CASES.slice(+process.argv[4]) : CASES)) {
     const n = done.length, t0 = Date.now();
     const r = await fetch(`${BASE}/api/sessions/${s.id}/copilot`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(image ? { ask, image } : { ask }) });
     if (!r.ok) { console.log('FAIL route', r.status, await r.text()); fail++; continue; }
