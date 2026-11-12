@@ -1,6 +1,7 @@
 # Handoff
 
 ## 12 Nov — story hooks + co-pilot HANDS-ON skill for any tool (PRs #197–#198, LIVE) — Tableau walkthrough day
+- Skim cards (owner after a dry run: "too much info to skim through in the call"): hands-on cards are now **Do** (≤5 one-line actions) / **Calc** (only when needed) / **Say it** (1–2 lines) / **Next**; no Build, places list or Look for; never names a winner/loser not on screen (it had guessed "Tables strong" — Tables is Superstore's biggest loser). Story asks: Do = What is happening / Where and why / What to do / Tie them together. Rollback: `known-good-pre-skim`.
 - #197 STORY ANSWERS (owner: "positive and good amount of story ... the start and every hook must be there"): story layout
   now = ▸ heading, a HOOK line (the win or the stakes up front, varied wording), every part of a multi-part question its
   own line, positive (no blame; failure owned in one line), last line = the payoff; no padding. Floor 7 → 8 lines,

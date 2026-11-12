@@ -3518,7 +3518,7 @@ function styleCopilotCard(el) {
   });
 }
 // Hands-on build labels always look the same (12 Nov): the model sometimes writes "Talk track:" bare, sometimes bold
-var CP_LABELS = /^(\s*)(?:\*\*)?(Build|Calc|Steps|Talk track|Look for|Next)(?:\*\*)?:(?:\*\*)?/gm;
+var CP_LABELS = /^(\s*)(?:\*\*)?(Do|Say it|Build|Calc|Steps|Talk track|Look for|Next)(?:\*\*)?:(?:\*\*)?/gm;
 function cpLabels(t) { return String(t || '').replace(CP_LABELS, '$1**$2:**'); }
 function copilotCardDelta(cardId, text) {
   var c = copilotCards[cardId]; if (!c || !c.el) return;

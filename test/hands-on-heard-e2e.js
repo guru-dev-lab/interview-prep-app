@@ -36,7 +36,7 @@ const LINES = [
   for (const m of got) console.log(' ', m.type.padEnd(18), (m.text || m.ask || (m.answer || '').replace(/\n/g, ' ⏎ ')).slice(0, 230));
   const starts = got.filter(m => m.type === 'copilot_start');
   const ok1 = starts.some(m => /sub-?categor/i.test(m.ask)), ok2 = starts.some(m => /west/i.test(m.ask));
-  const dones = got.filter(m => m.type === 'copilot_done'), recipe = dones.filter(m => /Steps:/.test(m.answer)).length;
+  const dones = got.filter(m => m.type === 'copilot_done'), recipe = dones.filter(m => /(Do|Steps):/.test(m.answer)).length;
   console.log(`${ok1 ? 'PASS' : 'FAIL'} heard "Let's look at … losing money" → card on its own`);
   console.log(`${ok2 ? 'PASS' : 'FAIL'} heard "go ahead and filter … West" → card on its own`);
   console.log(`${recipe >= 2 ? 'PASS' : 'FAIL'} both cards are build recipes with Steps (${recipe})`);
