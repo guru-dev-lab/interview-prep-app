@@ -30,6 +30,7 @@ for (const q of [
   'Sort that from highest to lowest.',
 ]) ok(mc.heardAskGate(q).ok, 'a hands-on ask: ' + q);
 ok(/HANDS-ON IN A TOOL/.test(mc.MEETING_PROMPT) && !/tableau|superstore/i.test(mc.MEETING_PROMPT.slice(mc.MEETING_PROMPT.indexOf('HANDS-ON'), mc.MEETING_PROMPT.indexOf('RULES:'))), 'hands-on rule is general: no tool or dataset hard-coded');
+ok(/hands-on in a tool[\s\S]*never fenced/i.test(mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: 'Show me sales by region.', say: true, pressed: true })), 'Say on a build ask uses the build recipe, steps not fenced');
 ok(/HANDS-ON IN A TOOL shape/.test(mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: 'Show me sales by region.' })), 'every turn carries the hands-on reminder');
 
 // ---- repeat: the 9 Oct doubles are one question
