@@ -220,3 +220,14 @@ console.log('wiring: heard-ask door checks pass');
   ok(html.indexOf('var overlayDiag') < html.indexOf('(function clickThroughTransparentParts'), 'diagnostics exist before the click-through handler uses them');
 }
 console.log('wiring: overlay drag checks pass');
+
+// ---- CALC POPS (owner, 12 Nov): the calc is its own panel at the top of the card, Copy always showing; Copy gives clean code
+{
+  const cv = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'canvas.html'), 'utf8');
+  const sty = cv.slice(cv.indexOf('function styleCopilotCard('), cv.indexOf('function styleCopilotCard(') + 200);
+  ok(/function shapeCalc\(a\)/.test(cv) && /shapeCalc\(a\)/.test(sty), 'co-pilot cards shape the Calc line + formula into one panel');
+  ok(/\.cp-calc \.code-copy-btn\{opacity:1/.test(cv), 'the calc Copy button always shows');
+  const cp = cv.slice(cv.indexOf('function copyCodeBlock('), cv.indexOf('function copyCodeBlock(') + 700);
+  ok(/\.code-line \.code-content/.test(cp) && /join\('\\n'\)/.test(cp), 'Copy takes only the code of each numbered line, one per line (no line numbers glued on)');
+}
+console.log('calc panel + copy checks OK');
