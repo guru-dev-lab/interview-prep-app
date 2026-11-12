@@ -226,7 +226,7 @@ console.log('wiring: overlay drag checks pass');
   const cv = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'canvas.html'), 'utf8');
   const sty = cv.slice(cv.indexOf('function styleCopilotCard('), cv.indexOf('function styleCopilotCard(') + 200);
   ok(/function shapeCalc\(a\)/.test(cv) && /shapeCalc\(a\)/.test(sty), 'co-pilot cards shape the Calc line + formula into one panel');
-  ok(/\.cp-calc \.code-copy-btn\{opacity:1/.test(cv), 'the calc Copy button always shows');
+  ok(/class="cp-calc-copy"/.test(cv) && /function copyCalc\(btn\)/.test(cv), 'the calc has its own labelled Copy button in its heading');
   const cp = cv.slice(cv.indexOf('function copyCodeBlock('), cv.indexOf('function copyCodeBlock(') + 700);
   ok(/\.code-line \.code-content/.test(cp) && /join\('\\n'\)/.test(cp), 'Copy takes only the code of each numbered line, one per line (no line numbers glued on)');
 }
