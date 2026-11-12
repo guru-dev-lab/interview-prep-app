@@ -22,10 +22,21 @@ for (const q of [
   'Did you wanna declare a variable first maybe?',
   'Is there something here that you would use as a tiebreaker?',
 ]) ok(mc.heardAskGate(q).ok, 'an ask: ' + q);
+// ---- gate: hands-on instructions in a tool are asks (12 Nov, Tableau walkthrough)
+for (const q of [
+  "Let's look at profit by region.",
+  'Go ahead and drag Region onto columns.',
+  'Now filter it to just the West region.',
+  'Sort that from highest to lowest.',
+]) ok(mc.heardAskGate(q).ok, 'a hands-on ask: ' + q);
+ok(/HANDS-ON IN A TOOL/.test(mc.MEETING_PROMPT) && !/tableau|superstore/i.test(mc.MEETING_PROMPT.slice(mc.MEETING_PROMPT.indexOf('HANDS-ON'), mc.MEETING_PROMPT.indexOf('RULES:'))), 'hands-on rule is general: no tool or dataset hard-coded');
+ok(/HANDS-ON IN A TOOL shape/.test(mc.buildCopilotPrompt({ mode: 'regular', rows: [], session: {}, ask: 'Show me sales by region.' })), 'every turn carries the hands-on reminder');
 
 // ---- repeat: the 9 Oct doubles are one question
 ok(mc.sameAsk('What would you take into consideration for breaking those ties?', 'What would you take into consideration for breaking those ties?'), 'same words');
 ok(mc.sameAsk('What is it that you\'re looking to measure?', 'What what is it that you\'re looking to measure?'), 'stutter is the same ask');
+ok(!mc.sameAsk('Filter the superstore data in Tableau Public to show which subcategories are losing money in just the west region.', 'Which subcategories are losing money?'), 'a narrowing follow-up is a new ask (12 Nov)');
+ok(mc.sameAsk('Okay so can you tell me which subcategories are losing money?', 'Which subcategories are losing money?'), 'a lead-in on the same ask is a repeat');
 ok(!mc.sameAsk('How would you adjust for that?', 'Can you give me the DAX needed to create a measure that would rank them?'), 'different asks stay different');
 const asked = [{ text: 'Is there something that you would do to ensure that you know the data is right?', cardId: 'copilot-1' }];
 ok(mc.findAnsweredAsk('Is there something that you would do to ensure that you know the data is right?', asked).cardId === 'copilot-1', 'repeat points at the earlier card');

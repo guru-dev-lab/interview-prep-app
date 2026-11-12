@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Tableau Public - Book1</title><style>
+body{margin:0;font:13px "Segoe UI",Arial,sans-serif;background:#fff;color:#333;width:1280px;height:760px;overflow:hidden}
+.top{height:30px;background:#2d3e50;color:#fff;display:flex;align-items:center;padding:0 10px;font-size:12px}.top b{margin-right:18px}
+.menu{height:24px;border-bottom:1px solid #ddd;display:flex;gap:16px;align-items:center;padding:0 10px;font-size:12px}
+.wrap{display:flex;height:calc(100% - 80px)}
+.data{width:230px;border-right:1px solid #ddd;padding:8px;font-size:12px}.data h4{margin:6px 0;font-size:12px;color:#555}
+.f{padding:2px 4px}.dim{color:#1f77b4}.mea{color:#2ca02c}
+.mid{width:150px;border-right:1px solid #ddd;padding:8px;font-size:12px}.card{border:1px solid #ccc;margin-bottom:10px;padding:6px}.card h5{margin:0 0 6px;font-size:11px;color:#666}
+.pill{display:inline-block;border-radius:10px;padding:2px 10px;font-size:12px;color:#fff;margin:2px}.blue{background:#4e79a7}.green{background:#59a14f}
+.main{flex:1;padding:8px 14px}.shelf{display:flex;align-items:center;border-bottom:1px solid #eee;padding:4px 0}.shelf span.l{width:70px;color:#666;font-size:12px}
+.chart{margin-top:12px}.row{display:flex;align-items:center;height:24px}.lab{width:110px;text-align:right;padding-right:8px;font-size:12px}.bar{height:16px}.v{font-size:11px;margin-left:6px}
+.tabs{position:absolute;bottom:0;left:0;right:0;height:26px;border-top:1px solid #ccc;background:#f5f5f5;display:flex;gap:10px;align-items:center;padding:0 10px;font-size:12px}
+</style></head><body>
+<div class="top"><b>Tableau Public</b> Book1 — Sample - Superstore</div>
+<div class="menu"><span>File</span><span>Data</span><span>Worksheet</span><span>Dashboard</span><span>Story</span><span>Analysis</span><span>Map</span><span>Format</span><span>Window</span><span>Help</span><span style="margin-left:auto">Show Me</span></div>
+<div class="wrap">
+ <div class="data"><h4>Data</h4><div>Sample - Superstore</div><h4>Tables</h4><div><b>Orders</b></div>
+ <div class="f dim">Category</div><div class="f dim">City</div><div class="f dim">Country/Region</div><div class="f dim">Customer ID</div><div class="f dim">Customer Name</div><div class="f dim">Order Date</div><div class="f dim">Order ID</div><div class="f dim">Postal Code</div><div class="f dim">Product ID</div><div class="f dim">Product Name</div><div class="f dim">Region</div><div class="f dim">Row ID</div><div class="f dim">Segment</div><div class="f dim">Ship Date</div><div class="f dim">Ship Mode</div><div class="f dim">State/Province</div><div class="f dim">Sub-Category</div>
+ <div class="f mea">Discount</div><div class="f mea">Profit</div><div class="f mea">Quantity</div><div class="f mea">Sales</div><div class="f mea">Orders (Count)</div>
+ <div><b>People</b></div><div><b>Returns</b></div></div>
+ <div class="mid"><div class="card"><h5>Pages</h5></div><div class="card"><h5>Filters</h5><span class="pill blue">YEAR(Order Date)</span></div><div class="card"><h5>Marks</h5><div>Automatic ▾</div><div style="font-size:11px;margin-top:4px">Color · Size · Label · Detail · Tooltip</div></div></div>
+ <div class="main">
+  <div class="shelf"><span class="l">iii Columns</span><span class="pill green">SUM(Profit)</span></div>
+  <div class="shelf"><span class="l">≡ Rows</span><span class="pill blue">Sub-Category</span></div>
+  <div style="font-weight:600;margin-top:8px">Sheet 1</div>
+  <div class="chart" id="c"></div>
+  <div style="font-size:11px;color:#666;margin-left:118px">Profit</div>
+ </div>
+</div>
+<div class="tabs"><span>Data Source</span><b>Sheet 1</b><span>⊞</span><span>⊞</span><span>⊞</span></div>
+<script>
+const d=[['Copiers',55618],['Phones',44516],['Accessories',41937],['Paper',34054],['Binders',30222],['Chairs',26590],['Storage',21279],['Appliances',18138],['Furnishings',13059],['Envelopes',6964],['Art',6528],['Labels',5546],['Machines',3385],['Fasteners',950],['Supplies',-1189],['Bookcases',-3473],['Tables',-17725]];
+const c=document.getElementById('c'),zero=200,sc=0.009;
+for(const [n,v] of d){const r=document.createElement('div');r.className='row';const w=Math.abs(v)*sc;
+r.innerHTML=`<div class="lab">${n}</div><div style="width:${zero}px;display:flex;justify-content:flex-end">${v<0?`<div class="bar" style="width:${w}px;background:#4e79a7"></div>`:''}</div><div style="display:flex;align-items:center">${v>=0?`<div class="bar" style="width:${w}px;background:#4e79a7"></div>`:''}<span class="v">${v.toLocaleString('en-US')}</span></div>`;c.appendChild(r)}
+</script></body></html>

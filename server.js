@@ -5234,14 +5234,16 @@ wss.on('connection', (ws) => {
           const inCooldown = (Date.now() - lastAutoMatchTime < AUTO_MATCH_COOLDOWN);
           const growEnabled = process.env.GROW_ANSWERS !== '0';
 
+          // MEETING CO-PILOT MODE: the question goes to co-pilot (the client answers it with the shared screen) —
+          // no Q&A card, no bank match, no bridges. One question is paid once. It runs BEFORE the interview post-filter:
+          // co-pilot has its own door (gate + judge), and the interview filter threw out hands-on instructions
+          // ("Filter the Superstore data to the West region." — 12 Nov walkthrough test).
+          if (ws._copilotMode) return routeHeardToCopilot(q, via);
           // Post-filter: even after AI extraction, run isQuestion() to catch false positives
           if (!isQuestion(q)) {
             console.log('[AI Auto-Detect] Post-filter rejected:', q.substring(0, 60));
             return;
           }
-          // MEETING CO-PILOT MODE: the question goes to co-pilot (the client answers it with the shared screen) —
-          // no Q&A card, no bank match, no bridges. One question is paid once.
-          if (ws._copilotMode) return routeHeardToCopilot(q, via);
 
           // SAY PRESSED MID-QUESTION (owner, 23 Oct: "they click early because they can already hear the question"): the
           // question the interviewer then finishes is the one that press is answering — the same card, grown with the rest.

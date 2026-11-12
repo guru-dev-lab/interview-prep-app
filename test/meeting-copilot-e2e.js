@@ -85,7 +85,7 @@ const logSince = mark => fs.readFileSync(LOG, 'utf8').slice(mark);
   res = await copilot({ ask: detected ? detected.text : lines[1], image: shot, screenChanged: true });
   check(res.r.ok && /^Asked:/m.test(res.j.answer || '') && /^On screen:/m.test(res.j.answer || '') && /^Say:/m.test(res.j.answer || ''), 'regular answer has the Asked / On screen / Say shape', res.j.answer);
   check(/-?18|943|reclass|Midwest/i.test(res.j.answer || ''), 'regular answer cites the table', res.j.answer);
-  check(/haiku/i.test(logSince(mark)), 'regular mode runs on Haiku', logSince(mark).slice(-600));
+  check(/\[Co-pilot\] regular on claude-sonnet/i.test(logSince(mark)), 'regular mode runs on Sonnet (12 Nov: Haiku got tools and their data wrong)', logSince(mark).slice(-600));
   const stream = got.filter(m => /^copilot_(start|delta|done)$/.test(m.type));
   check(stream.some(m => m.type === 'copilot_start') && stream.filter(m => m.type === 'copilot_delta').length >= 2 && stream.some(m => m.type === 'copilot_done'), 'card streams (start, deltas, done)', stream.map(m => m.type).join(','));
   rows = (await rowsNow()).slice(liveFrom);
