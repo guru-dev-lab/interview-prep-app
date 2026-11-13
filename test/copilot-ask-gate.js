@@ -83,6 +83,9 @@ ok(mc.answeredItems('Asked: nothing open — checked 3 screen(s)\nSay: …').len
 const rows = [row('seen', 'TYPE: QUESTION\nQ1 Which option is defensible?', 1, { key: 'a' }), row('said', press.slice(0, 600), 2, { ask: '', answered: items, cardId: 'copilot-9' })];
 const p = mc.buildCopilotPrompt({ mode: 'smart', rows, session: {}, pressed: true });
 ok(/ALREADY ANSWERED ON THIS CALL[\s\S]*Page 4 — Question 2/.test(p), 'press prompt lists what was already answered');
+// 13 Nov: a named (heard / Say / typed) ask was already checked NEW by the server — the ledger is context, never "answered earlier"
+{ const pa = mc.buildCopilotPrompt({ mode: 'smart', rows, session: {}, ask: 'And what do the blue and green pills mean?' });
+  ok(/ANSWERED EARLIER ON THIS CALL \(context only[\s\S]*Page 4 — Question 2/.test(pa) && !/never answer one of these again/.test(pa), 'a named ask sees the ledger as context only (pills ask was folded into dimension/measure)'); }
 ok(/\[CUT OFF\]/.test(p) && /scroll so the whole question shows/.test(p), 'press prompt skips cut-off questions and says scroll');
 
 // ---- compaction: older INFO pages ride as first lines; question/data pages and the current page ride whole

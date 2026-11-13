@@ -1,5 +1,14 @@
 # Handoff
 
+## 13 Nov (2) — concept accuracy: a new ask is never folded into an earlier answer
+- Wrong fact found in the rehearsal: "what do the blue and green pills mean?" right after "dimension vs measure" came back
+  "answered earlier — blue = dimension, green = measure" (truth: discrete / continuous). Cause: every card carried
+  "ALREADY ANSWERED ON THIS CALL — never answer one of these again", so the model folded a close NEW ask into the old one.
+- Fix: for a named ask (heard / Say / typed — already checked NEW by the server's repeat checks) that list is context only
+  ("two close ideas are different ideas, say how they differ; never write answered earlier"). A bare press keeps the old rule.
+- Proof: test/concept-accuracy-probe.js 4 runs — before 1/4 right, after 4/4; walkthrough rehearsal 26/26 ALL PASS.
+- Rollback: known-good-pre-concept-accuracy.
+
 ## 13 Nov — review of the real 12 Nov Tableau walkthrough (Honest, session 6768811c) → ONE CARD PER ASK
 - Evidence (Railway logs 16:29–16:55 UTC; card text not read — the prod DB read was refused): co-pilot heard and routed
   every real ask in 0.4–1 s after they stopped (top-N parameter, sorting, Tableau vs Power BI, hierarchy, display in sheet,
