@@ -54,6 +54,20 @@ const asked = [{ text: 'Is there something that you would do to ensure that you 
 ok(mc.findAnsweredAsk('Is there something that you would do to ensure that you know the data is right?', asked).cardId === 'copilot-1', 'repeat points at the earlier card');
 ok(!mc.findAnsweredAsk('How would you adjust for that?', asked), 'a new ask is not a repeat');
 
+// ---- one card per ask (live 12 Nov, Tableau walkthrough): the same ask in other words from the two routes is one ask;
+// a narrowing follow-up or a new question stays new
+{ const now = Date.now(), T = [{ text: 'One side question, Hola. Do you... Right now in your current role, are you primarily using Tableau or are you using Power BI for visualizations?', ts: now - 8000 }];
+  const H = [{ text: 'One more question to demonstrate. Can you create a hierarchy? Like, using category, subcategory, and product name, if they wanted to see all in this dashboard?', ts: now - 3000 }];
+  ok(mc.twinOfRecent('Do you primarily use Tableau or Power BI for visualizations?', T, now), 'AI copy of the Tableau/Power BI ask 8 s later is the same ask');
+  ok(mc.twinOfRecent('Can you create a hierarchy using category, subcategory, and product name where they can drill down or drill up?', H, now), 'AI copy of the hierarchy ask 3 s later is the same ask');
+  ok(!mc.twinOfRecent('Do you have a preference between the tools? Like, are you more comfortable with one versus the other, would you say?', T, now), 'the preference follow-up is a new ask');
+  ok(!mc.twinOfRecent('Which sub-categories are losing money in just the West region?', [{ text: 'Which sub-categories are losing money?', ts: now - 15000 }], now), 'a narrowing follow-up 15 s later is a new ask');
+  ok(mc.twinOfRecent('So which sub-categories are losing money?', [{ text: 'Which sub-categories are losing money?', ts: now - 20000 }], now), 'a plain re-ask 20 s later is the same ask');
+  ok(!mc.twinOfRecent('How will you display that in the sheet?', [{ text: H[0].text, ts: now - 70000 }], now), 'a later different ask is new');
+  ok(mc.repeatOfRecent('Do you primarily use Tableau or Power BI for visualizations?', 'NOT: This is a repeat of a question already asked earlier on', T, now), 'a judge "repeat" on the AI copy stands (was overruled → 2 cards)');
+  ok(!mc.repeatOfRecent('Which sub-categories are losing money in just the West region?', 'NOT: repeat of an earlier question', [{ text: 'Which sub-categories are losing money?', ts: now - 15000 }], now), 'a judge "repeat" on a narrowing follow-up is still overruled');
+}
+
 // ---- judge plumbing: only a clear NOT skips
 ok(!mc.judgeSaysAsk('NOT: video voice-over checklist'), 'NOT skips');
 ok(mc.judgeSaysAsk('ASK'), 'ASK answers');

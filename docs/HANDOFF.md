@@ -1,5 +1,23 @@
 # Handoff
 
+## 13 Nov — review of the real 12 Nov Tableau walkthrough (Honest, session 6768811c) → ONE CARD PER ASK
+- Evidence (Railway logs 16:29–16:55 UTC; card text not read — the prod DB read was refused): co-pilot heard and routed
+  every real ask in 0.4–1 s after they stopped (top-N parameter, sorting, Tableau vs Power BI, hierarchy, display in sheet,
+  enhance the dashboard, before prod, data validation). BUT every ask he also pressed Assist on got TWO cards (16:38 three):
+  the press while they were still asking + the heard ask. The 16:52:57 press ("Perfect." | "Can you tell me…") answered the
+  older ask. And the fast + AI routes sent "Tableau or Power BI" in other words 8 s apart: the judge said repeat, the
+  override overruled it → a duplicate.
+- Fix (co-pilot mode only): an Assist press while they are asking (words arriving / not committed / held question / AI
+  read / judge running) waits for that ask and joins its card (cap 12 s, 0.8 s grace for ASR lag); a press within 8 s of
+  an ask's card with nothing said since jumps to it (copilot_dup). The same ask in other words (twinOfRecent: loose < 10 s,
+  ≤ 1 new real word to 30 s) jumps to the first card; a judge "repeat" on such a twin stands. Narrowing follow-ups stay new.
+- Proof: test/press-one-card-e2e.js (the call's lines, pressed at the call's moments): main 5 FAILED (2 cards each, wrong
+  card on "Perfect.") → fix ALL PASS. walkthrough-rehearsal 26 steps: routing all one card / no small-talk card; 3 content
+  FAILs (model wording) incl. a WRONG FACT — "blue/green pills" answered as dimension/measure (truth: discrete/continuous).
+  Open: that concept accuracy; regular (non-co-pilot) mode made cards for "Shall we record it?" and "So, Sono, you wanna
+  introduce yourself?" (asked of the other interviewer); desktop app has no Sign out (owner: later).
+- Rollback: known-good-pre-one-card-per-ask.
+
 ## 12 Nov — story hooks + co-pilot HANDS-ON skill for any tool (PRs #197–#198, LIVE) — Tableau walkthrough day
 - Calc block (#204–#206): the Calc line + formula are one block at the TOP of a co-pilot card — heading (CALCULATION · name · labelled Copy), formula as plain text in the tool-editor colours (fields orange, functions blue, keywords purple, strings green), no line numbers, 13px bold (owner: 15px "way too big"; wants "just text and formatting", no glow). Copy bug fixed in EVERY code box (was pasting line numbers, lines run together). Rollbacks: `known-good-pre-calc-panel`, `-calc-clean`, `-calc-size`. Owner signed off 12 Nov ("we are good now").
 - Rehearsal fixes (test/walkthrough-rehearsal-e2e.js — 26 spoken / Say / Assist / typed scenarios, 6 voices; first run 10 FAILED): co-pilot mode only — (1) instructions ("Now put the map…") and direct asks ("Do you have any questions for me?") take the fast route; (2) a final Deepgram never closed with a pause is committed on UtteranceEnd; (3) a cut-off instruction (6+ words) passes the gate once they stop; (4) judge gets the shared-screen line + earlier asks, and a clear direct ask overrules a wrong NOT unless the reason is recorded content / someone else / small talk; (5) Say drops already-answered parts and goes to the card already coming (one card per question); (6) an answered line is never glued to the next. Concept asks: tool's exact meaning (blue/green pills = discrete/continuous). Rollback: `known-good-pre-rehearsal-fixes`.
