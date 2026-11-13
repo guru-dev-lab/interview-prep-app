@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 const WebSocket = require('ws');
 const stringSimilarity = require('string-similarity');
 const meetingCopilot = require('./lib/meeting-copilot');
+const streamRetry = require('./lib/stream-retry');
 const assessment = require('./lib/assessment'); // desktop Assessment: carry-over notes, title lock, who sees it // meeting co-pilot logic (call log, prompts, budget)
 const answerNote = require('./lib/answer-note'); // Answer Note (23 Oct): seed, version history, search, AI change modes
 const NoteMatchShared = require('./public/note-match'); // same ranking the note page shows
@@ -560,7 +561,7 @@ function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta, extras) 
         res.on('end', () => {
           let m = 'HTTP ' + res.statusCode;
           try { m = JSON.parse(errBody).error?.message || m; } catch (e) {}
-          reject(new Error(m));
+          const err = new Error(m); err.status = res.statusCode; reject(err); // status lets the retry tell a 503 from a bad request
         });
         return;
       }
@@ -616,19 +617,10 @@ function _callClaudeStreamOnce(system, user, maxTokens, model, onDelta, extras) 
 // Retry wrapper — only retries on Overloaded BEFORE any text has streamed, so we
 // never emit duplicate deltas. Once streaming has begun, an error rejects and the
 // caller falls back to the buffered path.
+// Retries a 429 / 5xx / overloaded / dropped connection while nothing is streamed yet (lib/stream-retry.js; 13 Nov: a 503 lost a card)
 async function callClaudeStream(system, user, maxTokens = 600, model = MODEL_SONNET, onDelta = () => {}, extras) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    let emitted = false;
-    try {
-      return await _callClaudeStreamOnce(system, user, maxTokens, model, (t) => { emitted = true; onDelta(t); }, extras);
-    } catch (e) {
-      if (e.message === 'Overloaded' && !emitted && attempt < 3) {
-        await new Promise(r => setTimeout(r, attempt * 1500));
-        continue;
-      }
-      throw e;
-    }
-  }
+  return streamRetry.withStreamRetry(d => _callClaudeStreamOnce(system, user, maxTokens, model, d, extras), onDelta,
+    { log: m => console.warn('[Stream] ' + model + ' ' + m) });
 }
 
 // Vision API — sends image + text to Claude for screen analysis
