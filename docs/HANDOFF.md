@@ -1,5 +1,12 @@
 # Handoff
 
+## 13 Nov (4) — a busy API never loses a card (stream retry on 429 / 5xx / dropped connection)
+- Rehearsal: "Which sub-categories are losing money?" got NO card — Anthropic answered HTTP 503 and callClaudeStream only
+  retried the message "Overloaded". Now lib/stream-retry.js retries 429/500/502/503/504/529, overloaded and dropped
+  connections (ECONNRESET, socket hang up…) up to 3 tries (1.5 s, 3 s), ONLY before the first word streams (no doubled text).
+- Proof: test/stream-retry.js 13 checks (in npm test); real-server smoke: cards stream normally.
+- Rollback: known-good-pre-stream-retry.
+
 ## 13 Nov (3) — hands-on cards take the SIMPLEST route (built-in option first)
 - Owner, after the live walkthrough: the top-N card had him create a SET when it was not needed; "should be very easy, clear
   and simple — create Top N parameter, drag Product Name to Filter". Cold repro with the call's own words: 4/4 cards built
