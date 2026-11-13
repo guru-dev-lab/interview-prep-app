@@ -1,5 +1,18 @@
 # Handoff
 
+## 13 Nov (3) — hands-on cards take the SIMPLEST route (built-in option first)
+- Owner, after the live walkthrough: the top-N card had him create a SET when it was not needed; "should be very easy, clear
+  and simple — create Top N parameter, drag Product Name to Filter". Cold repro with the call's own words: 4/4 cards built
+  a set or a RANK calc.
+- Fix (general, no tool named): use the tool's BUILT-IN option first (top/bottom N in the filter dialog, quick table calcs,
+  date parts, sort, reference line); a calc / set / group / helper field only when no built-in option does it, and just one;
+  a user-picked number = the input control plugged into that option; fewest objects wins; steps in doing order. Say it
+  explains what controls what in plain words.
+- Proof: test/simplest-route-probe.js — before 0/4 simple, after 4/4 (parameter + Top filter, no set, no calc).
+  Rehearsal 26: routing all fine; profit ratio / LOD / YoY still get their calc. Step [4] lost its card to an Anthropic
+  HTTP 503 — the stream retry only caught "Overloaded" (next PR).
+- Rollback: known-good-pre-simplest-route.
+
 ## 13 Nov (2) — concept accuracy: a new ask is never folded into an earlier answer
 - Wrong fact found in the rehearsal: "what do the blue and green pills mean?" right after "dimension vs measure" came back
   "answered earlier — blue = dimension, green = measure" (truth: discrete / continuous). Cause: every card carried
