@@ -1,5 +1,19 @@
 # Handoff
 
+## 23 Nov — Add info: files / text a session uses in every answer (assessment + any co-pilot session)
+- Owner: "somewhere i can add file, text to make sure it is more smarter and use it to help in answering … continue to use
+  it as long as i am still using that session … very very supportive and not complicate it". Not called "notes" (his word).
+- Before: the pill's ⚙ Files lived only in the open window (lost on reload / new sitting / restart); pictures were never read.
+- Now: the pill's + opens "Add info": type/paste box + Add, drop files (PDF, Word, text, CSV, SQL, screenshots). Saved per
+  session in `session_knowledge` (additive table, cascades with the session); a screenshot is read ONCE into exact text
+  (Sonnet). The /copilot route loads them itself and puts them in the cached stable block with KNOWLEDGE_RULE
+  (lib/knowledge.js — build on THEIR query with their exact names, easiest way first, name it never "ITEM 1").
+  An assessment with only added info is listed (titled from its first item until the carry names it) and never reused as blank.
+- Proof: npm test (+ test/knowledge.js 15); test/add-info-e2e.js 17/17 local real routes + models (query extended with his
+  table/fields, picture numbers used in the next sitting, other account 404, remove); test/add-info-ui.js 6/6 real Chrome
+  (add, kept after reload, preview).
+- Rollback: known-good-pre-add-info.
+
 ## 13 Nov (4) — a busy API never loses a card (stream retry on 429 / 5xx / dropped connection)
 - Rehearsal: "Which sub-categories are losing money?" got NO card — Anthropic answered HTTP 503 and callClaudeStream only
   retried the message "Overloaded". Now lib/stream-retry.js retries 429/500/502/503/504/529, overloaded and dropped

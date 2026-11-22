@@ -13,6 +13,7 @@ const WebSocket = require('ws');
 const stringSimilarity = require('string-similarity');
 const meetingCopilot = require('./lib/meeting-copilot');
 const streamRetry = require('./lib/stream-retry');
+const knowledge = require('./lib/knowledge'); // Add info (23 Nov): files/text he gives a session so answers are smarter, saved per session
 const assessment = require('./lib/assessment'); // desktop Assessment: carry-over notes, title lock, who sees it // meeting co-pilot logic (call log, prompts, budget)
 const answerNote = require('./lib/answer-note'); // Answer Note (23 Oct): seed, version history, search, AI change modes
 const NoteMatchShared = require('./public/note-match'); // same ranking the note page shows
@@ -194,6 +195,19 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS idx_sessions_user_kind ON sessions(user_id, kind);
       CREATE INDEX IF NOT EXISTS idx_call_events_session ON call_events(session_id, kind);
     `).catch(e => console.error('[DB] assessment migration failed:', e.message));
+    // Add info (23 Nov): files/text he gives one session (queries, tables, fields, docs), used by every co-pilot answer in it.
+    // Additive only; a session's items go when the session goes (cascade).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS session_knowledge (
+        id SERIAL PRIMARY KEY,
+        session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        title VARCHAR(160) DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        source VARCHAR(20) DEFAULT 'paste',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_knowledge_session ON session_knowledge(session_id, id);
+    `).catch(e => console.error('[DB] add-info migration failed:', e.message));
     // Answer Note (23 Oct): one note per user; groups (left rail) → items (the phrasings of one question, each with his
     // answer as editor HTML + its version history). Additive only.
     await client.query(`
@@ -2899,8 +2913,11 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
 
     const historyOn = !!live._copilotHistory;
     const mode = historyOn ? 'smart' : 'regular';
-    const docs = String(context || '').trim();
-    if (docs && copilotDocs.get(callId) !== docs) { copilotDocs.set(callId, docs); recordCallEvent(sessionId, callId, 'document', docs, {}); }
+    const extraCtx = String(context || '').trim(); // older pages still send their in-window ⚙ text
+    if (extraCtx && copilotDocs.get(callId) !== extraCtx) { copilotDocs.set(callId, extraCtx); recordCallEvent(sessionId, callId, 'document', extraCtx, {}); }
+    const added = (await pool.query('SELECT title, body FROM session_knowledge WHERE session_id = $1 ORDER BY id', [sessionId])).rows;
+    const docs = knowledge.buildKnowledgeBlock(added, extraCtx);
+    if (added.length) console.log(`[Info] co-pilot call carries ${added.length} added item(s), ${docs.length} chars`);
     let rows = await loadCallRows(callId);
     let digest = (copilotDigests.get(callId) || {}).text;
     if (!digest) { const d = rows.filter(r => r.kind === 'digest').pop(); if (d) digest = d.text; }
@@ -3095,20 +3112,21 @@ async function assessmentAllowed(req) {
   const u = await pool.query('SELECT plan, is_admin FROM users WHERE id = $1', [req.userId]);
   return assessment.canUseAssessment(u.rows[0] || { plan: req.plan, is_admin: req.isAdmin }, process.env);
 }
-const HAS_MATERIAL_SQL = "EXISTS (SELECT 1 FROM call_events e WHERE e.session_id = s.id AND e.kind IN ('seen', 'said', 'digest'))";
+// Added info counts as content (23 Nov): an assessment he only added info to is listed, and a later New never reuses it as blank
+const HAS_MATERIAL_SQL = "(EXISTS (SELECT 1 FROM call_events e WHERE e.session_id = s.id AND e.kind IN ('seen', 'said', 'digest')) OR EXISTS (SELECT 1 FROM session_knowledge n WHERE n.session_id = s.id))";
 
 // The desktop launcher's list: assessments with content, newest sitting first, each with its locked title + start time
 app.get('/api/assessments', authMiddleware, async (req, res) => {
   try {
     if (!(await assessmentAllowed(req))) return res.json({ allowed: false, items: [] });
-    const r = await pool.query(`SELECT s.id, s.title, s.created_at, lt.last_used, lt.sittings,
+    const r = await pool.query(`SELECT s.id, coalesce(nullif(s.title, ''), (SELECT n.title FROM session_knowledge n WHERE n.session_id = s.id ORDER BY n.id LIMIT 1), '') AS title, (s.title = '' OR s.title IS NULL) AS untitled, s.created_at, lt.last_used, lt.sittings,
         EXISTS (SELECT 1 FROM live_transcripts t WHERE t.session_id = s.id AND coalesce(t.memory, '') <> '') AS has_carry
       FROM sessions s
       LEFT JOIN LATERAL (SELECT max(started_at) AS last_used, count(*) AS sittings FROM live_transcripts t WHERE t.session_id = s.id) lt ON true
       WHERE s.user_id = $1 AND s.kind = 'assessment' AND ${HAS_MATERIAL_SQL}
       ORDER BY coalesce(lt.last_used, s.created_at) DESC LIMIT 50`, [req.userId]);
     // content but no title yet (its sitting never got its carry): build it in the background — the next look shows the title
-    for (const x of r.rows.filter(x => !x.title).slice(0, 2)) {
+    for (const x of r.rows.filter(x => x.untitled && x.sittings > 0).slice(0, 2)) {
       pool.query('SELECT id FROM live_transcripts WHERE session_id = $1 ORDER BY started_at DESC LIMIT 1', [x.id])
         .then(c => c.rows[0] && finishAssessmentCall(x.id, c.rows[0].id)).catch(e => console.error('[Assessment] background title failed:', e.message));
     }
@@ -3145,6 +3163,66 @@ app.post('/api/assessments', authMiddleware, async (req, res) => {
     console.log(`[Assessment] new ${ins.rows[0].id} for user ${req.userId} (résumé ${rs.rows.length ? 'carried' : 'none'})`);
     res.json({ id: ins.rows[0].id, started: ins.rows[0].created_at, reused: false });
   } catch (e) { console.error('[Assessment] create failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ============ ADD INFO (owner, 23 Nov) — logic in lib/knowledge.js ============
+// "Somewhere I can add file, text … use it to help in answering": a query, a table + fields, steps, a doc, a screenshot.
+// Saved per session, so it holds through reloads, new sittings and restarts; every co-pilot answer in the session uses it.
+async function ownSession(req) {
+  if (!isValidUUID(req.params.id)) return false;
+  const s = await pool.query('SELECT 1 FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+  return s.rows.length > 0;
+}
+const infoOut = n => ({ id: n.id, title: n.title, body: n.body, source: n.source, chars: String(n.body || '').length, added: n.created_at });
+
+app.get('/api/sessions/:id/info', authMiddleware, async (req, res) => {
+  try {
+    if (!(await ownSession(req))) return res.status(404).json({ error: 'Session not found' });
+    const r = await pool.query('SELECT id, title, body, source, created_at FROM session_knowledge WHERE session_id = $1 ORDER BY id', [req.params.id]);
+    res.json({ items: r.rows.map(infoOut) });
+  } catch (e) { console.error('[Info] list failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// JSON { text, title? } for typed/pasted text, or multipart `file` (text/PDF/Word read as text; a picture read once into text)
+app.post('/api/sessions/:id/info', authMiddleware, upload.single('file'), async (req, res) => {
+  try {
+    if (!(await ownSession(req))) return res.status(404).json({ error: 'Session not found' });
+    const count = (await pool.query('SELECT count(*)::int AS n FROM session_knowledge WHERE session_id = $1', [req.params.id])).rows[0].n;
+    if (count >= knowledge.ITEMS_MAX) return res.status(400).json({ error: `Already ${knowledge.ITEMS_MAX} items here — remove one first` });
+    let body = '', source = 'text', fileName = '';
+    if (req.file) {
+      fileName = req.file.originalname || 'file';
+      const isImage = /^image\//.test(req.file.mimetype || '') || /\.(png|jpe?g|gif|webp)$/i.test(fileName);
+      if (isImage) {
+        source = 'image';
+        const t0 = Date.now();
+        const img = meetingCopilot.sniffImage(req.file.buffer.toString('base64'));
+        body = await callClaude(knowledge.IMAGE_READ_PROMPT, [{ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } }, { type: 'text', text: 'Write out this image.' }], 3000, MODEL_SONNET, { __tag: 'add-info-image', thinking: { type: 'disabled' } });
+        console.log(`[Info] read picture ${fileName} in ${Date.now() - t0}ms → ${String(body).length} chars`);
+      } else {
+        source = 'file';
+        body = await extractText(req.file.buffer, fileName);
+      }
+    } else {
+      body = req.body && req.body.text;
+    }
+    body = knowledge.cleanBody(body);
+    if (!body) return res.status(400).json({ error: fileName ? `Could not read any text from ${fileName}` : 'Nothing to add — type or paste something first' });
+    const title = String((req.body && req.body.title) || '').trim().slice(0, 120) || knowledge.makeTitle(body, fileName);
+    const ins = await pool.query('INSERT INTO session_knowledge (session_id, title, body, source) VALUES ($1, $2, $3, $4) RETURNING id, title, body, source, created_at', [req.params.id, title, body, source]);
+    console.log(`[Info] added "${title}" (${source}, ${body.length} chars) to session ${req.params.id}`);
+    res.json({ item: infoOut(ins.rows[0]) });
+  } catch (e) { console.error('[Info] add failed:', e.message); res.status(500).json({ error: 'Could not add it: ' + e.message }); }
+});
+
+app.delete('/api/sessions/:id/info/:itemId', authMiddleware, async (req, res) => {
+  try {
+    if (!(await ownSession(req))) return res.status(404).json({ error: 'Session not found' });
+    const r = await pool.query('DELETE FROM session_knowledge WHERE id = $1 AND session_id = $2 RETURNING id', [parseInt(req.params.itemId, 10) || 0, req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    console.log(`[Info] removed item ${req.params.itemId} from session ${req.params.id}`);
+    res.json({ removed: true });
+  } catch (e) { console.error('[Info] remove failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // ============ ANSWER NOTE (owner, 23 Oct) ============

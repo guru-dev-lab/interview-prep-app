@@ -199,6 +199,15 @@ body.light-mode .copilot-card .cp-calc-code .f-num{color:#0f7b8a}
 .copilot-gear-save{width:100%;padding:10px;background:linear-gradient(135deg,rgba(99,102,241,.3),rgba(124,58,237,.3));border:1px solid rgba(99,102,241,.3);border-radius:8px;color:#E0E7FF;font:600 12px Inter,sans-serif;cursor:pointer;transition:.2s}
 .copilot-gear-save:hover{background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(124,58,237,.4))}
 .copilot-gear-status{text-align:center;font:400 10px Inter,sans-serif;color:#34D399;margin-top:6px;min-height:14px}
+.copilot-gear-status.bad{color:#F87171}
+.info-desc{font:400 12px Inter,sans-serif;color:#CBD5E1;margin:0 0 10px;line-height:1.45}
+.info-text{min-height:120px;font:400 12px/1.45 Inter,sans-serif;margin-bottom:8px}
+.info-drop{margin-top:10px;padding:14px;font:400 12px Inter,sans-serif;color:#CBD5E1}
+.info-hint{font:400 11px Inter,sans-serif;color:#94A3B8}
+.info-count{font:600 12px Inter,sans-serif;color:#C7D2FE;margin:12px 0 6px}
+.info-item .file-name{cursor:pointer;font-size:12px}
+.info-item .file-size{font-size:11px;color:#94A3B8}
+.info-preview{white-space:pre-wrap;max-height:180px;overflow:auto;margin:0 0 6px;padding:8px 10px;background:rgba(0,0,0,.25);border-radius:6px;font:400 11px/1.45 ui-monospace,Menlo,monospace;color:#CBD5E1}
 
 /* ===== SETTINGS MODAL ===== */
 .settings-overlay,.settings-overlay *,.copilot-gear-overlay,.copilot-gear-overlay *,.perm-panel,.perm-panel *{-webkit-app-region:no-drag}
@@ -615,6 +624,10 @@ body.light-mode .copilot-gear-close{color:#6b7280}
 body.light-mode .copilot-gear-close:hover{background:rgba(0,0,0,.04);color:#111}
 body.light-mode .copilot-gear-label{color:#4338CA}
 body.light-mode .copilot-gear-desc{color:#6b7280}
+body.light-mode .info-desc,body.light-mode .info-drop{color:#374151}
+body.light-mode .info-hint,body.light-mode .info-item .file-size{color:#4b5563}
+body.light-mode .info-count{color:#4338CA}
+body.light-mode .info-preview{background:rgba(0,0,0,.04);color:#1f2937}
 body.light-mode .copilot-gear-textarea{background:#f8f8fb;border-color:rgba(0,0,0,.08);color:#1f2937}
 body.light-mode .copilot-gear-textarea:focus{border-color:rgba(99,102,241,.3)}
 body.light-mode .copilot-gear-save{background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(109,40,217,.15));border-color:rgba(99,102,241,.2);color:#4338CA}
@@ -724,38 +737,26 @@ document.body.style.background='transparent';
 
 <!-- Floating Co-pilot Pill -->
 
-<!-- Co-pilot Gear Modal -->
+<!-- Add info (23 Nov): files / text he gives this session; saved on the server, used in every co-pilot answer -->
 <div class="copilot-gear-overlay" id="copilot-gear-overlay" style="display:none" onclick="if(event.target===this)hideCopilotGear()">
   <div class="copilot-gear-modal">
     <div class="copilot-gear-header">
-      <span>&#9881;&#65039; Co-pilot Setup</span>
+      <span>Add info</span>
       <button class="copilot-gear-close" onclick="hideCopilotGear()">&#10005;</button>
     </div>
     <div class="copilot-gear-body">
-      <div class="copilot-gear-section">
-        <label class="copilot-gear-label">&#128206; Reference Files</label>
-        <p class="copilot-gear-desc">Upload cheat sheets, study guides, formula references — any docs you want the AI to use during the interview.</p>
-        <div class="copilot-upload-zone" id="copilot-upload-zone" onclick="$('copilot-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleCopilotFiles(event.dataTransfer.files)">
-          <div class="copilot-upload-icon">&#128196;</div>
-          <div>Drop files here or click to upload</div>
-          <div class="copilot-upload-hint">PDF, TXT, DOCX, images — up to 5 files</div>
-        </div>
-        <input type="file" id="copilot-file-input" multiple accept=".pdf,.txt,.docx,.doc,.csv,.xlsx,.png,.jpg,.jpeg,.md" style="display:none" onchange="handleCopilotFiles(this.files)">
-        <div class="copilot-files-list" id="copilot-files-list"></div>
+      <p class="info-desc">Anything you add here is used in every answer for as long as you use this session.</p>
+      <textarea class="copilot-gear-textarea info-text" id="info-text" placeholder="Type or paste anything: your query, a table and its fields, steps, notes..." onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();addInfoText();}"></textarea>
+      <button class="copilot-gear-save" id="info-add-btn" onclick="addInfoText()">Add</button>
+      <div class="copilot-upload-zone info-drop" id="copilot-upload-zone" onclick="$('copilot-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleCopilotFiles(event.dataTransfer.files)">
+        Drop files here or click to choose<div class="copilot-upload-hint info-hint">PDF, Word, text, CSV, SQL, screenshots</div>
       </div>
-      <div class="copilot-gear-section">
-        <label class="copilot-gear-label">&#128221; Custom Instructions</label>
-        <p class="copilot-gear-desc">Tell the AI anything specific — "This is an Excel assessment, focus on formulas" or "I'm weak on VLOOKUP, give extra detail there."</p>
-        <textarea class="copilot-gear-textarea" id="copilot-instructions" placeholder="e.g. This interview is a live Excel test. Help me with formulas, pivot alternatives, and data cleaning functions. I'm strong on SQL but rusty on advanced Excel."></textarea>
-      </div>
-      <div class="copilot-gear-section">
-        <button class="copilot-gear-save" onclick="saveCopilotGear()">Save & Close</button>
-        <div class="copilot-gear-status" id="copilot-gear-status"></div>
-      </div>
+      <input type="file" id="copilot-file-input" multiple accept=".pdf,.txt,.docx,.doc,.csv,.md,.sql,.json,.py,.js,.xml,.yaml,.yml,.png,.jpg,.jpeg,.webp" style="display:none" onchange="handleCopilotFiles(this.files);this.value=''">
+      <div class="copilot-gear-status" id="copilot-gear-status"></div>
+      <div class="copilot-files-list" id="copilot-files-list"></div>
     </div>
   </div>
 </div>
-
 <!-- Settings Modal -->
 <div class="settings-overlay" id="settings-overlay" style="display:none" onclick="if(event.target===this)closeSettings()">
   <div class="settings-modal">
@@ -2779,6 +2780,7 @@ function pickSession(id) {
   var url = new URL(location.href);
   url.searchParams.set('session', id);
   history.replaceState(null, '', url.toString());
+  infoItems = []; loadInfo(); // Add info belongs to this session
   $('feed').innerHTML = '<div class="empty-state" id="empty-state"><h3>Xhire Pilot Ready</h3><p>Go Live on xhire.app, then answers stream here automatically.</p></div>';
   connect();
 }
@@ -3212,8 +3214,6 @@ async function goLiveElectron() {
 var copilotActive = false;
 var copilotHistory = loadSetting('copilotHistory') !== false; // default ON in co-pilot mode (owner, 3 Oct); only a saved off turns it off
 var copilotPrints = []; // [{ key, print }] every screen sent this stint — a page shown again is reused, not re-sent
-var copilotFiles = []; // { name, size, content (extracted text) }
-var copilotInstructions = ''; // Custom instructions text
 var copilotCards = {}; // cardId → { el, text }
 
 function toggleCopilot() { setMode(copilotActive ? 'qa' : 'copilot'); }
@@ -3648,116 +3648,89 @@ function copilotCardDone(cardId, answer) {
   for (var i = 0; i < cards.length; i++) if (cards[i].id === cardId) cards[i].answer = c.text;
 }
 
-// ===== CO-PILOT GEAR =====
+// ===== ADD INFO (23 Nov) =====
+// Owner: "somewhere i can add file, text to make sure it is more smarter and use it to help in answering". Saved on the
+// server per session (/api/sessions/:id/info), so it lasts through reloads, new sittings and restarts. The server puts it
+// into every co-pilot answer itself — the page no longer sends file text with each call (the old ⚙ Files were lost on reload).
+var infoItems = [];
+var infoOpen = {}; // item id → preview shown
+function infoUrl(rest) { return '/api/sessions/' + SESSION_ID + '/info' + (rest || ''); }
+function setInfoStatus(msg, bad) { var el = $('copilot-gear-status'); if (!el) return; el.textContent = msg || ''; el.classList.toggle('bad', !!bad); }
+async function loadInfo() {
+  if (!SESSION_ID) { infoItems = []; renderInfo(); return; }
+  try {
+    var r = await fetch(infoUrl(), { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    infoItems = d.items || [];
+  } catch (e) { console.warn('[Add info] load failed:', e.message); setInfoStatus('Could not load your info: ' + e.message, true); }
+  renderInfo();
+}
 function showCopilotGear() {
   $('copilot-gear-overlay').style.display = 'flex';
-  $('copilot-instructions').value = copilotInstructions;
-  renderCopilotFiles();
+  setInfoStatus(SESSION_ID ? '' : 'Open a session first.', !SESSION_ID);
+  loadInfo();
+  setTimeout(function () { var t = $('info-text'); if (t) t.focus(); }, 50);
 }
-function hideCopilotGear() {
-  $('copilot-gear-overlay').style.display = 'none';
+function hideCopilotGear() { $('copilot-gear-overlay').style.display = 'none'; }
+async function postInfo(body, isForm) {
+  var h = { 'Authorization': 'Bearer ' + TOKEN };
+  if (!isForm) h['Content-Type'] = 'application/json';
+  var r = await fetch(infoUrl(), { method: 'POST', headers: h, body: isForm ? body : JSON.stringify(body) });
+  var d = await r.json().catch(function () { return {}; });
+  if (!r.ok || !d.item) throw new Error(d.error || ('HTTP ' + r.status));
+  infoItems.push(d.item); renderInfo();
+  return d.item;
 }
-function saveCopilotGear() {
-  copilotInstructions = $('copilot-instructions').value.trim();
-  var gearBtn = $('btn-copilot-gear');
-  if (copilotFiles.length > 0 || copilotInstructions) {
-    gearBtn.classList.add('has-data');
-  } else {
-    gearBtn.classList.remove('has-data');
-  }
-  $('copilot-gear-status').textContent = 'Saved! Co-pilot will use this context.';
-  setTimeout(function() { $('copilot-gear-status').textContent = ''; }, 2000);
-  hideCopilotGear();
+async function addInfoText() {
+  var box = $('info-text'), btn = $('info-add-btn');
+  var t = box.value.trim();
+  if (!SESSION_ID) { setInfoStatus('Open a session first.', true); return; }
+  if (!t) { setInfoStatus('Type or paste something first.', true); box.focus(); return; }
+  btn.disabled = true; setInfoStatus('Adding...');
+  try { var it = await postInfo({ text: t }); box.value = ''; setInfoStatus('Added "' + it.title + '". It is used in every answer now.'); }
+  catch (e) { setInfoStatus(e.message, true); }
+  finally { btn.disabled = false; }
 }
-
 async function handleCopilotFiles(fileList) {
   if (!fileList || !fileList.length) return;
-  var maxFiles = 5;
-  for (var i = 0; i < fileList.length && copilotFiles.length < maxFiles; i++) {
-    var file = fileList[i];
-    if (file.size > 5 * 1024 * 1024) { continue; } // Skip files > 5MB
-    try {
-      var content = await extractCopilotFileContent(file);
-      if (content) {
-        copilotFiles.push({ name: file.name, size: file.size, content: content });
-      }
-    } catch(e) {
-      console.warn('[Co-pilot Gear] Failed to extract:', file.name, e);
-    }
+  if (!SESSION_ID) { setInfoStatus('Open a session first.', true); return; }
+  var added = 0, failed = [];
+  for (var i = 0; i < fileList.length; i++) {
+    var f = fileList[i];
+    if (f.size > 10 * 1024 * 1024) { failed.push(f.name + ' (over 10 MB)'); continue; }
+    setInfoStatus('Reading ' + f.name + '...');
+    try { var fd = new FormData(); fd.append('file', f); await postInfo(fd, true); added++; }
+    catch (e) { failed.push(f.name + ' (' + e.message + ')'); }
   }
-  renderCopilotFiles();
+  if (failed.length) setInfoStatus((added ? 'Added ' + added + '. ' : '') + 'Not added: ' + failed.join(', '), true);
+  else setInfoStatus('Added ' + added + (added === 1 ? ' file' : ' files') + '. Used in every answer now.');
 }
-
-function extractCopilotFileContent(file) {
-  return new Promise(function(resolve, reject) {
-    // For text-based files, read directly
-    var textTypes = ['.txt', '.md', '.csv', '.json', '.sql', '.py', '.js', '.html', '.css', '.xml', '.yaml', '.yml'];
-    var ext = '.' + file.name.split('.').pop().toLowerCase();
-
-    if (textTypes.indexOf(ext) >= 0 || file.type.startsWith('text/')) {
-      var reader = new FileReader();
-      reader.onload = function() { resolve(reader.result.substring(0, 15000)); };
-      reader.onerror = reject;
-      reader.readAsText(file);
-      return;
-    }
-
-    // For images, convert to base64 and mark as image
-    if (file.type.startsWith('image/')) {
-      var reader = new FileReader();
-      reader.onload = function() {
-        resolve('[IMAGE FILE: ' + file.name + '] Content uploaded as reference image.');
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    // For PDFs, DOCX etc — upload to server for extraction
-    var fd = new FormData();
-    fd.append('file', file);
-    fetch('/api/sessions/' + SESSION_ID + '/copilot/extract', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + TOKEN },
-      body: fd
-    }).then(function(r) { return r.json(); })
-      .then(function(d) { resolve(d.text ? d.text.substring(0, 15000) : '[Could not extract text from ' + file.name + ']'); })
-      .catch(function() { resolve('[Could not extract text from ' + file.name + ']'); });
-  });
+async function removeInfo(id) {
+  try {
+    var r = await fetch(infoUrl('/' + id), { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + TOKEN } });
+    var d = await r.json().catch(function () { return {}; });
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    infoItems = infoItems.filter(function (x) { return x.id !== id; }); renderInfo(); setInfoStatus('Removed.');
+  } catch (e) { setInfoStatus('Could not remove it: ' + e.message, true); }
 }
-
-function renderCopilotFiles() {
-  var list = $('copilot-files-list');
-  if (!copilotFiles.length) { list.innerHTML = ''; return; }
-  list.innerHTML = copilotFiles.map(function(f, i) {
-    var sizeStr = f.size < 1024 ? f.size + 'B' : (f.size / 1024).toFixed(0) + 'KB';
-    return '<div class="copilot-file-item">' +
-      '<span class="file-name">📄 ' + esc(f.name) + '</span>' +
-      '<span class="file-size">' + sizeStr + '</span>' +
-      '<button class="copilot-file-remove" onclick="removeCopilotFile(' + i + ')">✕</button>' +
-      '</div>';
+function toggleInfo(id) { infoOpen[id] = !infoOpen[id]; renderInfo(); }
+function renderInfo() {
+  var gearBtn = $('btn-copilot-gear');
+  if (gearBtn) gearBtn.classList.toggle('has-data', infoItems.length > 0);
+  var list = $('copilot-files-list'); if (!list) return;
+  if (!infoItems.length) { list.innerHTML = ''; return; }
+  list.innerHTML = '<div class="info-count">Added (' + infoItems.length + ')</div>' + infoItems.map(function (f) {
+    var size = f.chars < 1000 ? f.chars + ' chars' : (f.chars / 1000).toFixed(1) + 'k chars';
+    var kind = f.source === 'image' ? 'Picture' : f.source === 'file' ? 'File' : 'Text';
+    return '<div class="copilot-file-item info-item">' +
+      '<span class="file-name" onclick="toggleInfo(' + f.id + ')" title="Show / hide">' + esc(f.title) + '</span>' +
+      '<span class="file-size">' + kind + ' · ' + size + '</span>' +
+      '<button class="copilot-file-remove" title="Remove" onclick="removeInfo(' + f.id + ')">&#10005;</button>' +
+      '</div>' + (infoOpen[f.id] ? '<pre class="info-preview">' + esc(f.body) + '</pre>' : '');
   }).join('');
 }
-
-function removeCopilotFile(idx) {
-  copilotFiles.splice(idx, 1);
-  renderCopilotFiles();
-}
-
-function getCopilotContext() {
-  var ctx = '';
-  if (copilotInstructions) {
-    ctx += '\n\nUSER INSTRUCTIONS:\n' + copilotInstructions;
-  }
-  if (copilotFiles.length > 0) {
-    ctx += '\n\nREFERENCE FILES UPLOADED BY CANDIDATE:';
-    copilotFiles.forEach(function(f) {
-      ctx += '\n\n--- ' + f.name + ' ---\n' + f.content;
-    });
-    ctx += '\n\nUse the above reference files to give more accurate, specific help. If the candidate uploaded an Excel cheat sheet, use those exact formulas. If they uploaded SQL notes, reference those patterns.';
-  }
-  return ctx;
-}
+function getCopilotContext() { return ''; } // the server adds the saved info to every answer (one place)
 
 // ===== FOLLOW-UP PREDICTIONS =====
 function showFollowUpChips(questionId, predictions) {
@@ -3936,6 +3909,7 @@ setTimeout(function() {
 
 // ===== INIT =====
 loadSessions();
+if (SESSION_ID) loadInfo(); // the + on the pill shows it has info
 startElapsedTimer();
 </script>
 <!-- Co-pilot pill: LAST in <body> on purpose — Electron resolves overlapping drag/no-drag regions by DOM order (26 Sep, 3 Oct) -->
@@ -3944,7 +3918,7 @@ startElapsedTimer();
   <span class="copilot-float-label">Co-pilot</span>
   <div class="cpf-sep"></div>
   <button class="copilot-capture-btn" id="btn-copilot-capture" data-tip="Capture (&#8984;&#8997;&#8629;)" onclick="copilotCapture()">&#128248;</button>
-  <button class="copilot-gear-btn" id="btn-copilot-gear" data-tip="Files" onclick="showCopilotGear()">&#9881;</button>
+  <button class="copilot-gear-btn" id="btn-copilot-gear" data-tip="Add info" onclick="showCopilotGear()">&#43;</button>
   <div class="cpf-sep"></div>
   <label class="copilot-history" data-tip="History: use everything said and shown on this call"><input type="checkbox" id="copilot-history" onchange="setCopilotHistory(this.checked)"><span>Hist</span></label>
   <div class="cpf-sep"></div>
