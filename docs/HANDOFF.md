@@ -1,5 +1,20 @@
 # Handoff
 
+## 23 Nov (2) — desktop: New session in the app, note stays closed, eye asks first, "+ Info" label
+- Owner (screenshot): could not find Add info → the + on the co-pilot bar now reads "+ Info".
+- "The NOTE always open on opening the page … even when you open assessment" — cause: xhire_note_want='1' was set on
+  every open and only cleared if he closed the note while the overlay kept running; quitting the app with it open made
+  EVERY later start reopen it. Now: reopens only for the SAME session, overlay alive < 10 min ago (restart mid-call, the
+  26 Oct case), never on a new assessment; anything else clears the flag. Heartbeat key xhire_overlay_seen_at (20 s).
+- "WHEN clicking EYE to disable invisible, Should ask are you sure" — askStealthOff (one place) from the eye AND the
+  Settings switch; default button = keep hidden; Esc = keep; turning it ON never asks; saved-setting restore never asks.
+- "session adding directly from the app … must be sync" — launcher "+ New session": last session's résumé by default
+  (or upload), JD paste / link / file → same routes as the website (POST /api/sessions + /build, plan limit enforced by
+  the server) → opens in the overlay. Same DB, so xhire.app lists it at once.
+- Proof: npm test; test/desktop-polish-ui.js 22/22 real Chrome on local (note 5 cases, eye 7, label, launcher incl. a real
+  build and the website list showing it with questions).
+- Rollback: known-good-pre-desktop-polish.
+
 ## 23 Nov — Add info: files / text a session uses in every answer (assessment + any co-pilot session)
 - Owner: "somewhere i can add file, text to make sure it is more smarter and use it to help in answering … continue to use
   it as long as i am still using that session … very very supportive and not complicate it". Not called "notes" (his word).

@@ -200,6 +200,15 @@ body.light-mode .copilot-card .cp-calc-code .f-num{color:#0f7b8a}
 .copilot-gear-save:hover{background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(124,58,237,.4))}
 .copilot-gear-status{text-align:center;font:400 10px Inter,sans-serif;color:#34D399;margin-top:6px;min-height:14px}
 .copilot-gear-status.bad{color:#F87171}
+.stealth-ask{max-width:360px}
+.stealth-ask-btns{display:flex;gap:8px;margin-top:6px}
+.stealth-ask-btns button{flex:1;padding:9px;border-radius:8px;font:600 12px Inter,sans-serif;cursor:pointer;-webkit-app-region:no-drag}
+.stealth-ask-keep{background:linear-gradient(135deg,rgba(99,102,241,.35),rgba(124,58,237,.35));border:1px solid rgba(99,102,241,.4);color:#E0E7FF}
+.stealth-ask-off{background:transparent;border:1px solid rgba(248,113,113,.45);color:#FCA5A5}
+.stealth-ask-off:hover{background:rgba(248,113,113,.1)}
+.copilot-info-btn{flex-direction:column;height:auto;min-height:30px;padding:3px 0;gap:1px;line-height:1}
+.copilot-info-btn .cpi-plus{font:600 13px Inter,sans-serif}
+.copilot-info-btn .cpi-lbl{font:700 7px Inter,sans-serif}
 .info-desc{font:400 12px Inter,sans-serif;color:#CBD5E1;margin:0 0 10px;line-height:1.45}
 .info-text{min-height:120px;font:400 12px/1.45 Inter,sans-serif;margin-bottom:8px}
 .info-drop{margin-top:10px;padding:14px;font:400 12px Inter,sans-serif;color:#CBD5E1}
@@ -757,6 +766,20 @@ document.body.style.background='transparent';
     </div>
   </div>
 </div>
+<!-- Eye off? (23 Nov) — asked before invisible mode is turned off -->
+<div class="copilot-gear-overlay" id="stealth-ask" style="display:none">
+  <div class="copilot-gear-modal stealth-ask">
+    <div class="copilot-gear-header"><span>Turn off invisible mode?</span></div>
+    <div class="copilot-gear-body">
+      <p class="info-desc">xHire will show up when you share your screen or record it. Are you sure?</p>
+      <div class="stealth-ask-btns">
+        <button class="stealth-ask-keep" id="stealth-ask-no">No, keep it hidden</button>
+        <button class="stealth-ask-off" id="stealth-ask-yes">Yes, turn it off</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Settings Modal -->
 <div class="settings-overlay" id="settings-overlay" style="display:none" onclick="if(event.target===this)closeSettings()">
   <div class="settings-modal">
@@ -988,7 +1011,7 @@ if (window.electronAPI) { var _bn = document.getElementById('btn-note'); if (_bn
 function openAnswerNote() {
   var url = location.origin + '/note?embed=1&token=' + encodeURIComponent(TOKEN) + (SESSION_ID ? '&session=' + encodeURIComponent(SESSION_ID) : '');
   if (!window.electronAPI) { window.open(url.replace('embed=1&', ''), 'xhire-note'); return; }
-  if (window.electronAPI.openNote) { try { localStorage.setItem('xhire_note_want', '1'); } catch (e) {} window.electronAPI.openNote(url.replace('embed=1&', '') + '&win=1'); return; } // 1.1.7+: its own protected window, separate from this overlay
+  if (window.electronAPI.openNote) { try { localStorage.setItem('xhire_note_want', JSON.stringify({ s: SESSION_ID || '', at: Date.now() })); } catch (e) {} window.electronAPI.openNote(url.replace('embed=1&', '') + '&win=1'); return; } // 1.1.7+: its own protected window, separate from this overlay
   var p = document.getElementById('note-panel');
   if (p) { closeAnswerNote(); return; } // the toolbar button toggles it
   var tb = document.querySelector('.toolbar'); var top = tb ? Math.round(tb.getBoundingClientRect().bottom) + 4 : 44;
@@ -1008,8 +1031,15 @@ if (window.electronAPI && window.electronAPI.openNote) {
     setTimeout(function () { var openAt = 0; try { openAt = +localStorage.getItem('xhire_note_open_at') || 0; } catch (x) {}
       if (openAt < closedAt) try { localStorage.setItem('xhire_note_want', '0'); } catch (x) {} }, 3000);
   });
-  var _wantNote = '0'; try { _wantNote = localStorage.getItem('xhire_note_want') || '0'; } catch (e) {}
-  if (_wantNote === '1' && TOKEN) setTimeout(function () { console.log('[Note] reopening the note: it was open when the app last closed'); openAnswerNote(); }, 1200);
+  // Owner 23 Nov: "The NOTE always open on opening the page and even when you open assessment … it should not open by
+  // default". The old flag ('1') stayed set whenever the app was quit with the note open, so EVERY later start reopened it.
+  // Now it comes back only for a restart in the middle of the SAME session (the 26 Oct case): same session id, this overlay
+  // was alive under 10 minutes ago, and not a brand-new assessment. Anything else: closed, and the flag is cleared.
+  var _want = null, _seenAt = 0; try { _want = JSON.parse(localStorage.getItem('xhire_note_want') || 'null'); _seenAt = +localStorage.getItem('xhire_overlay_seen_at') || 0; } catch (e) {}
+  var _reopen = !!(_want && typeof _want === 'object' && _want.s && _want.s === SESSION_ID && TOKEN && params.get('assessment') !== 'new' && Date.now() - _seenAt < 10 * 60 * 1000);
+  if (_reopen) setTimeout(function () { console.log('[Note] reopening the note: the app restarted during this session'); openAnswerNote(); }, 1200);
+  else try { localStorage.setItem('xhire_note_want', '0'); } catch (e) {}
+  setInterval(function () { try { localStorage.setItem('xhire_overlay_seen_at', String(Date.now())); } catch (e) {} }, 20000); // "alive" mark for the restart check
 }
 // Every detected interviewer question goes to the note window too (same origin: BroadcastChannel, localStorage as the
 // fallback). Fire-and-forget; the live pipeline never waits on it.
@@ -2473,7 +2503,23 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// Owner 23 Nov: "WHEN clicking EYE to disable invisible, Should ask are you sure before doing it". ONE place for the ask:
+// both the eye and the Settings switch come here before turning it OFF; turning it back ON never asks.
+function askStealthOff(onYes, onNo) {
+  var o = $('stealth-ask');
+  o.style.display = 'flex';
+  var done = function (yes) { o.style.display = 'none'; $('stealth-ask-yes').onclick = $('stealth-ask-no').onclick = null; document.removeEventListener('keydown', key, true); (yes ? onYes : onNo || function () {})(); };
+  var key = function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } };
+  document.addEventListener('keydown', key, true);
+  $('stealth-ask-yes').onclick = function () { done(true); };
+  $('stealth-ask-no').onclick = function () { done(false); };
+  setTimeout(function () { $('stealth-ask-no').focus(); }, 30); // the safe choice is the default
+}
 function toggleStealth() {
+  if (stealthOn) { askStealthOff(applyStealthToggle); return; }
+  applyStealthToggle();
+}
+function applyStealthToggle() {
   stealthOn = !stealthOn;
   var btn = $('btn-stealth');
   if (btn) {
@@ -2574,7 +2620,11 @@ function toggleAutoScroll(on) {
   if (!on) userScrolledUp = true;
 }
 
-function toggleStealthFromSettings(on) {
+function toggleStealthFromSettings(on, confirmed) {
+  if (!on && stealthOn && !confirmed) { // turning it off from Settings asks too; No puts the switch back
+    askStealthOff(function () { toggleStealthFromSettings(false, true); }, function () { var c = $('s-stealth'); if (c) c.checked = true; });
+    return;
+  }
   saveSetting('stealth', !!on);
   if (stealthOn !== on) {
     stealthOn = on;
@@ -2727,7 +2777,7 @@ var overlayDiag = { lagMax: 0, pingMax: 0, pingAvg: 0, pingN: 0, grabMax: 0, gra
   if ((v = loadSetting('recordInt')) !== undefined) applyRecordInterval(v);
   if ((v = loadSetting('fontSize')) !== undefined && v !== canvasFontSize) changeFontSize(v - canvasFontSize);
   if ((v = loadSetting('lightMode')) !== undefined && !!v !== isLightMode) toggleLightMode();
-  if ((v = loadSetting('stealth')) !== undefined) setTimeout(function() { toggleStealthFromSettings(!!v); }, 300); // after the stealth default is applied
+  if ((v = loadSetting('stealth')) !== undefined) setTimeout(function() { toggleStealthFromSettings(!!v, true); }, 300); // after the stealth default is applied
   if (window.electronAPI) toggleGlobalShortcut(!!loadSetting('globalShortcut')); // the desktop app dropped it on page load; OFF also writes the status line
 })();
 
@@ -3918,7 +3968,7 @@ startElapsedTimer();
   <span class="copilot-float-label">Co-pilot</span>
   <div class="cpf-sep"></div>
   <button class="copilot-capture-btn" id="btn-copilot-capture" data-tip="Capture (&#8984;&#8997;&#8629;)" onclick="copilotCapture()">&#128248;</button>
-  <button class="copilot-gear-btn" id="btn-copilot-gear" data-tip="Add info" onclick="showCopilotGear()">&#43;</button>
+  <button class="copilot-gear-btn copilot-info-btn" id="btn-copilot-gear" data-tip="Add info: files and text it uses in every answer" onclick="showCopilotGear()"><span class="cpi-plus">&#43;</span><span class="cpi-lbl">Info</span></button>
   <div class="cpf-sep"></div>
   <label class="copilot-history" data-tip="History: use everything said and shown on this call"><input type="checkbox" id="copilot-history" onchange="setCopilotHistory(this.checked)"><span>Hist</span></label>
   <div class="cpf-sep"></div>

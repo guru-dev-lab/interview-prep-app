@@ -100,6 +100,22 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 .s-avatar-img{width:100%;height:100%;object-fit:contain;border-radius:8px;padding:4px}
 .s-avatar-letter{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 
+/* New session from the app (owner 23 Nov): same account + DB as xhire.app, so it shows on the website too */
+.ns-new{width:100%;max-width:340px;padding:9px;border:1px dashed rgba(167,139,250,.45);border-radius:10px;background:rgba(124,58,237,.06);font:600 12px Inter,sans-serif;color:#c4b5fd;cursor:pointer;transition:.15s}
+.ns-new:hover{border-color:#a78bfa;background:rgba(124,58,237,.12);color:#fff}
+.ns-head{font:700 14px Inter,sans-serif;color:#e2e8f0}
+.ns-block{width:100%;max-width:340px;text-align:left;display:flex;flex-direction:column;gap:6px}
+.ns-k{font:600 12px Inter,sans-serif;color:#c7d2fe}
+.ns-state{font:400 12px Inter,sans-serif;color:#cbd5e1;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.03)}
+.ns-state b{color:#fff;font-weight:600}
+.ns-state.missing{color:#fcd34d;border-color:rgba(251,191,36,.35)}
+.ns-jd{width:100%;min-height:110px;padding:9px 11px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.05);color:#e2e8f0;font:400 12px/1.45 Inter,sans-serif;outline:none;resize:vertical;box-sizing:border-box}
+.ns-jd:focus{border-color:#7c3aed}
+.ns-jd::placeholder{color:#94a3b8}
+.ns-link{align-self:flex-start;background:none;border:none;padding:0;font:500 11px Inter,sans-serif;color:#a78bfa;cursor:pointer}
+.ns-link:hover{color:#fff;text-decoration:underline}
+#step-new .connect-btn{max-width:340px}
+#step-new .error{max-width:340px}
 .step{display:none}
 .step.active{display:flex;flex-direction:column;align-items:center;gap:14px;width:100%}
 .back-btn{font:500 11px Inter,sans-serif;color:#64748b;background:none;border:none;cursor:pointer}
@@ -142,6 +158,7 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
     <!-- Step 2: Pick Session -->
     <div id="step-sessions" class="step">
       <div class="sub">Select a session:</div>
+      <button class="ns-new" onclick="openNewSession()">+ New session</button>
       <div id="session-list" class="sessions"></div>
       <button class="back-btn" onclick="showStep('step-login')">&larr; Back</button>
     </div>
@@ -157,6 +174,26 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
       <div id="as-error" class="error"></div>
       <button class="back-btn" onclick="showStep('step-sessions')">&larr; Back</button>
     </div>
+    <!-- Step 2c: New session right here (owner 23 Nov: "without going to the web again but must be sync") -->
+    <div id="step-new" class="step">
+      <div class="ns-head">New session</div>
+      <div class="ns-block">
+        <div class="ns-k">Résumé</div>
+        <div id="ns-res-state" class="ns-state">Looking for your résumé...</div>
+        <button class="ns-link" onclick="document.getElementById('ns-res-file').click()" id="ns-res-pick">Use a different résumé</button>
+        <input type="file" id="ns-res-file" accept=".pdf,.doc,.docx,.txt" style="display:none" onchange="nsReadResume(this)">
+      </div>
+      <div class="ns-block">
+        <div class="ns-k">Job description</div>
+        <textarea id="ns-jd" class="ns-jd" placeholder="Paste the job description here, or a link to the job post"></textarea>
+        <button class="ns-link" onclick="document.getElementById('ns-jd-file').click()">Or upload a JD file</button>
+        <input type="file" id="ns-jd-file" accept=".pdf,.doc,.docx,.txt" style="display:none" onchange="nsReadJD(this)">
+      </div>
+      <button class="connect-btn" id="ns-build" onclick="buildNewSession()">Create session</button>
+      <div id="ns-error" class="error"></div>
+      <button class="back-btn" onclick="showStep('step-sessions')">&larr; Back</button>
+    </div>
+
     <!-- Step 3: Connecting -->
     <div id="step-connecting" class="step">
       <span class="spinner"></span>
@@ -451,11 +488,12 @@ async function loadSessions() {
       headers: { 'Authorization': 'Bearer ' + authToken }
     });
     var sessions = await res.json();
+    nsNewest = sessions[0] || null; // its résumé is offered for a New session
     var list = document.getElementById('session-list');
     list.innerHTML = '';
 
     if (!sessions.length) {
-      list.innerHTML = '<div class="sub">No sessions yet. Create one on xhire.app first.</div>';
+      list.innerHTML = '<div class="sub">No sessions yet. Press + New session to make one.</div>';
       showStep('step-sessions');
       return;
     }
@@ -500,6 +538,75 @@ function connectToSession(sessionId) {
   } else {
     window.location.href = canvasUrl;
   }
+}
+
+// ===== NEW SESSION (owner 23 Nov) =====
+// Same routes the website uses (POST /api/sessions, then /build), so the session is on xhire.app at once — one account,
+// one database. Résumé: the newest session's résumé by default (one click to change); JD: paste, a job link, or a file.
+var nsNewest = null, nsResume = '', nsResumeFrom = '';
+function nsErr(msg) { var e = document.getElementById('ns-error'); e.textContent = msg || ''; e.style.display = msg ? 'block' : 'none'; }
+function nsShowResume() {
+  var st = document.getElementById('ns-res-state');
+  st.classList.toggle('missing', !nsResume);
+  st.innerHTML = nsResume ? 'Using your résumé' + (nsResumeFrom ? ' from <b>' + esc(nsResumeFrom) + '</b>' : '') : 'No résumé yet. Upload one below.';
+  document.getElementById('ns-res-pick').textContent = nsResume ? 'Use a different résumé' : 'Upload your résumé';
+}
+async function openNewSession() {
+  nsErr(''); showStep('step-new');
+  if (!nsResume && nsNewest) {
+    try {
+      var r = await fetch(SERVER + '/api/sessions/' + nsNewest.id, { headers: { 'Authorization': 'Bearer ' + authToken } });
+      var d = await r.json();
+      if (r.ok && d.resume && d.resume.trim().length > 20) { nsResume = d.resume; nsResumeFrom = d.company || nsNewest.company || ''; }
+    } catch (e) { console.warn('[New session] could not load the last résumé:', e.message); }
+  }
+  nsShowResume();
+  setTimeout(function () { document.getElementById('ns-jd').focus(); }, 50);
+}
+async function nsExtract(input) {
+  var f = input.files && input.files[0]; input.value = '';
+  if (!f) return '';
+  var fd = new FormData(); fd.append('file', f);
+  var r = await fetch(SERVER + '/api/extract-text', { method: 'POST', body: fd });
+  var d = await r.json().catch(function () { return {}; });
+  if (!r.ok || !d.text || d.text.trim().length < 20) throw new Error('Could not read ' + f.name);
+  return { text: d.text.trim(), name: f.name };
+}
+async function nsReadResume(input) {
+  nsErr(''); document.getElementById('ns-res-state').textContent = 'Reading...';
+  try { var x = await nsExtract(input); if (x) { nsResume = x.text; nsResumeFrom = x.name; } } catch (e) { nsErr(e.message); }
+  nsShowResume();
+}
+async function nsReadJD(input) {
+  nsErr('');
+  try { var x = await nsExtract(input); if (x) document.getElementById('ns-jd').value = x.text; } catch (e) { nsErr(e.message); }
+}
+async function buildNewSession() {
+  var btn = document.getElementById('ns-build');
+  var jd = document.getElementById('ns-jd').value.trim();
+  nsErr('');
+  if (!nsResume) { nsErr('Add your résumé first.'); return; }
+  if (!jd) { nsErr('Paste the job description or a job link.'); document.getElementById('ns-jd').focus(); return; }
+  btn.disabled = true;
+  try {
+    if (/^https?:\/\/\S+$/i.test(jd)) { // just a link: read the job post (same as the website)
+      btn.textContent = 'Reading the job post...';
+      var fr = await fetch(SERVER + '/api/fetch-url', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: jd }) });
+      var fd = await fr.json().catch(function () { return {}; });
+      if (!fd.text || fd.text.trim().length < 50) throw new Error('Could not read that link. Paste the job description instead.');
+      jd = fd.text + '\n\nJob posting URL: ' + jd;
+    }
+    btn.textContent = 'Creating session...';
+    var cr = await fetch(SERVER + '/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken }, body: JSON.stringify({ resume: nsResume, jd: jd, company: '', role: '' }) });
+    var s = await cr.json().catch(function () { return {}; });
+    if (!cr.ok || !s.id) throw new Error(s.error || 'Could not create the session');
+    btn.textContent = 'Writing your questions (about a minute)...';
+    var br = await fetch(SERVER + '/api/sessions/' + s.id + '/build', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } });
+    if (!br.ok) console.warn('[New session] build answered HTTP ' + br.status + ' — opening the session anyway');
+    document.getElementById('ns-jd').value = '';
+    connectToSession(s.id);
+  } catch (e) { nsErr(e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Create session'; }
 }
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
