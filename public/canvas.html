@@ -201,6 +201,11 @@ body.light-mode .copilot-card .cp-calc-code .f-num{color:#0f7b8a}
 .copilot-gear-status{text-align:center;font:400 10px Inter,sans-serif;color:#34D399;margin-top:6px;min-height:14px}
 .copilot-gear-status.bad{color:#F87171}
 .stealth-ask{max-width:360px}
+#stealth-ask{z-index:10001} /* asked from Settings: above the Settings box (z 10000), not behind it */
+/* 23 Nov: "Yes turn it off … is unclickable". The feed (.feed-wrap) is a window drag region and comes LATER in the page
+   than these boxes; Electron lets the later region win, so a click on the button moved the window instead. While one of
+   these boxes is open nothing is a drag region, and the boxes are moved to the end of <body> at start. */
+body.xh-box-open, body.xh-box-open *{-webkit-app-region:no-drag !important}
 .stealth-ask-btns{display:flex;gap:8px;margin-top:6px}
 .stealth-ask-btns button{flex:1;padding:9px;border-radius:8px;font:600 12px Inter,sans-serif;cursor:pointer;-webkit-app-region:no-drag}
 .stealth-ask-keep{background:linear-gradient(135deg,rgba(99,102,241,.35),rgba(124,58,237,.35));border:1px solid rgba(99,102,241,.4);color:#E0E7FF}
@@ -2505,10 +2510,14 @@ document.addEventListener('click', function(e) {
 
 // Owner 23 Nov: "WHEN clicking EYE to disable invisible, Should ask are you sure before doing it". ONE place for the ask:
 // both the eye and the Settings switch come here before turning it OFF; turning it back ON never asks.
+function markBoxOpen() { // a box (Add info / the eye's ask) is open → no drag regions anywhere, so its buttons take clicks
+  var open = ['copilot-gear-overlay', 'stealth-ask'].some(function (id) { var e = $(id); return e && e.style.display !== 'none'; });
+  document.body.classList.toggle('xh-box-open', open);
+}
 function askStealthOff(onYes, onNo) {
   var o = $('stealth-ask');
-  o.style.display = 'flex';
-  var done = function (yes) { o.style.display = 'none'; $('stealth-ask-yes').onclick = $('stealth-ask-no').onclick = null; document.removeEventListener('keydown', key, true); (yes ? onYes : onNo || function () {})(); };
+  o.style.display = 'flex'; markBoxOpen();
+  var done = function (yes) { o.style.display = 'none'; markBoxOpen(); $('stealth-ask-yes').onclick = $('stealth-ask-no').onclick = null; document.removeEventListener('keydown', key, true); (yes ? onYes : onNo || function () {})(); };
   var key = function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } };
   document.addEventListener('keydown', key, true);
   $('stealth-ask-yes').onclick = function () { done(true); };
@@ -3718,12 +3727,12 @@ async function loadInfo() {
   if (!infoItems.some(function (x) { return x.ready === false; })) { clearInterval(infoPoll); infoPoll = null; } else if (!infoPoll) watchInfoReady();
 }
 function showCopilotGear() {
-  $('copilot-gear-overlay').style.display = 'flex';
+  $('copilot-gear-overlay').style.display = 'flex'; markBoxOpen();
   setInfoStatus(SESSION_ID ? '' : 'Open a session first.', !SESSION_ID);
   loadInfo();
   setTimeout(function () { var t = $('info-text'); if (t) t.focus(); }, 50);
 }
-function hideCopilotGear() { $('copilot-gear-overlay').style.display = 'none'; }
+function hideCopilotGear() { $('copilot-gear-overlay').style.display = 'none'; markBoxOpen(); }
 async function postInfo(body, isForm) {
   var h = { 'Authorization': 'Bearer ' + TOKEN };
   if (!isForm) h['Content-Type'] = 'application/json';
@@ -3967,6 +3976,7 @@ setTimeout(function() {
 }, 1000);
 
 // ===== INIT =====
+document.addEventListener('DOMContentLoaded', function () { ['copilot-gear-overlay', 'stealth-ask'].forEach(function (id) { var e = $(id); if (e) document.body.appendChild(e); }); }); // after the whole page (the pill comes after this script): last in <body>, so no later drag region sits over their buttons
 loadSessions();
 if (SESSION_ID) loadInfo(); // the + on the pill shows it has info
 startElapsedTimer();

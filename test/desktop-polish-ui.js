@@ -71,6 +71,16 @@ const BRIDGE = `(() => { window.__calls = []; const fixed = { isElectron: true, 
   check(await p.isVisible('#stealth-ask'), 'Settings switch off asks too');
   await p.click('#stealth-ask-no'); await p.waitForTimeout(150);
   check(await p.evaluate(() => stealthOn === true && $('s-stealth').checked === true), 'Settings "No" puts the switch back on');
+  // 23 Nov: "Yes … is unclickable" in the desktop app — the feed's drag region (later in the page) took the click.
+  check(await p.evaluate(() => { const k = [...document.body.children].map(e => e.id); return k.indexOf('stealth-ask') > k.indexOf('copilot-float') && k.indexOf('copilot-gear-overlay') > k.indexOf('copilot-float'); }), 'the boxes are last in the page (after every drag region)');
+  await p.click('#btn-stealth'); await p.waitForTimeout(150);
+  check(await p.evaluate(() => document.body.classList.contains('xh-box-open') && getComputedStyle(document.querySelector('.feed-wrap')).webkitAppRegion === 'no-drag' && getComputedStyle($('stealth-ask-yes')).webkitAppRegion === 'no-drag'), 'while the ask is open nothing is a drag region (feed, Yes)');
+  await p.click('#stealth-ask-no'); await p.waitForTimeout(150);
+  check(await p.evaluate(() => !document.body.classList.contains('xh-box-open') && getComputedStyle(document.querySelector('.feed-wrap')).webkitAppRegion === 'drag'), 'closed → the window drags again from the feed');
+  await p.evaluate(() => { openSettings && openSettings(); }).catch(() => {});
+  await p.evaluate(() => toggleStealthFromSettings(false)); await p.waitForTimeout(150);
+  check(await p.evaluate(() => { const r = $('stealth-ask-yes').getBoundingClientRect(); const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return top && top.id === 'stealth-ask-yes'; }), 'asked from Settings: Yes is on top (not behind the Settings box)');
+  await p.click('#stealth-ask-no'); await p.waitForTimeout(150);
   const lbl = await p.$eval('#btn-copilot-gear', el => el.textContent.replace(/\s+/g, ''));
   check(lbl === '+Info', 'the + on the co-pilot bar says Info', lbl);
   check(!errs.length, 'no page errors (canvas)', errs.join(' | '));

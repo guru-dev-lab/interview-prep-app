@@ -1,5 +1,15 @@
 # Handoff
 
+## 23 Nov (5) — "Yes, turn it off" was unclickable in the desktop app
+- Cause: .feed-wrap is -webkit-app-region:drag and sits LATER in the page than the ask/Add info boxes; Electron lets the
+  later region win, so the click moved the window (Playwright ignores app-region, so the browser test passed). From
+  Settings the ask (z 9999) also opened BEHIND the Settings box (z 10000).
+- Fix: both boxes moved to the end of <body> after load; while one is open body.xh-box-open makes nothing a drag region;
+  #stealth-ask z 10001.
+- Proof: desktop-polish-ui.js 22/22 (DOM order, no-drag while open, drag back after close, Yes on top from Settings).
+  NOT proven in the real Electron window by me — owner to confirm.
+- Rollback: known-good-pre-eye-clickable.
+
 ## 23 Nov (4) — session memory keeps everything (assessment sessions)
 - Owner: "i want the session to always remember what it has been discussed or hear or answered or screenshorted or noted
   all together". Repro (test/session-memory-e2e.js, 40-min sitting, 5 facts said early): sitting 2 remembered 1/6.
