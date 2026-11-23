@@ -158,6 +158,24 @@ body.light-mode .copilot-card .sc-card-a pre.cp-calc-code,body.light-mode .copil
 .copilot-card .cp-calc-code .f-str{color:#a5d6a7}
 .copilot-card .cp-calc-code .f-num{color:#56d4dd}
 .copilot-card .cp-calc-code .f-com{color:#8b949e;font-style:italic}
+/* 23 Nov, owner: the CALCULATION box "is fine", queries were "hard to see". Every other code box in a co-pilot card (SQL,
+   DAX, Python…) now reads like it: same dark panel, bold bright monospace, fields orange / functions blue / keywords
+   purple / text green, no line numbers, Copy always showing. Q&A cards keep their own look. */
+.copilot-card .sc-card-a pre:not(.cp-calc-code):not(.text-block){background:#11131a;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:12px 44px 12px 12px;font:600 13.5px/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace !important;color:#f0f3f6}
+.copilot-card .sc-card-a pre:not(.cp-calc-code):not(.text-block) code,.copilot-card .sc-card-a pre:not(.cp-calc-code):not(.text-block) .code-content{font:inherit !important;color:#f0f3f6}
+.copilot-card .sc-card-a pre:not(.text-block) .code-ln{display:none}
+.copilot-card .sc-card-a pre .sh-kw{color:#d2a8ff;font-weight:700}
+.copilot-card .sc-card-a pre .sh-fn,.copilot-card .sc-card-a pre .sh-call{color:#79c0ff}
+.copilot-card .sc-card-a pre .sh-cls,.copilot-card .sc-card-a pre .sh-tp,.copilot-card .sc-card-a pre .sh-prop{color:#ffa657}
+.copilot-card .sc-card-a pre .sh-str{color:#a5d6a7}
+.copilot-card .sc-card-a pre .sh-num{color:#56d4dd}
+.copilot-card .sc-card-a pre .sh-op,.copilot-card .sc-card-a pre .sh-br{color:#f0f3f6}
+.copilot-card .sc-card-a pre .sh-cmt{color:#8b949e}
+.copilot-card .sc-card-a pre .code-copy-btn{opacity:1;color:#e6edf3;border-color:rgba(255,255,255,.16)}
+body.light-mode .copilot-card .sc-card-a pre:not(.cp-calc-code):not(.text-block){background:#ffffff;border-color:rgba(0,0,0,.14);color:#1f2328}
+body.light-mode .copilot-card .sc-card-a pre:not(.cp-calc-code):not(.text-block) code,body.light-mode .copilot-card .sc-card-a pre:not(.cp-calc-code):not(.text-block) .code-content{color:#1f2328}
+body.light-mode .copilot-card .sc-card-a pre .sh-kw{color:#7a3fc1}body.light-mode .copilot-card .sc-card-a pre .sh-fn,body.light-mode .copilot-card .sc-card-a pre .sh-call{color:#0b62c4}
+body.light-mode .copilot-card .sc-card-a pre .sh-cls,body.light-mode .copilot-card .sc-card-a pre .sh-tp,body.light-mode .copilot-card .sc-card-a pre .sh-prop{color:#c45a00}body.light-mode .copilot-card .sc-card-a pre .sh-str{color:#1a7f37}
 body.light-mode .copilot-card .cp-calc{background:#ffffff;border-color:rgba(0,0,0,.14)}
 body.light-mode .copilot-card .cp-calc-head{color:#1f2328;border-bottom-color:rgba(0,0,0,.08)}
 body.light-mode .copilot-card .cp-calc-tag{color:#9a6700}
