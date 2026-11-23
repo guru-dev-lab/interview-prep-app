@@ -30,13 +30,17 @@ ok(/RUNNING NOTES OF THIS SITTING:\nTHEY WANT/.test(inp), 'digest rides in');
 ok(/Q3 Which option describes the motion change/.test(inp), 'question screen whole');
 ok(inp.split('Welcome to Project Vantage').length < 12, 'info screen short');
 ok(/Page 3 — Question 3 — motion change :: /.test(inp), 'answers carry their whole ledger');
-ok(/Heard: Remember, three honest attempts/.test(inp), 'last talk rides in');
+ok(/EVERYTHING SAID THIS SITTING[\s\S]*Heard: Remember, three honest attempts/.test(inp), 'the talk rides in');
+const longTalk = []; for (let i = 0; i < 2000; i++) longTalk.push(row(i % 2 ? 'you' : 'asker', (i === 3 ? 'EARLY-FACT fiscal year starts in April. ' : '') + 'line ' + i + ' ' + 'blah '.repeat(8), i));
+const tinp = as.buildCarryInput('', longTalk);
+ok(/EARLY-FACT/.test(tinp) && /line 1999/.test(tinp) && tinp.length < 62000, 'a long sitting: the EARLY talk and the latest both reach the memory (23 Nov: only the last 30 lines did)');
 const big = []; for (let i = 0; i < 40; i++) big.push(row('seen', 'TYPE: DATA\n' + ('row ' + i + ' ').repeat(400), i));
 const binp = as.buildCarryInput('', big);
 ok(binp.length < 20000 && /row 39/.test(binp) && !/row 0 /.test(binp), 'bounded, keeps the newest screens');
 
 // ---- nothing to carry → no title, no carry
-ok(!as.hasMaterial([row('asker', 'hello', 1), row('you', 'hi', 2)]), 'talk alone is not material');
+ok(!as.hasMaterial([row('asker', 'hello', 1), row('you', 'hi', 2)]), 'a stray word or two is not material');
+ok(as.hasMaterial([1, 2, 3, 4, 5].map(i => row(i % 2 ? 'asker' : 'you', 'real talk ' + i, i))), 'a real conversation is material (23 Nov: transcribe counts)');
 ok(as.hasMaterial([row('said', 'x', 1)]), 'an answer is material');
 
 // ---- title parse + lock rules
