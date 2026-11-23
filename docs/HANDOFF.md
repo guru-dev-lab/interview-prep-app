@@ -1,5 +1,12 @@
 # Handoff
 
+## 23 Nov (6) — rename an assessment
+- Launcher Assessment step: pencil beside the × (last card + history rows) → inline name box (Enter saves, Esc keeps).
+  PATCH /api/assessments/:id {title} (own kind='assessment' only, 1-120 chars). The carry names only an EMPTY title, so a
+  later sitting never renames it back.
+- Proof: test/assessment-rename-ui.js 12/12 (API: empty 400, company session 404, other account 404; UI save/Esc/reload).
+- Rollback: known-good-pre-assessment-rename.
+
 ## 23 Nov (5) — "Yes, turn it off" was unclickable in the desktop app
 - Cause: .feed-wrap is -webkit-app-region:drag and sits LATER in the page than the ask/Add info boxes; Electron lets the
   later region win, so the click moved the window (Playwright ignores app-region, so the browser test passed). From

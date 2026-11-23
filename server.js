@@ -3147,6 +3147,20 @@ app.get('/api/assessments', authMiddleware, async (req, res) => {
   } catch (e) { console.error('[Assessment] list failed:', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// Rename an assessment (owner, 23 Nov). The title he types is the title: the carry only names an assessment whose title is
+// still empty, so a later sitting never renames it back. Only kind='assessment' rows of this user.
+app.patch('/api/assessments/:id', authMiddleware, async (req, res) => {
+  try {
+    if (!isValidUUID(req.params.id)) return res.status(400).json({ error: 'Invalid assessment' });
+    const title = String((req.body && req.body.title) || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!title) return res.status(400).json({ error: 'Type a name first' });
+    const u = await pool.query("UPDATE sessions SET title = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3 AND kind = 'assessment' RETURNING title", [title, req.params.id, req.userId]);
+    if (!u.rows.length) return res.status(404).json({ error: 'Assessment not found' });
+    console.log(`[Assessment] ${req.params.id} renamed to "${title}"`);
+    res.json({ title: u.rows[0].title });
+  } catch (e) { console.error('[Assessment] rename failed:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // × on an assessment (owner, 13 Oct: "remove it completely"): the assessment and everything under it (sittings, call log,
 // screens, carry) — the FKs cascade. Only kind='assessment' rows of this user; never one that is live right now.
 app.delete('/api/assessments/:id', authMiddleware, async (req, res) => {
