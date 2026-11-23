@@ -2853,7 +2853,7 @@ function compactCall(sessionId, callId, rows, st) {
   const fresh = freshRows.map(r => `[${r.kind}] ${r.text}`).join('\n');
   const user = (st.text ? `CURRENT NOTES:\n${st.text}\n\n` : '') + `NEW LINES (newest last):\n${fresh}\n\nUPDATED NOTES:`;
   const t0 = Date.now(), count = (st.lastCount || 0) + freshRows.length, upTo = freshRows.length ? freshRows[freshRows.length - 1].ts : (st.lastTs || 0);
-  return callClaude(meetingCopilot.DIGEST_PROMPT, user, 600, MODEL_HAIKU, { __tag: 'copilot-digest' }).then(out => {
+  return callClaude(meetingCopilot.DIGEST_PROMPT, user, 1100, MODEL_HAIKU, { __tag: 'copilot-digest' }).then(out => {
     st.text = String(out || '').trim(); st.lastAt = Date.now(); st.lastCount = count; st.lastTs = upTo;
     recordCallEvent(sessionId, callId, 'digest', st.text, { rows: count, upTo });
     console.log(`[Co-pilot] digest updated in ${Date.now() - t0}ms (${st.text.length} chars from ${count} rows)`);
@@ -3098,7 +3098,7 @@ async function carryAssessmentCall(sessionId, callId) {
     if (!assessment.hasMaterial(rows)) { console.log(`[Assessment] sitting ${callId} has nothing to carry (${rows.length} rows)`); return null; }
     const prev = await pool.query(`SELECT memory FROM live_transcripts WHERE session_id = $1 AND id <> $2 AND coalesce(memory, '') <> ''
       AND started_at < (SELECT started_at FROM live_transcripts WHERE id = $2) ORDER BY started_at DESC LIMIT 1`, [sessionId, callId]);
-    const out = await callClaude(assessment.CARRY_PROMPT, assessment.buildCarryInput((prev.rows[0] || {}).memory || '', rows), 1400, MODEL_SONNET, { __tag: 'assessment-carry', thinking: { type: 'disabled' } });
+    const out = await callClaude(assessment.CARRY_PROMPT, assessment.buildCarryInput((prev.rows[0] || {}).memory || '', rows), 3000, MODEL_SONNET, { __tag: 'assessment-carry', thinking: { type: 'disabled' } });
     const { title, notes } = assessment.parseCarry(out);
     if (!notes) throw new Error('the model returned no notes');
     await pool.query('UPDATE live_transcripts SET memory = $1 WHERE id = $2', [notes, callId]);
@@ -3115,8 +3115,8 @@ async function loadAssessmentCarry(sessionId, currentCallId) {
   const r = await pool.query('SELECT id, memory FROM live_transcripts WHERE session_id = $1 AND id <> $2 ORDER BY started_at DESC LIMIT 5', [sessionId, currentCallId]);
   for (const row of r.rows) {
     if (row.memory) return row.memory;
-    const has = await pool.query("SELECT 1 FROM call_events WHERE call_id = $1 AND kind IN ('seen', 'said', 'digest') LIMIT 1", [row.id]);
-    if (has.rows.length) { const m = await finishAssessmentCall(sessionId, row.id); if (m) return m; }
+    const m = await finishAssessmentCall(sessionId, row.id); // it decides itself whether the sitting has material (assessment.hasMaterial — talk counts too)
+    if (m) return m;
   }
   return '';
 }
@@ -3125,7 +3125,8 @@ async function assessmentAllowed(req) {
   return assessment.canUseAssessment(u.rows[0] || { plan: req.plan, is_admin: req.isAdmin }, process.env);
 }
 // Added info counts as content (23 Nov): an assessment he only added info to is listed, and a later New never reuses it as blank
-const HAS_MATERIAL_SQL = "(EXISTS (SELECT 1 FROM call_events e WHERE e.session_id = s.id AND e.kind IN ('seen', 'said', 'digest')) OR EXISTS (SELECT 1 FROM session_knowledge n WHERE n.session_id = s.id))";
+// a real conversation counts too (23 Nov: "not save unless there is transcribe or anything at all") — same threshold as assessment.hasMaterial
+const HAS_MATERIAL_SQL = `(EXISTS (SELECT 1 FROM call_events e WHERE e.session_id = s.id AND e.kind IN ('seen', 'said', 'digest')) OR EXISTS (SELECT 1 FROM session_knowledge n WHERE n.session_id = s.id) OR (SELECT count(*) FROM call_events e WHERE e.session_id = s.id AND e.kind IN ('asker', 'you')) >= ${assessment.TALK_MIN_LINES})`;
 
 // The desktop launcher's list: assessments with content, newest sitting first, each with its locked title + start time
 app.get('/api/assessments', authMiddleware, async (req, res) => {

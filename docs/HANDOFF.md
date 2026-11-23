@@ -1,5 +1,16 @@
 # Handoff
 
+## 23 Nov (4) — session memory keeps everything (assessment sessions)
+- Owner: "i want the session to always remember what it has been discussed or hear or answered or screenshorted or noted
+  all together". Repro (test/session-memory-e2e.js, 40-min sitting, 5 facts said early): sitting 2 remembered 1/6.
+  Cause: the carry read only the LAST 30 talk lines and was written as a test sheet (450 words).
+- Fix: carry = session MEMORY (test or meeting): whole sitting's talk (≤60k chars, head+tail, digest covers the middle),
+  new FACTS & DECISIONS (never dropped unless changed) + THEY WANT / OPEN, max 1,200 words (3000 tokens); answers carry
+  up to 12k chars of it (MEMORY_CHARS). Digest also keeps FACTS & DECISIONS, 700 words. A real conversation (≥5 talk
+  lines) now counts as material (listed + carried), a stray word does not — same threshold in HAS_MATERIAL_SQL.
+- Proof: npm test (assessment 55); session-memory-e2e 7/7 (was 2/7); assessment-e2e 25/25.
+- Rollback: known-good-pre-session-memory.
+
 ## 23 Nov (3) — Add info: no size limit, any text file, long ones compacted once (cheap to use)
 - Owner could not add /Downloads/downloaded-file-1795047840: a 130k-char SQL view with NO extension. Causes: the picker's
   accept= list greyed it out; and 30k-char cap. Owner: "should not have limit but the session should be able to compact".
