@@ -372,14 +372,14 @@ body.glow-live .toolbar::before{background:linear-gradient(90deg,transparent,rgb
 .code-copy-btn:hover{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.15)}
 .code-copy-btn.copied{color:#73daca;background:rgba(115,218,202,.08);border-color:rgba(115,218,202,.2);opacity:1}
 .code-line{display:flex;gap:0;min-height:18px}
-.code-ln{min-width:28px;padding-right:12px;text-align:right;color:rgba(255,255,255,.28);font:400 11px/1.7 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0}
-.code-content{flex:1;color:#D4D4D4}
+.code-ln{min-width:28px;padding-right:12px;text-align:right;color:rgba(255,255,255,.38);font:400 12px/1.7 'Fira Code',Consolas,monospace;user-select:none;-webkit-user-select:none;flex-shrink:0}
+.code-content{flex:1;color:#E6E6E6}
 /* Text block: prose the model fenced (a prompt, an email, a memo) — read it, don't code it (owner, 4 Oct) */
 .sc-card-a pre.text-block{background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.25);border-left:3px solid #34D399;padding:10px 44px 12px 14px;font:400 13.5px/1.7 -apple-system,BlinkMacSystemFont,'SF Pro Text','DM Sans',Inter,system-ui,sans-serif;color:#F3F4F6}
 .text-tag{display:block;font:700 9px/1.4 Inter,sans-serif;letter-spacing:.8px;color:#34D399;margin-bottom:4px}
 .text-content{display:block;white-space:pre-wrap;font:inherit;color:inherit}
 body.light-mode .sc-card-a pre.text-block{background:rgba(16,185,129,.07);color:#0f172a;border-color:rgba(16,185,129,.35);border-left-color:#10b981}
-.sc-card-a pre code{background:none !important;padding:0;color:inherit;border:none !important;display:block} /* no size pin: the pre's 12.5px (or the font setting) rules */
+.sc-card-a pre code{background:none !important;padding:0;color:inherit;border:none !important;display:block;font-size:inherit;font-weight:500} /* 23 Nov: the inline-code rule below (10px) was winning inside every code box: queries showed at 10px under 12px text. The pre's size rules. */
 .sc-card-a code{background:rgba(110,118,129,.2);padding:2px 6px;border-radius:5px;font:500 10px 'Fira Code',Consolas,'Courier New',monospace;color:#c9d1d9;border:none}
 /* VS Code Dark+ (owner, 3 Oct: the red Monokai keywords were straining) */
 .sh-kw{color:#569CD6;font-weight:600}.sh-str{color:#CE9178}.sh-cmt{color:#6A9955;font-style:italic}.sh-num{color:#B5CEA8}.sh-fn{color:#DCDCAA}.sh-dec{color:#C586C0}.sh-op{color:#D4D4D4}.sh-br{color:#FFD700}.sh-tp{color:#4EC9B0}.sh-prop{color:#9CDCFE}.sh-call{color:#DCDCAA}.sh-cls{color:#4EC9B0}
@@ -2441,7 +2441,7 @@ document.head.appendChild(_fontStyleEl);
 function changeFontSize(delta) {
   canvasFontSize = Math.max(10, Math.min(24, canvasFontSize + delta));
   saveSetting('fontSize', canvasFontSize);
-  var codeSz = Math.max(11, canvasFontSize); // code reads at the same size as the text (owner, 3 Oct)
+  var codeSz = Math.max(13.5, canvasFontSize + 1); // code never smaller than the text (owner 3 Oct; 23 Nov: "the query … smaller")
   // Inject CSS rule that applies to existing AND future elements
   _fontStyleEl.textContent =
     '.sc-card-a, .sc-card-loading, .feed-wrap { font-size: ' + canvasFontSize + 'px !important; }' +
