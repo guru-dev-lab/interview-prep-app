@@ -207,6 +207,7 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_session_knowledge_session ON session_knowledge(session_id, id);
+      ALTER TABLE session_knowledge ADD COLUMN IF NOT EXISTS compact TEXT;
     `).catch(e => console.error('[DB] add-info migration failed:', e.message));
     // Answer Note (23 Oct): one note per user; groups (left rail) → items (the phrasings of one question, each with his
     // answer as editor HTML + its version history). Additive only.
@@ -2915,10 +2916,13 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
     const mode = historyOn ? 'smart' : 'regular';
     const extraCtx = String(context || '').trim(); // older pages still send their in-window ⚙ text
     if (extraCtx && copilotDocs.get(callId) !== extraCtx) { copilotDocs.set(callId, extraCtx); recordCallEvent(sessionId, callId, 'document', extraCtx, {}); }
-    const added = (await pool.query('SELECT title, body FROM session_knowledge WHERE session_id = $1 ORDER BY id', [sessionId])).rows;
+    const added = (await pool.query('SELECT title, body, compact FROM session_knowledge WHERE session_id = $1 ORDER BY id', [sessionId])).rows;
     const docs = knowledge.buildKnowledgeBlock(added, extraCtx);
-    if (added.length) console.log(`[Info] co-pilot call carries ${added.length} added item(s), ${docs.length} chars`);
     let rows = await loadCallRows(callId);
+    // exact parts of long added files that match this question (or, for a bare press, the last things said) — free, no model
+    const detailQuery = ask || rows.filter(r => r.kind === 'asker' || r.kind === 'you').slice(-4).map(r => r.text).join(' ');
+    const docsDetail = added.some(n => knowledge.needsCompact(n.body)) ? knowledge.pickDetail(added, detailQuery) : '';
+    if (added.length) console.log(`[Info] co-pilot call carries ${added.length} added item(s), ${docs.length} chars cached + ${docsDetail.length} chars of exact parts for this question`);
     let digest = (copilotDigests.get(callId) || {}).text;
     if (!digest) { const d = rows.filter(r => r.kind === 'digest').pop(); if (d) digest = d.text; }
     if (historyOn && !digest && !req.body.auto && !req.body.capture && meetingCopilot.rawCharsOf(rows) > meetingCopilot.SMART_RAW_CHARS) {
@@ -2978,7 +2982,7 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       pullIdx = meetingCopilot.parseRouterPick(pick);
       console.log(`[Co-pilot] pull router in ${Date.now() - tP}ms → ${String(pick).trim().slice(0, 80)}`);
     }
-    const parts = meetingCopilot.buildCopilotBlocks({ pullIdx, mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, ask, say, typed, pressed: isPress, screenChanged: hasImage || unread.length > 0, seenKey: reusing ? screenKey : '' });
+    const parts = meetingCopilot.buildCopilotBlocks({ pullIdx, mode, rows, digest, digestUpTo, session: s.rows[0], bank, priorMemory: live._priorMemory || '', assessment: s.rows[0].kind === 'assessment', docs, docsDetail, ask, say, typed, pressed: isPress, screenChanged: hasImage || unread.length > 0, seenKey: reusing ? screenKey : '' });
     const model = meetingCopilot.modelFor(mode) === 'sonnet' ? MODEL_SONNET : MODEL_HAIKU;
     const cardId = 'copilot-' + Date.now();
     if (ask && !typed) { const claim = meetingCopilot.findAnsweredAsk(ask, (live._copilotHeard || []).filter(a => !a.cardId && Date.now() - a.ts < 60000)); if (claim) claim.cardId = cardId; } // a later Say press for it goes to this card
@@ -2995,12 +2999,20 @@ app.post('/api/sessions/:id/copilot', authMiddleware, async (req, res) => {
       system = [{ type: 'text', text: meetingCopilot.MEETING_PROMPT, cache_control: { type: 'ephemeral' } }];
       const head = [];
       if (parts.stable.length) head.push({ type: 'text', text: parts.stable.join('\n\n') });
+      // big added info (23 Nov): its own cache mark too, so it stays cached while the screens after it keep changing
+      if (head.length && docs.length > 8000) head[0].cache_control = { type: 'ephemeral' };
       for (const t of parts.screens) head.push({ type: 'text', text: t });
       if (head.length) head[head.length - 1].cache_control = { type: 'ephemeral' };
       content = head.concat(unreadIntro, unread, hasImage ? [imgBlock] : [], [{ type: 'text', text: parts.volatile.join('\n\n') }]);
     } else {
+      if (docs.length > 8000) {
+        // big added info (23 Nov): the same stable part goes first as a cached block; Haiku re-reads it at ~10%
+        const rest = parts.screens.concat(parts.volatile).join('\n\n');
+        content = [{ type: 'text', text: parts.stable.join('\n\n'), cache_control: { type: 'ephemeral' } }].concat(unreadIntro, unread, hasImage ? [imgBlock] : [], [{ type: 'text', text: rest }]);
+      } else {
       const textPrompt = parts.stable.concat(parts.screens, parts.volatile).join('\n\n');
       content = hasImage || unread.length ? unreadIntro.concat(unread, hasImage ? [imgBlock] : [], [{ type: 'text', text: textPrompt }]) : textPrompt;
+      }
     }
     const t0 = Date.now(); let first = 0;
     const answer = String(await callClaudeStream(system, content, meetingCopilot.maxTokensFor(mode, say), model, t => {
@@ -3173,12 +3185,36 @@ async function ownSession(req) {
   const s = await pool.query('SELECT 1 FROM sessions WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
   return s.rows.length > 0;
 }
-const infoOut = n => ({ id: n.id, title: n.title, body: n.body, source: n.source, chars: String(n.body || '').length, added: n.created_at });
+const infoOut = n => ({ id: n.id, title: n.title, body: n.body, source: n.source, chars: String(n.body || '').length, added: n.created_at, ready: !knowledge.needsCompact(n.body) || !!n.compact });
+
+// A long item gets its short version ONCE (owner 23 Nov: no limit, but compact it so using it stays cheap). Sonnet, in the
+// background; answers meanwhile carry its start + the exact matching parts. Very long text is compacted in pieces.
+const infoCompacting = new Set();
+async function compactInfoItem(id) {
+  if (infoCompacting.has(id)) return; infoCompacting.add(id);
+  const t0 = Date.now();
+  try {
+    const r = await pool.query('SELECT title, body FROM session_knowledge WHERE id = $1', [id]);
+    if (!r.rows.length) return;
+    const body = r.rows[0].body, PIECE = 400000, outs = [];
+    for (let i = 0; i < body.length; i += PIECE) {
+      const part = body.slice(i, i + PIECE);
+      const head = body.length > PIECE ? `PART ${i / PIECE + 1} of ${Math.ceil(body.length / PIECE)} of "${r.rows[0].title}":\n` : `"${r.rows[0].title}":\n`;
+      outs.push(String(await callClaude(knowledge.COMPACT_PROMPT, head + part, 4000, MODEL_SONNET, { __tag: 'add-info-compact', thinking: { type: 'disabled' } }) || '').trim());
+    }
+    const compact = outs.filter(Boolean).join('\n\n');
+    if (!compact) throw new Error('empty short version');
+    await pool.query('UPDATE session_knowledge SET compact = $1 WHERE id = $2', [compact, id]);
+    console.log(`[Info] short version of item ${id} "${r.rows[0].title}": ${body.length} → ${compact.length} chars in ${Date.now() - t0}ms`);
+  } catch (e) { console.error(`[Info] short version of item ${id} FAILED after ${Date.now() - t0}ms:`, e.message); }
+  finally { infoCompacting.delete(id); }
+}
 
 app.get('/api/sessions/:id/info', authMiddleware, async (req, res) => {
   try {
     if (!(await ownSession(req))) return res.status(404).json({ error: 'Session not found' });
-    const r = await pool.query('SELECT id, title, body, source, created_at FROM session_knowledge WHERE session_id = $1 ORDER BY id', [req.params.id]);
+    const r = await pool.query('SELECT id, title, body, source, compact, created_at FROM session_knowledge WHERE session_id = $1 ORDER BY id', [req.params.id]);
+    for (const n of r.rows) if (knowledge.needsCompact(n.body) && !n.compact && !infoCompacting.has(n.id) && Date.now() - new Date(n.created_at).getTime() > 120000) compactInfoItem(n.id); // lost to a restart
     res.json({ items: r.rows.map(infoOut) });
   } catch (e) { console.error('[Info] list failed:', e.message); res.status(500).json({ error: e.message }); }
 });
@@ -3187,13 +3223,14 @@ app.get('/api/sessions/:id/info', authMiddleware, async (req, res) => {
 app.post('/api/sessions/:id/info', authMiddleware, upload.single('file'), async (req, res) => {
   try {
     if (!(await ownSession(req))) return res.status(404).json({ error: 'Session not found' });
-    const count = (await pool.query('SELECT count(*)::int AS n FROM session_knowledge WHERE session_id = $1', [req.params.id])).rows[0].n;
-    if (count >= knowledge.ITEMS_MAX) return res.status(400).json({ error: `Already ${knowledge.ITEMS_MAX} items here — remove one first` });
     let body = '', source = 'text', fileName = '';
     if (req.file) {
       fileName = req.file.originalname || 'file';
-      const isImage = /^image\//.test(req.file.mimetype || '') || /\.(png|jpe?g|gif|webp)$/i.test(fileName);
-      if (isImage) {
+      // decided by the bytes, not the name (23 Nov: a SQL view saved as "downloaded-file-1795047840" had no extension)
+      const kind = knowledge.sniffFile(req.file.buffer, fileName);
+      console.log(`[Info] file ${fileName} (${req.file.size} bytes) reads as ${kind}`);
+      if (kind === 'binary') return res.status(400).json({ error: `Can't read ${fileName}. Add text files (SQL, CSV, code, notes), PDF, Word or a screenshot.` });
+      if (kind === 'image') {
         source = 'image';
         const t0 = Date.now();
         const img = meetingCopilot.sniffImage(req.file.buffer.toString('base64'));
@@ -3201,7 +3238,8 @@ app.post('/api/sessions/:id/info', authMiddleware, upload.single('file'), async 
         console.log(`[Info] read picture ${fileName} in ${Date.now() - t0}ms → ${String(body).length} chars`);
       } else {
         source = 'file';
-        body = await extractText(req.file.buffer, fileName);
+        // extractText picks PDF / Word by extension; a file without the right one is read as what its bytes say it is
+        body = kind === 'text' ? req.file.buffer.toString('utf8') : await extractText(req.file.buffer, kind === 'pdf' ? 'file.pdf' : /\.doc$/i.test(fileName) ? 'file.doc' : 'file.docx');
       }
     } else {
       body = req.body && req.body.text;
@@ -3209,8 +3247,9 @@ app.post('/api/sessions/:id/info', authMiddleware, upload.single('file'), async 
     body = knowledge.cleanBody(body);
     if (!body) return res.status(400).json({ error: fileName ? `Could not read any text from ${fileName}` : 'Nothing to add — type or paste something first' });
     const title = String((req.body && req.body.title) || '').trim().slice(0, 120) || knowledge.makeTitle(body, fileName);
-    const ins = await pool.query('INSERT INTO session_knowledge (session_id, title, body, source) VALUES ($1, $2, $3, $4) RETURNING id, title, body, source, created_at', [req.params.id, title, body, source]);
-    console.log(`[Info] added "${title}" (${source}, ${body.length} chars) to session ${req.params.id}`);
+    const ins = await pool.query('INSERT INTO session_knowledge (session_id, title, body, source) VALUES ($1, $2, $3, $4) RETURNING id, title, body, source, compact, created_at', [req.params.id, title, body, source]);
+    console.log(`[Info] added "${title}" (${source}, ${body.length} chars) to session ${req.params.id}${knowledge.needsCompact(body) ? ' — long: writing its short version' : ''}`);
+    if (knowledge.needsCompact(body)) compactInfoItem(ins.rows[0].id);
     res.json({ item: infoOut(ins.rows[0]) });
   } catch (e) { console.error('[Info] add failed:', e.message); res.status(500).json({ error: 'Could not add it: ' + e.message }); }
 });
