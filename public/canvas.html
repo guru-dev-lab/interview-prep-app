@@ -758,9 +758,9 @@ document.body.style.background='transparent';
       <textarea class="copilot-gear-textarea info-text" id="info-text" placeholder="Type or paste anything: your query, a table and its fields, steps, notes..." onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();addInfoText();}"></textarea>
       <button class="copilot-gear-save" id="info-add-btn" onclick="addInfoText()">Add</button>
       <div class="copilot-upload-zone info-drop" id="copilot-upload-zone" onclick="$('copilot-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');handleCopilotFiles(event.dataTransfer.files)">
-        Drop files here or click to choose<div class="copilot-upload-hint info-hint">PDF, Word, text, CSV, SQL, screenshots</div>
+        Drop files here or click to choose<div class="copilot-upload-hint info-hint">Any text file (SQL, CSV, code, notes), PDF, Word, screenshots</div>
       </div>
-      <input type="file" id="copilot-file-input" multiple accept=".pdf,.txt,.docx,.doc,.csv,.md,.sql,.json,.py,.js,.xml,.yaml,.yml,.png,.jpg,.jpeg,.webp" style="display:none" onchange="handleCopilotFiles(this.files);this.value=''">
+      <input type="file" id="copilot-file-input" multiple style="display:none" onchange="handleCopilotFiles(this.files);this.value=''">
       <div class="copilot-gear-status" id="copilot-gear-status"></div>
       <div class="copilot-files-list" id="copilot-files-list"></div>
     </div>
@@ -3715,6 +3715,7 @@ async function loadInfo() {
     infoItems = d.items || [];
   } catch (e) { console.warn('[Add info] load failed:', e.message); setInfoStatus('Could not load your info: ' + e.message, true); }
   renderInfo();
+  if (!infoItems.some(function (x) { return x.ready === false; })) { clearInterval(infoPoll); infoPoll = null; } else if (!infoPoll) watchInfoReady();
 }
 function showCopilotGear() {
   $('copilot-gear-overlay').style.display = 'flex';
@@ -3729,7 +3730,7 @@ async function postInfo(body, isForm) {
   var r = await fetch(infoUrl(), { method: 'POST', headers: h, body: isForm ? body : JSON.stringify(body) });
   var d = await r.json().catch(function () { return {}; });
   if (!r.ok || !d.item) throw new Error(d.error || ('HTTP ' + r.status));
-  infoItems.push(d.item); renderInfo();
+  infoItems.push(d.item); lastAddedInfo = d.item; renderInfo(); watchInfoReady();
   return d.item;
 }
 async function addInfoText() {
@@ -3738,7 +3739,7 @@ async function addInfoText() {
   if (!SESSION_ID) { setInfoStatus('Open a session first.', true); return; }
   if (!t) { setInfoStatus('Type or paste something first.', true); box.focus(); return; }
   btn.disabled = true; setInfoStatus('Adding...');
-  try { var it = await postInfo({ text: t }); box.value = ''; setInfoStatus('Added "' + it.title + '". It is used in every answer now.'); }
+  try { var it = await postInfo({ text: t }); box.value = ''; setInfoStatus(addedMsg(it)); }
   catch (e) { setInfoStatus(e.message, true); }
   finally { btn.disabled = false; }
 }
@@ -3754,7 +3755,15 @@ async function handleCopilotFiles(fileList) {
     catch (e) { failed.push(f.name + ' (' + e.message + ')'); }
   }
   if (failed.length) setInfoStatus((added ? 'Added ' + added + '. ' : '') + 'Not added: ' + failed.join(', '), true);
-  else setInfoStatus('Added ' + added + (added === 1 ? ' file' : ' files') + '. Used in every answer now.');
+  else setInfoStatus(added === 1 && lastAddedInfo ? addedMsg(lastAddedInfo) : 'Added ' + added + ' files. Used in every answer now.');
+}
+var lastAddedInfo = null, infoPoll = null;
+function addedMsg(it) { return 'Added "' + it.title + '". ' + (it.ready === false ? 'It is long, so xHire is making a short version (about a minute). It is used meanwhile.' : 'It is used in every answer now.'); }
+// a long item's short version is written in the background: refresh while the box is open until all are ready
+function watchInfoReady() {
+  clearInterval(infoPoll); infoPoll = null;
+  if (!infoItems.some(function (x) { return x.ready === false; })) return;
+  infoPoll = setInterval(function () { if ($('copilot-gear-overlay').style.display === 'none') { clearInterval(infoPoll); infoPoll = null; return; } loadInfo(); }, 5000);
 }
 async function removeInfo(id) {
   try {
@@ -3772,7 +3781,7 @@ function renderInfo() {
   if (!infoItems.length) { list.innerHTML = ''; return; }
   list.innerHTML = '<div class="info-count">Added (' + infoItems.length + ')</div>' + infoItems.map(function (f) {
     var size = f.chars < 1000 ? f.chars + ' chars' : (f.chars / 1000).toFixed(1) + 'k chars';
-    var kind = f.source === 'image' ? 'Picture' : f.source === 'file' ? 'File' : 'Text';
+    var kind = (f.source === 'image' ? 'Picture' : f.source === 'file' ? 'File' : 'Text') + (f.ready === false ? ' · making short version...' : '');
     return '<div class="copilot-file-item info-item">' +
       '<span class="file-name" onclick="toggleInfo(' + f.id + ')" title="Show / hide">' + esc(f.title) + '</span>' +
       '<span class="file-size">' + kind + ' · ' + size + '</span>' +

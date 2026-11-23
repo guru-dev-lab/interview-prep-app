@@ -1,5 +1,17 @@
 # Handoff
 
+## 23 Nov (3) — Add info: no size limit, any text file, long ones compacted once (cheap to use)
+- Owner could not add /Downloads/downloaded-file-1795047840: a 130k-char SQL view with NO extension. Causes: the picker's
+  accept= list greyed it out; and 30k-char cap. Owner: "should not have limit but the session should be able to compact".
+- Now: picker takes any file; the server decides by the BYTES (lib/knowledge.js sniffFile: text / pdf / docx / image /
+  binary → plain refusal). No size cap. Title from the SQL object when the name has no extension ("View — dbo.x").
+  A long item (>12k chars) gets a SHORT VERSION once (Sonnet, background, column `compact`); answers carry short versions
+  in the cached block + only the EXACT parts of the full text matching the question (pickDetail, word match, ≤12k, not
+  cached). Big info gets its own cache mark (smart + regular mode). UI shows "making short version..." until ready.
+- Proof: test/knowledge.js 27; test/add-info-e2e.js 24/24 (128k view no extension → 1.9k short version; column near the
+  END answered from its exact line; 10.8k chars of parts sent, not the view; 2nd answer cached_read=7070; binary refused).
+- Rollback: known-good-pre-add-info-files.
+
 ## 23 Nov (2) — desktop: New session in the app, note stays closed, eye asks first, "+ Info" label
 - Owner (screenshot): could not find Add info → the + on the co-pilot bar now reads "+ Info".
 - "The NOTE always open on opening the page … even when you open assessment" — cause: xhire_note_want='1' was set on

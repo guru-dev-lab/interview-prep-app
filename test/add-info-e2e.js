@@ -100,6 +100,34 @@ const logSince = mark => fs.readFileSync(LOG).subarray(mark).toString('utf8');
   g = await api('GET', `/api/sessions/${sid}/info`);
   check(rm.r.status === 200 && g.j.items.length === 2 && !g.j.items.some(x => x.source === 'image'), 'remove takes it out', JSON.stringify(rm.j) + ' ' + g.j.items.length);
 
+  // 9. (23 Nov) a BIG SQL view with NO file extension: accepted whole (no limit), titled from the SQL, compacted once,
+  //    and an answer about a column near its END uses the exact lines; binary files get a plain refusal
+  const cols = Array.from({ length: 1750 }, (_, i) => `      , ISNULL(f.metric_${String(i).padStart(4, '0')}_amount, 0) * fx.rate_to_usd AS kpi_${String(i).padStart(4, '0')}_usd`);
+  cols.splice(1700, 0, "      , CASE WHEN o.churn_flag = 'Y' AND DATEDIFF(day, o.last_order_dt, GETDATE()) > 90 THEN 'At risk' ELSE 'Active' END AS customer_health_status");
+  const BIG = 'USE [SalesDW]\r\nGO\r\n/****** Object:  View [dbo].[vw_customer_360] ******/\r\nCREATE VIEW [dbo].[vw_customer_360] AS\r\nSELECT c.customer_id\r\n' + cols.join('\r\n') + '\r\nFROM dbo.fact_customer_month f\r\nJOIN dbo.dim_customer c ON c.customer_id = f.customer_id\r\nJOIN dbo.orders_summary o ON o.customer_id = c.customer_id\r\nJOIN dbo.fx_rates fx ON fx.currency = f.currency\r\nGO\r\n';
+  let bigUp = await upload(sid, 'downloaded-file-1795047840', Buffer.from(BIG), 'application/octet-stream');
+  check(bigUp.r.status === 200 && bigUp.j.item && bigUp.j.item.title === 'View — dbo.vw_customer_360' && bigUp.j.item.chars > 120000 && bigUp.j.item.ready === false, `big view, no extension: added whole (${bigUp.j.item && bigUp.j.item.chars} chars), titled from the SQL, short version on its way`, JSON.stringify(bigUp.j).slice(0, 300));
+  let ready = false; const tR = Date.now();
+  while (Date.now() - tR < 180000) { const gl = await api('GET', `/api/sessions/${sid}/info`); const it = (gl.j.items || []).find(x => x.id === (bigUp.j.item || {}).id); if (it && it.ready) { ready = true; break; } await sleep(4000); }
+  const short = (await pool.query('SELECT length(compact) n FROM session_knowledge WHERE id=$1', [(bigUp.j.item || {}).id])).rows[0];
+  check(ready && short && short.n > 200 && short.n < 30000, `short version written once (${short && short.n} chars for ${bigUp.j.item && bigUp.j.item.chars})`, JSON.stringify(short));
+  const bin = await upload(sid, 'data.bin', Buffer.from([0, 1, 2, 3, 0, 255, 7]), 'application/octet-stream');
+  check(bin.r.status === 400 && /Can't read data\.bin/.test(bin.j.error || ''), 'a binary file gets a plain refusal', JSON.stringify(bin.j));
+  ws = await live(sid);
+  mark = fs.statSync(LOG).size;
+  res = await api('POST', `/api/sessions/${sid}/copilot`, { ask: 'In my customer 360 view, how is customer_health_status worked out? They want the at-risk cut-off moved to 60 days.', typed: true });
+  const ans3 = res.j.answer || '';
+  check(/churn_flag/.test(ans3) && /last_order_dt/.test(ans3) && /\b60\b/.test(ans3), 'answer about a column near the END of the big view uses its exact line', ans3);
+  const ln = (logSince(mark).match(/\[Info\] co-pilot call carries .*?(\d+) chars of exact parts/) || [])[1];
+  check(+ln > 0 && +ln <= 12000, `only the matching exact parts rode with the question (${ln} chars, not the whole view)`);
+  mark = fs.statSync(LOG).size;
+  res = await api('POST', `/api/sessions/${sid}/copilot`, { ask: 'Which tables does the customer 360 view join, and on what keys?', typed: true });
+  const ans4 = res.j.answer || '';
+  check(/fact_customer_month/.test(ans4) && /dim_customer/.test(ans4) && /orders_summary/.test(ans4) && /fx_rates/.test(ans4), 'join question answered from the short version + parts', ans4);
+  const cr = (logSince(mark).match(/\[Cache\] \S+ input=\d+ cached_read=(\d+)/) || [])[1];
+  check(+cr > 1000, `second answer re-read the info from cache (cached_read=${cr})`);
+  ws.send(JSON.stringify({ type: 'stop' })); ws.close(); await sleep(500);
+
   console.log(`\n${fail ? 'FAILED' : 'ALL PASS'} (add info e2e, ${pass} pass, ${fail} fail)`);
   await pool.end(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
