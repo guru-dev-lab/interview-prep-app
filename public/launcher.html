@@ -89,6 +89,14 @@ html,body{height:100%;overflow:hidden;background:transparent;color:#e2e8f0;font-
 .as-x{flex-shrink:0;width:18px;height:18px;border:none;border-radius:6px;background:rgba(255,255,255,.05);color:#64748b;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;align-self:center}
 .as-x:hover{background:rgba(248,113,113,.15);color:#F87171}
 .as-x-corner{position:absolute;top:8px;right:8px}
+/* rename (owner 23 Nov): a pencil beside the × ; the row turns into a name box */
+.as-ed{flex-shrink:0;width:18px;height:18px;border:none;border-radius:6px;background:rgba(255,255,255,.05);color:#94a3b8;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s}
+.as-ed:hover{background:rgba(167,139,250,.18);color:#c4b5fd}
+.as-ed-corner{position:absolute;top:8px;right:30px}
+.as-row .as-ed{align-self:center}
+.as-renaming{cursor:default;flex-direction:column;align-items:stretch;gap:8px;border-color:rgba(167,139,250,.5)!important;background:rgba(124,58,237,.08)!important}
+.as-name{width:100%;padding:7px 9px;border:1px solid rgba(167,139,250,.5);border-radius:7px;background:rgba(0,0,0,.25);color:#f1f5f9;font:600 12px Inter,sans-serif;outline:none;box-sizing:border-box}
+.as-btns .as-save{background:#7c3aed;border-color:#7c3aed;color:#fff}
 .as-confirm{border-color:rgba(248,113,113,.45)!important;background:rgba(248,113,113,.07)!important;cursor:default;flex-direction:column;align-items:stretch;gap:8px}
 .as-confirm .as-t{white-space:normal;font:500 11px Inter,sans-serif;color:#fecaca;line-height:1.4}
 .as-confirm .as-t b{color:#fff;font-weight:600}
@@ -394,21 +402,24 @@ async function openAssessment() {
   showStep('step-assessment');
 }
 var AS_X = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+var AS_PEN = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 function renderAssessmentStep() {
   var last = assessments[0];
   var el = document.getElementById('as-last');
-  el.innerHTML = '<button class="as-x as-x-corner" title="Remove this assessment">' + AS_X + '</button>'
+  el.innerHTML = '<button class="as-ed as-ed-corner" title="Rename">' + AS_PEN + '</button><button class="as-x as-x-corner" title="Remove this assessment">' + AS_X + '</button>'
     + '<div class="as-k">Continue last</div><div class="as-t">' + asTitle(last) + '</div>'
     + '<div class="as-d">Started ' + esc(fmtWhen(last.started)) + (last.sittings > 1 ? ' · ' + last.sittings + ' sittings' : '') + (last.carried ? ' · progress saved' : '') + '</div>';
   el.onclick = function () { connectToAssessment(last.id, false); };
   el.querySelector('.as-x').onclick = function (e) { e.stopPropagation(); askRemove(el, last); };
+  el.querySelector('.as-ed').onclick = function (e) { e.stopPropagation(); askRename(el, last); };
   var rest = assessments.slice(1), hist = document.getElementById('as-hist');
   hist.innerHTML = '';
   rest.forEach(function (a) {
     var row = document.createElement('div'); row.className = 'as-row';
-    row.innerHTML = '<button class="as-x" title="Remove this assessment">' + AS_X + '</button><div class="as-t">' + asTitle(a) + '</div><div class="as-d">' + esc(fmtWhen(a.started)) + '</div>';
+    row.innerHTML = '<button class="as-x" title="Remove this assessment">' + AS_X + '</button><div class="as-t">' + asTitle(a) + '</div><div class="as-d">' + esc(fmtWhen(a.started)) + '</div><button class="as-ed" title="Rename">' + AS_PEN + '</button>';
     row.onclick = function () { connectToAssessment(a.id, false); };
     row.querySelector('.as-x').onclick = function (e) { e.stopPropagation(); askRemove(row, a); };
+    row.querySelector('.as-ed').onclick = function (e) { e.stopPropagation(); askRename(row, a); };
     hist.appendChild(row);
   });
   document.getElementById('as-hist-h').style.display = rest.length ? '' : 'none';
@@ -433,6 +444,32 @@ function askRemove(el, a) {
       renderAssessmentStep();
     } catch (err) { asError('Could not remove it'); renderAssessmentStep(); }
   };
+}
+// ✎ → the row becomes a name box (Enter saves, Esc keeps the old name). Saved on the server, so the website and every
+// later sitting show the new name; the auto-title never overwrites a name he chose.
+function askRename(el, a) {
+  el.onclick = null; el.classList.add('as-renaming');
+  el.innerHTML = '<input class="as-name" maxlength="120" placeholder="Name this assessment" value="' + esc(a.title || '') + '">'
+    + '<div class="as-btns"><button class="as-save">Save</button><button class="as-no">Cancel</button></div>';
+  var box = el.querySelector('.as-name'), save = el.querySelector('.as-save');
+  var back = function () { el.classList.remove('as-renaming'); renderAssessmentStep(); };
+  var go = async function () {
+    var name = box.value.replace(/\s+/g, ' ').trim();
+    if (!name) { box.focus(); return; }
+    save.disabled = true; save.textContent = 'Saving…';
+    try {
+      var res = await fetch(SERVER + '/api/assessments/' + encodeURIComponent(a.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken }, body: JSON.stringify({ title: name }) });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.title) { asError(data.error || 'Could not rename it'); back(); return; }
+      a.title = data.title; // changed only after the server confirmed it
+      back();
+    } catch (err) { asError('Could not rename it'); back(); }
+  };
+  box.onclick = function (e) { e.stopPropagation(); };
+  box.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); back(); } };
+  save.onclick = function (e) { e.stopPropagation(); go(); };
+  el.querySelector('.as-no').onclick = function (e) { e.stopPropagation(); back(); };
+  setTimeout(function () { box.focus(); box.select(); }, 30);
 }
 async function startNewAssessment() {
   try {
